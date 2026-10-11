@@ -16,11 +16,13 @@
  * По логину/e-mail номер аккаунта находится через /user/<логин>/runic_details.
  *
  * Заполнение (fillRunic, 0.6.0): только во вкладке «Базовая анкета пользователя #N», которую видит оператор:
- * вписывает значения в поля формы физлица и вызывает события страницы (input/change/blur), чтобы она
+ * вписывает значения в поля формы и вызывает события страницы (input/change/blur), чтобы она
  * подсветила изменённые поля и пересчитала English name. Кнопку «Сохранить» не нажимает.
+ * С 0.7.3 — формы ИП и юрлица: если новый владелец другого типа, переключатель «Физик / ИП / Юрик» на странице
+ * переводится на нужный тип (страница сама показывает нужную форму), затем заполняется эта форма.
  */
 (() => {
-  const VERSION = '0.7.2';
+  const VERSION = '0.7.3';
   if (window.__doctoolManager && window.__doctoolManager.version === VERSION) return;
 
   // Поля Sd, которые передаются в doctool. authinfo, телефоны, адреса и служебные поля не передаются.
@@ -249,33 +251,88 @@
     };
   }
 
-  // Поля формы физлица на странице базовой анкеты (/user/N/runic_details), которые читает и заполняет doctool.
-  // Гражданство (country), страна почтового адреса, область, SMS-безопасность, факс, English name
-  // и флажок «Внесены данные нового владельца» doctool не заполняет.
+  // Поля форм на странице базовой анкеты (/user/N/runic_details), которые читает программа.
+  // Форма «Физик»/«ИП» — form#ru_pp_contacts (у ИП видны ещё ИНН и адрес регистрации), «Юрик» — form#ru_org_contacts.
   const RUNIC_FIELDS = ['person_r_surname', 'person_r_name', 'person_r_patronimic', 'person', 'passport_number',
-    'passport_date', 'passport_place', 'birth_date', 'country', 'p_addr_country', 'p_addr_zip', 'p_addr_area',
-    'p_addr_city', 'p_addr_addr', 'p_addr_recipient', 'phone', 'sms_security_number', 'fax', 'e_mail'];
-  const RUNIC_FILL = ['person_r_surname', 'person_r_name', 'person_r_patronimic', 'passport_number', 'passport_date',
-    'passport_place', 'birth_date', 'p_addr_zip', 'p_addr_city', 'p_addr_addr', 'p_addr_recipient', 'phone', 'e_mail'];
+    'passport_date', 'passport_place', 'code', 'birth_date', 'p_addr_r_zip', 'p_addr_r_area', 'p_addr_r_city',
+    'p_addr_r_addr', 'country', 'p_addr_country', 'p_addr_zip', 'p_addr_area', 'p_addr_city', 'p_addr_addr',
+    'p_addr_recipient', 'phone', 'sms_security_number', 'fax', 'e_mail'];
+  const RUNIC_ORG_FIELDS = ['country', 'org_r', 'org', 'parent_org_r', 'code', 'kpp', 'address_r_zip', 'address_r_area',
+    'address_r_city', 'address_r_addr', 'p_addr_country', 'p_addr_zip', 'p_addr_area', 'p_addr_city', 'p_addr_addr',
+    'p_addr_recipient', 'phone', 'sms_security_number', 'fax', 'e_mail', 'actt_e_mail'];
+  // Что заполняет программа — по типу нового владельца, в порядке полей на странице. Гражданство / страна
+  // регистрации, страна почтового адреса, область, SMS-безопасность, факс, English name, родительская организация
+  // и флажок «Внесены данные нового владельца» не заполняются.
+  const RUNIC_FILL = {
+    pp: ['person_r_surname', 'person_r_name', 'person_r_patronimic', 'passport_number', 'passport_date',
+      'passport_place', 'birth_date', 'p_addr_zip', 'p_addr_city', 'p_addr_addr', 'p_addr_recipient', 'phone', 'e_mail'],
+    ip: ['person_r_surname', 'person_r_name', 'person_r_patronimic', 'passport_number', 'passport_date',
+      'passport_place', 'code', 'birth_date', 'p_addr_r_zip', 'p_addr_r_city', 'p_addr_r_addr', 'p_addr_zip',
+      'p_addr_city', 'p_addr_addr', 'p_addr_recipient', 'phone', 'e_mail'],
+    org: ['org_r', 'code', 'kpp', 'address_r_zip', 'address_r_city', 'address_r_addr', 'p_addr_zip', 'p_addr_city',
+      'p_addr_addr', 'p_addr_recipient', 'phone', 'e_mail', 'actt_e_mail'],
+  };
   const TYPE_RU = { pp: 'физлицо', ip: 'ИП', org: 'юрлицо' };
+  const TYPE_PAGE = { pp: 'Физик', ip: 'ИП', org: 'Юрик' };
+  const formFor = (doc, type) => doc.querySelector(type === 'org' ? 'form#ru_org_contacts' : 'form#ru_pp_contacts');
+  const readForm = (form, names) => {
+    const out = {};
+    if (form) {
+      for (const k of names) {
+        const el = form.querySelector(`[name="${k}"]`);
+        if (el) out[k] = (el.value || '').trim();
+      }
+    }
+    return out;
+  };
+  const shown = el => !!el && !el.classList.contains('hidden') && !(el.closest('tr') && el.closest('tr').classList.contains('hidden'));
 
   function parseRunic(doc) {
     const h = text(doc.querySelector('h3'));
     const m = /#\s*(\d+)/.exec(h);
     const checked = doc.querySelector('input[name="type"]:checked') || doc.querySelector('input[name="type"][checked]');
-    const form = doc.querySelector('form#ru_pp_contacts');
-    const values = {};
-    if (form) {
-      for (const k of RUNIC_FIELDS) {
-        const el = form.querySelector(`[name="${k}"]`);
-        if (el) values[k] = (el.value || '').trim();
-      }
-    }
-    return { user_id: m ? m[1] : '', type: checked ? checked.value : '', has_pp_form: !!form, values };
+    const type = checked ? checked.value : '';
+    const pp = formFor(doc, 'pp'), org = formFor(doc, 'org');
+    const valuesPp = readForm(pp, RUNIC_FIELDS), valuesOrg = readForm(org, RUNIC_ORG_FIELDS);
+    if (type !== 'ip') ['code', 'p_addr_r_zip', 'p_addr_r_area', 'p_addr_r_city', 'p_addr_r_addr'].forEach(k => {
+      if (!valuesPp[k]) delete valuesPp[k];          // строки ИП у физлица скрыты и пусты
+    });
+    return {
+      user_id: m ? m[1] : '', type, has_pp_form: !!pp, has_org_form: !!org,
+      values: type === 'org' ? valuesOrg : valuesPp, values_pp: valuesPp, values_org: valuesOrg,
+    };
   }
 
-  // Заполнение формы физлица на открытой странице базовой анкеты (вкладка оператора). fields — {имя поля: значение};
+  // Переключатель «Физик / ИП / Юрик» на странице базовой анкеты. Обработчик страницы на change показывает нужную
+  // форму (у ИП — строки ИНН и адреса регистрации, is_entrepreneur = 1). Ничего не сохраняется.
+  function setRunicType(doc, type) {
+    const radios = [...doc.querySelectorAll('input[name="type"]')];
+    const r = radios.find(x => x.value === type);
+    if (!r) return false;
+    radios.forEach(x => {
+      x.checked = x === r;
+      const l = x.closest('label');
+      if (l) l.classList.toggle('active', x === r);
+    });
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  function typeReady(doc, type) {
+    const form = formFor(doc, type);
+    if (!shown(form)) return false;
+    if (type === 'ip') {
+      const code = form.querySelector('[name="code"]');
+      return shown(code) && (form.querySelector('[name="is_entrepreneur"]') || {}).value === '1';
+    }
+    return true;
+  }
+
+  // Заполнение формы на открытой странице базовой анкеты (вкладка оператора). fields — {имя поля: значение};
   // пустые значения пропускаются (кроме restore — возврата прежних значений). «Сохранить» не нажимается.
+  // opts.type — тип нового владельца (pp / ip / org, с 0.7.3): если на странице другой, переключатель типа
+  // переводится на нужный. Без opts.type — как в 0.6.0: только физлицо, другой тип — ошибка not_person.
+  // opts.back_type (с restore) — после возврата значений вернуть и прежний тип анкеты.
   function fillRunic(expectedId, fields, opts) {
     opts = opts || {};
     const info = parseRunic(document);
@@ -283,17 +340,29 @@
     if (String(info.user_id) !== String(expectedId)) {
       return { ok: false, error: { code: 'wrong_account', message: `Во вкладке базовая анкета аккаунта #${info.user_id}, а нужен #${expectedId}.` } };
     }
-    if (info.type !== 'pp') {
-      const who = TYPE_RU[info.type] || (info.type || 'неизвестный тип');
-      return { ok: false, error: { code: 'not_person', type: info.type,
-        message: `Аккаунт #${expectedId} оформлен на ${who === 'юрлицо' ? 'юрлицо' : who === 'ИП' ? 'ИП' : who}: автозаполнение пока только для физлиц. Вкладка базовой анкеты открыта.` } };
+    const target = opts.type || 'pp';
+    if (!RUNIC_FILL[target]) return { ok: false, error: { code: 'bad_request', message: `Неизвестный тип анкеты: ${target}` } };
+    let switched = false;
+    if (info.type !== target) {
+      if (!opts.type) {
+        const who = TYPE_RU[info.type] || (info.type || 'неизвестный тип');
+        return { ok: false, error: { code: 'not_person', type: info.type,
+          message: `Аккаунт #${expectedId} оформлен на ${who}: автозаполнение без типа нового владельца — только для физлиц. Вкладка базовой анкеты открыта.` } };
+      }
+      if (!setRunicType(document, target)) {
+        return { ok: false, error: { code: 'bad_page', message: `На странице нет переключателя типа «${TYPE_PAGE[target]}».` } };
+      }
+      switched = true;
     }
-    const form = document.querySelector('form#ru_pp_contacts');
-    if (!form) return { ok: false, error: { code: 'bad_page', message: 'На странице нет формы физлица (form#ru_pp_contacts).' } };
+    if (!typeReady(document, target)) {
+      return { ok: false, error: { code: 'type_switch', type: info.type,
+        message: `Не удалось переключить базовую анкету на «${TYPE_PAGE[target]}»: страница не показала нужную форму. Переключите тип вручную и нажмите «Заполнить автоматически» ещё раз.` } };
+    }
+    const form = formFor(document, target);
     const changed = [], same = [], missing = [];
     const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: type !== 'blur' }));
     fields = fields || {};
-    for (const name of RUNIC_FILL) {             // в порядке полей на странице
+    for (const name of RUNIC_FILL[target]) {     // в порядке полей на странице
       if (!(name in fields)) continue;
       const value = (fields[name] ?? '').toString();
       if (!value && !opts.restore) continue;
@@ -308,12 +377,20 @@
       fire(el, 'input');
       fire(el, 'change');      // страница помечает поле как изменённое (класс unsaved)
       try { el.blur(); } catch (e) { /* ничего */ }
-      fire(el, 'blur');        // у ФИО — пересчёт English name (translit_pers_org)
+      fire(el, 'blur');        // у ФИО и названия организации — пересчёт English name (translit_pers_org)
       el.style.outline = opts.restore ? '' : '2px solid #f0ad4e';
       changed.push({ name, label, old, new: value });
     }
-    return { ok: true, data: { user_id: info.user_id, type: info.type, changed, same, missing,
-                               values: parseRunic(document).values } };
+    // «Вернуть как было» после переключения типа: значения формы возвращены — возвращаем и прежний тип
+    let typeBack = false;
+    if (opts.restore && opts.back_type && opts.back_type !== target && RUNIC_FILL[opts.back_type]) {
+      typeBack = setRunicType(document, opts.back_type);
+    }
+    const after = parseRunic(document);
+    return { ok: true, data: { user_id: info.user_id, type: target, type_old: info.type, type_switched: switched,
+                               type_back: typeBack ? opts.back_type : '',
+                               type_page: TYPE_PAGE[target], changed, same, missing, values: after.values,
+                               values_pp: after.values_pp, values_org: after.values_org } };
   }
 
   async function account(reqId, query) {
@@ -445,6 +522,6 @@
 
   window.__doctoolManager = {
     version: VERSION, lookup, account, fillRunic, parseBills, pickService, parseSd, parseS, parseEsiaList,
-    parseUserDetails, parseRunic, isManagerPage,
+    parseUserDetails, parseRunic, setRunicType, isManagerPage,
   };
 })();

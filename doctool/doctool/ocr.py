@@ -70,17 +70,56 @@ def load_document(path: str | Path, dpi: int = 300) -> list[Page]:
                 pix = p.get_pixmap(dpi=dpi)
                 img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR if pix.n == 3 else cv2.COLOR_RGBA2BGR)
-                pages.append(Page(image=img, text_layer=p.get_text(), source=path.name, index=i))
+                pages.append(Page(image=img, text_layer=pdf_page_text(p), source=path.name, index=i))
         return pages
     if ext == ".docx":
-        from docx import Document  # python-docx
-        d = Document(str(path))
-        parts = [p.text for p in d.paragraphs]
-        for t in d.tables:
-            for row in t.rows:
-                parts.append(" | ".join(c.text for c in row.cells))
-        return [Page(image=None, text_layer="\n".join(parts), source=path.name)]
+        return [Page(image=None, text_layer=docx_text(path), source=path.name)]
     raise ValueError(f"Неподдерживаемый формат: {path}")
+
+
+def pdf_page_text(page) -> str:
+    """Текстовый слой страницы PDF. Если значения вписаны поверх бланка в PDF-редакторе (поля формы, надписи-
+    аннотации), get_text() ставит их в конец текста — тогда текст собирается по координатам: слова группируются
+    в строки по высоте и сортируются слева направо, и значение оказывается рядом со своей подписью (0.7.3).
+    Обычный PDF (из Word) читается как раньше."""
+    overlay = any((w.field_value or "").strip() for w in (page.widgets() or [])) or \
+        any((a.info.get("content") or "").strip() for a in (page.annots() or []))
+    if not overlay:
+        return page.get_text()
+    words = sorted(page.get_text("words"), key=lambda w: (w[1] + w[3]) / 2)
+    lines: list[list] = []
+    for w in words:
+        cy, h = (w[1] + w[3]) / 2, max(1.0, w[3] - w[1])
+        if lines and abs(lines[-1][0] - cy) < h * 0.5:
+            lines[-1][1].append(w)
+        else:
+            lines.append([cy, [w]])
+    return "\n".join(" ".join(x[4] for x in sorted(ws, key=lambda w: w[0])) for _, ws in lines) + "\n"
+
+
+def docx_text(path: str | Path) -> str:
+    """Текст DOCX в порядке документа: абзацы и таблицы вперемешку (до 0.7.3 таблицы шли после всех абзацев —
+    таблица нового администратора оказывалась после подписи). Строка таблицы — ячейки через « | »; объединённая
+    ячейка — один раз."""
+    from docx import Document  # python-docx
+    from docx.oxml.ns import qn
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    d = Document(str(path))
+    parts: list[str] = []
+    for el in d.element.body.iterchildren():
+        if el.tag == qn("w:p"):
+            parts.append(Paragraph(el, d).text)
+        elif el.tag == qn("w:tbl"):
+            seen: list = []                       # элементы ячеек (id() у прокси lxml переиспользуется — сравнение через is)
+            for row in Table(el, d).rows:
+                cells = []
+                for c in row.cells:
+                    if not any(c._tc is x for x in seen):
+                        seen.append(c._tc)
+                        cells.append(c.text)
+                parts.append(" | ".join(cells))
+    return "\n".join(parts)
 
 
 # ---------------------------------------------------------------- Tesseract

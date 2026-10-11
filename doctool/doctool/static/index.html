@@ -20,8 +20,10 @@ header{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:
 header h1{font-size:18px;margin:0}
 header h1 .ver{font-size:12px;font-weight:400;color:var(--muted)}
 header .meta{margin-left:auto;color:var(--muted);font-size:13px}
-main{max-width:1280px;margin:0 auto;padding:20px 16px 60px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:18px}
+main{margin:0 auto;padding:20px 16px 60px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:0 auto 18px;max-width:1280px}
+/* (0.7.3) «Домены в manager» — во всю ширину окна: таблица из 10 колонок без прокрутки вбок */
+#domCard{max-width:none}
 .card h2{font-size:16px;margin:0 0 14px}
 .row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
@@ -74,6 +76,9 @@ pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:
 textarea{font:inherit;color:var(--text);background:var(--input);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-height:64px}
 #domLog{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;max-height:150px;overflow:auto;font:12.5px/1.5 Consolas,monospace;white-space:pre-wrap;margin-top:10px}
 #domTable td{font-size:13px}
+/* длинные имена доменов, e-mail, «кем выдан» переносятся в любом месте — таблица не шире окна */
+#domTable td b,#domTable td small,#domTable td li{overflow-wrap:anywhere}
+#domTable .badge{white-space:normal}
 #domTable td small{color:var(--muted)}
 #domTable ul{margin:4px 0 0 16px;padding:0}
 #domTable tr.grp td{background:var(--bg);font-weight:600;font-size:12.5px;padding-top:10px}
@@ -95,6 +100,7 @@ button.sm{padding:2px 8px;font-size:12px}
 .ownGrid label.f{min-width:0}
 .ownGrid input[type=text],.ownGrid textarea{width:100%;min-width:0}
 .ownGrid .wide{grid-column:1/-1}
+.ownGrid label.f.hidden{display:none}
 dialog{border:1px solid var(--line);border-radius:10px;padding:0;max-width:900px;width:94vw;background:var(--card);color:var(--text)}
 dialog::backdrop{background:rgba(0,0,0,.45)}
 dialog .hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
@@ -152,6 +158,7 @@ dialog .bd{padding:14px 18px;max-height:75vh;overflow:auto}
     <label class="f">Модель для рукописи <select id="model"></select></label>
     <label class="f">Модель для полей <select id="llmModel"></select></label>
     <button class="primary" id="run">Проверить</button>
+    <button id="manual" title="Без файла заявления: впишите данные заявления в таблицу результата и нажмите «Пересчитать». Домены из строки «Домен(ы)» после пересчёта сами уйдут на поиск в manager.">Ввести данные заявления вручную</button>
     <span class="hint" id="runHint"></span>
   </div>
 </section>
@@ -188,8 +195,11 @@ dialog .bd{padding:14px 18px;max-height:75vh;overflow:auto}
     <div class="pages" id="pages"></div>
     <button id="rerunPages">Перезапустить с этими страницами</button>
   </div>
-  <p class="hint">Значения можно исправить прямо в таблице. Галочка «Подтверждаю» — вы сверили поле по фрагменту/документу.
+  <p class="hint" id="rowsHint">Значения можно исправить прямо в таблице. Галочка «Подтверждаю» — вы сверили поле по фрагменту/документу.
     После правок нажмите «Пересчитать» — проверки, вердикт и выгрузка обновятся.</p>
+  <div class="msg hidden" id="manualHint">Ручной ввод: впишите данные заявления в колонку «Заявление» и нажмите «Пересчитать».
+    Если в строке «Домен(ы)» есть домены, после пересчёта они сами уйдут на поиск в manager, и данные Sd сверятся
+    с введёнными данными (блок «Домены в manager» выше и проверки ниже).</div>
   <table id="rows"><thead><tr><th>Поле</th><th>Заявление</th><th>Паспорт</th><th>Фрагмент заявления</th><th>Статус</th><th>Подтверждаю</th></tr></thead><tbody></tbody></table>
   <div class="actions">
     <button class="primary" id="recompute">Пересчитать</button>
@@ -213,7 +223,7 @@ dialog .bd{padding:14px 18px;max-height:75vh;overflow:auto}
 <section class="card">
   <h2>1. Аккаунт</h2>
   <p class="hint">Номер аккаунта, «Данные пользователя #…» или «Базовая анкета пользователя #…», ссылка из manager, «договор № …»,
-    логин или e-mail, домен (аккаунт — владелец услуги домена). Пока только физлица.</p>
+    логин или e-mail, домен (аккаунт — владелец услуги домена). Физлица, ИП и юрлица.</p>
   <div class="row">
     <label class="f" style="flex:1;min-width:280px">Пользователь <input type="text" id="ownQuery" placeholder="15904265 / Данные пользователя #15904265 / login@example.com / example.ru"></label>
     <button class="primary" id="ownLoad">Загрузить из manager</button>
@@ -225,41 +235,69 @@ dialog .bd{padding:14px 18px;max-height:75vh;overflow:auto}
 
 <section class="card">
   <h2>2. Текущий владелец: базовая анкета ↔ заявление</h2>
-  <p class="hint">Данные заявления пока вводятся вручную. Зелёный — совпадает, красный — расходится, жёлтый — «кем выдан» написан по-разному,
-    без цвета — сравнивать не с чем. Сравнение без учёта регистра, ё/е, пробелов и знаков препинания; паспорт и телефон — по цифрам.</p>
+  <div class="row" style="margin-bottom:8px">
+    <span class="hint">Тип базовой анкеты:</span>
+    <div class="radios" id="ownCmpKind">
+      <label><input type="radio" name="ownCmpKind" value="pp" checked> физлицо</label>
+      <label><input type="radio" name="ownCmpKind" value="ip"> ИП</label>
+      <label><input type="radio" name="ownCmpKind" value="org"> юрлицо</label>
+    </div>
+    <span class="hint">— выбирается сам по загруженному аккаунту</span>
+  </div>
+  <p class="hint" id="ownCmpHint"></p>
   <div class="wrap"><table id="ownCmp"><thead><tr><th>Поле</th><th>Базовая анкета (manager)</th><th style="width:38%">Заявление</th><th>Итог</th></tr></thead><tbody></tbody></table></div>
   <div class="actions"><span id="ownCmpSum" class="hint"></span></div>
   <details><summary>Все поля базовой анкеты</summary><table><tbody id="ownBaAll"></tbody></table></details>
 </section>
 
 <section class="card">
-  <h2>3. Новый владелец (физлицо) → базовая анкета в manager</h2>
+  <h2>3. Новый владелец → базовая анкета в manager</h2>
+  <div class="row" style="margin-bottom:10px">
+    <span class="hint">Новый владелец:</span>
+    <div class="radios" id="ownKind">
+      <label><input type="radio" name="ownKind" value="pp" checked> физлицо</label>
+      <label><input type="radio" name="ownKind" value="ip"> ИП</label>
+      <label><input type="radio" name="ownKind" value="org"> юрлицо</label>
+    </div>
+  </div>
   <p class="hint">«Заполнить автоматически» можно нажать в любой момент: программа откроет (или найдёт) вкладку manager «Базовая анкета пользователя #…»
-    этого аккаунта и заменит в ней поля, которые заполнены здесь; пустые поля не трогает. <b>«Сохранить» в manager нажимаете вы.</b>
-    Гражданство и страну почтового адреса выставляете сами; English name пересчитывает сама страница manager.</p>
+    этого аккаунта и заменит в ней поля, которые заполнены здесь; пустые поля не трогает. Если тип анкеты в manager другой
+    (например, «Физик», а новый владелец — юрлицо), программа сама переключит его на странице («Физик / ИП / Юрик»).
+    <b>«Сохранить» в manager нажимаете вы.</b> <span id="ownKindHint"></span></p>
   <div class="ownGrid" id="ownForm">
-    <label class="f">Фамилия <input type="text" data-k="surname"></label>
-    <label class="f">Имя <input type="text" data-k="name"></label>
-    <label class="f">Отчество <input type="text" data-k="patronymic"></label>
-    <label class="f">Дата рождения <input type="text" data-k="birth_date" placeholder="ДД.ММ.ГГГГ"></label>
-    <label class="f">Серия и номер паспорта <input type="text" data-k="passport" placeholder="4021 925790"></label>
-    <label class="f wide">Кем и когда выдан документ <span class="hint">(как в заявлении — дата и «кем выдан» разделятся сами)</span>
+    <label class="f" data-for="org" style="grid-column:span 2">Название организации <span class="hint">(→ «Название»; English name пересчитает страница)</span>
+      <input type="text" data-k="org_name" placeholder="ООО «Ромашка»"></label>
+    <label class="f" data-for="pp ip">Фамилия <input type="text" data-k="surname"></label>
+    <label class="f" data-for="pp ip">Имя <input type="text" data-k="name"></label>
+    <label class="f" data-for="pp ip">Отчество <input type="text" data-k="patronymic"></label>
+    <label class="f" data-for="pp ip">Дата рождения <input type="text" data-k="birth_date" placeholder="ДД.ММ.ГГГГ"></label>
+    <label class="f" data-for="ip org"><span id="ownInnTitle">ИНН</span> <input type="text" data-k="inn" placeholder="12 цифр"></label>
+    <label class="f" data-for="org">КПП <input type="text" data-k="kpp" placeholder="9 цифр"></label>
+    <label class="f" data-for="pp ip">Серия и номер паспорта <input type="text" data-k="passport" placeholder="4021 925790"></label>
+    <label class="f wide" data-for="pp ip">Кем и когда выдан документ <span class="hint">(как в заявлении — дата и «кем выдан» разделятся сами)</span>
       <input type="text" data-k="issued" placeholder="ГУ МВД России по г. Санкт-Петербургу и Ленинградской области, 24.08.2021"></label>
-    <label class="f">Дата выдачи <span class="hint">(если не из строки выше)</span> <input type="text" data-k="passport_date" placeholder="ДД.ММ.ГГГГ"></label>
-    <label class="f" style="grid-column:span 2">Кем выдан <span class="hint">(если не из строки выше)</span> <input type="text" data-k="passport_place"></label>
-    <label class="f wide">Адрес регистрации <span class="hint">(→ «Почтовый адрес» 1 в 1, город — из адреса)</span>
+    <label class="f" data-for="pp ip">Дата выдачи <span class="hint">(если не из строки выше)</span> <input type="text" data-k="passport_date" placeholder="ДД.ММ.ГГГГ"></label>
+    <label class="f" data-for="pp ip" style="grid-column:span 2">Кем выдан <span class="hint">(если не из строки выше)</span> <input type="text" data-k="passport_place"></label>
+    <label class="f wide" data-for="pp ip">Адрес регистрации <span class="hint" id="ownAddrHint">(→ «Почтовый адрес» 1 в 1, город — из адреса)</span>
       <textarea data-k="address" rows="2"></textarea></label>
-    <label class="f">Город <span class="hint">(пусто — из адреса)</span> <input type="text" data-k="city"></label>
-    <label class="f">Индекс <span class="hint">(пусто — останется прежний)</span> <input type="text" data-k="zip"></label>
-    <label class="f">Получатель <span class="hint">(пусто — ФИО)</span> <input type="text" data-k="recipient"></label>
-    <label class="f">Телефон <input type="text" data-k="phone"></label>
-    <label class="f">Email <input type="text" data-k="email"></label>
+    <label class="f wide" data-for="org">Физический адрес <span class="hint">(→ «Юр. адрес», город — из адреса)</span>
+      <textarea data-k="legal_address" rows="2"></textarea></label>
+    <label class="f" data-for="org">Индекс (юр. адрес) <span class="hint">(пусто — останется прежний)</span> <input type="text" data-k="legal_zip"></label>
+    <label class="f" data-for="org">Город (юр. адрес) <span class="hint">(пусто — из адреса)</span> <input type="text" data-k="legal_city"></label>
+    <label class="f wide" data-for="org">Почтовый адрес <span class="hint">(пусто — как физический)</span>
+      <textarea data-k="postal_address" rows="2"></textarea></label>
+    <label class="f" data-for="pp ip org">Город <span class="hint">(пусто — из адреса)</span> <input type="text" data-k="city"></label>
+    <label class="f" data-for="pp ip org">Индекс <span class="hint">(пусто — останется прежний)</span> <input type="text" data-k="zip"></label>
+    <label class="f" data-for="pp ip org">Получатель <span class="hint" id="ownRecHint">(пусто — ФИО)</span> <input type="text" data-k="recipient"></label>
+    <label class="f" data-for="pp ip org">Телефон <input type="text" data-k="phone"></label>
+    <label class="f" data-for="pp ip org">Email <input type="text" data-k="email"></label>
+    <label class="f" data-for="org">Email для бухгалтерии <input type="text" data-k="acct_email"></label>
   </div>
   <div class="wrap" style="margin-top:14px"><table id="ownPrev"><thead><tr><th>Поле в manager</th><th>Будет вписано</th><th>Сейчас в анкете</th></tr></thead><tbody></tbody></table></div>
   <ul id="ownPrevNotes" class="hint"></ul>
   <div class="actions">
     <button class="primary" id="ownFill">Заполнить автоматически</button>
-    <button id="ownUndo" disabled title="Вернуть в форме manager значения, которые были до заполнения (пока вы не нажали «Сохранить»)">Вернуть как было</button>
+    <button id="ownUndo" disabled title="Вернуть в форме manager значения (и тип анкеты), которые были до заполнения (пока вы не нажали «Сохранить»)">Вернуть как было</button>
     <button id="ownVerify" disabled title="Перечитать базовую анкету после «Сохранить» и сверить с тем, что заполняли">Проверить, что сохранилось</button>
     <button id="ownClear">Очистить форму</button>
   </div>
@@ -349,6 +387,29 @@ async function start(extra={}){
 }
 $('#run').addEventListener('click', () => start());
 
+// ------------------------------------------------------------------ ручной ввод данных заявления (0.7.3)
+// подсказки в пустых полях таблицы при ручном вводе
+const ROW_PH = {fio: 'Фамилия Имя Отчество', birth_date: 'ДД.ММ.ГГГГ', passport: '4510 123456', issue_date: 'ДД.ММ.ГГГГ',
+  issued_by: 'кем выдан паспорт', address: 'адрес регистрации', inn: 'ИНН ИП (если есть)', domains: 'example.ru, пример.рф',
+  new_admin: 'ФИО или организация', new_admin_contact: 'e-mail, телефон', contract: 'номер договора / аккаунт',
+  application_date: 'ДД.ММ.ГГГГ или прописью'};
+$('#manual').addEventListener('click', async () => {
+  $('#runHint').textContent = '';
+  $('#manual').disabled = true;
+  try {
+    const r = await fetch('/api/jobs/manual', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({case_type: $('#caseType').value})});
+    const j = await r.json();
+    if (!r.ok){ $('#runHint').textContent = j.detail || 'Ошибка'; return; }
+    state.jobId = state.resultJobId = j.job_id; state.lastOpts = null;
+    $('#progressCard').classList.add('hidden');
+    delete $('#domList').dataset.touched;
+    render(j.result);
+    $('#resultCard').scrollIntoView({behavior: 'smooth', block: 'start'});
+    const first = $('#rows tbody input[type=text]'); if (first) first.focus();
+  } finally { $('#manual').disabled = false; }
+});
+
 async function poll(){
   clearTimeout(state.timer);
   const j = await (await fetch(`/api/jobs/${state.jobId}?since=${state.logLen}`)).json();
@@ -365,6 +426,7 @@ function render(res){
   state.result = res;
   $('#resultCard').classList.remove('hidden');
   $('#resTitle').textContent = `— ${res.case_id} · ${res.case_type}`;
+  $('#manualHint').classList.toggle('hidden', !res.manual);
   const d = res.decision;
   $('#verdict').className = `verdict v-${d.code}`;
   $('#verdict').innerHTML = `<div class="t">${esc(d.title)}</div><ul>${d.reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`;
@@ -380,7 +442,7 @@ function render(res){
   // таблица полей
   $('#rows tbody').innerHTML = res.rows.map(r => `<tr data-id="${r.id}" title="${esc(r.details.join('\n'))}">
     <td><b>${esc(r.title)}</b></td>
-    <td>${r.editable_app ? `<input type="text" data-k="app" value="${esc(r.app)}" data-orig="${esc(r.app)}">` : '—'}
+    <td>${r.editable_app ? `<input type="text" data-k="app" value="${esc(r.app)}" data-orig="${esc(r.app)}"${res.manual && !r.app ? ` placeholder="${esc(ROW_PH[r.id] || '')}"` : ''}>` : '—'}
         <div class="src">${esc(SRC(r.app_source))}</div></td>
     <td>${r.editable_passport ? `<input type="text" data-k="passport" value="${esc(r.passport)}" data-orig="${esc(r.passport)}">` : '—'}
         <div class="src">${esc(SRC(r.passport_source))}</div></td>
@@ -452,18 +514,20 @@ function domainRow(d){
 
 const dom = {taskId:null, logLen:0, timer:null, items:{}};
 $('#domList').addEventListener('input', () => $('#domList').dataset.touched = '1');
-$('#domLoad').addEventListener('click', async () => {
+async function domLookup(auto){
   $('#domHint').textContent = '';
   const body = {domains: $('#domList').value};
   if (state.resultJobId) body.job_id = state.resultJobId;
   const r = await fetch('/api/manager/lookup', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   const j = await r.json();
-  if (!r.ok){ $('#domHint').textContent = j.detail || 'Ошибка'; return; }
+  if (!r.ok){ $('#domHint').textContent = (auto ? 'Домены из заявления не отправлены в manager: ' : '') + (j.detail || 'Ошибка'); return; }
   dom.taskId = j.task_id; dom.logLen = 0;
-  $('#domLog').textContent = ''; $('#domLog').classList.remove('hidden');
+  $('#domLog').textContent = auto ? `Домены из заявления отправлены на поиск в manager: ${j.domains.join(', ')}\n` : '';
+  $('#domLog').classList.remove('hidden');
   $('#domLoad').disabled = true; $('#domCancel').disabled = false;
   pollDomains();
-});
+}
+$('#domLoad').addEventListener('click', () => domLookup(false));
 $('#domCancel').addEventListener('click', () => dom.taskId && fetch(`/api/manager/tasks/${dom.taskId}/cancel`, {method:'POST'}));
 async function pollDomains(){
   clearTimeout(dom.timer);
@@ -496,7 +560,14 @@ $('#recompute').addEventListener('click', async () => {
   });
   const r = await fetch(`/api/jobs/${state.jobId}/recompute`, {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({overrides, confirmed})});
-  render(await r.json());
+  const res = await r.json();
+  render(res);
+  // (0.7.3) домены из строки «Домен(ы)» — на поиск в manager, если их данных ещё нет (сверка с введёнными данными)
+  if ((res.domains_pending || []).length && !$('#domLoad').disabled){
+    $('#domList').value = res.domains_from_app.join('\n');
+    $('#domCard').scrollIntoView({behavior: 'smooth', block: 'start'});
+    domLookup(true);
+  }
 });
 $('#download').addEventListener('click', () => { location.href = state.result.export_url; });
 $('#openReport').addEventListener('click', () => window.open(state.result.report_url, '_blank'));
@@ -569,9 +640,12 @@ document.addEventListener('click', e => {
   if (ac){ showTab('tabOwner'); $('#ownQuery').value = ac.dataset.acc; ownParse(); ownLoad(); window.scrollTo(0, 0); }
 });
 
-// ------------------------------------------------------------------ смена владельца ЛК
-const own = {acc:null, last:null, timers:{}};
+// ------------------------------------------------------------------ смена владельца ЛК (физлица; с 0.7.3 — ИП и юрлица)
+const own = {acc:null, last:null, timers:{}, kindTouched:false};
+const KIND_RU = {pp: 'физлицо', ip: 'ИП', org: 'юрлицо'}, KIND_PAGE = {pp: 'Физик', ip: 'ИП', org: 'Юрик'};
 const later = (key, fn, ms = 300) => { clearTimeout(own.timers[key]); own.timers[key] = setTimeout(fn, ms); };
+const radioVal = name => (document.querySelector(`input[name=${name}]:checked`) || {}).value || 'pp';
+const setRadio = (name, v) => { const r = document.querySelector(`input[name=${name}][value=${v}]`); if (r) r.checked = true; };
 async function api(url, body){
   const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   const j = await r.json().catch(() => ({}));
@@ -595,6 +669,9 @@ async function ownLoad(){
     const j = await api('/api/owner/account', {query: q});
     if (!j.ok){ $('#ownNotes').innerHTML = msg('fail', esc(j.error.message)); return; }
     own.acc = j.account; own.last = null; $('#ownUndo').disabled = $('#ownVerify').disabled = true; $('#ownFillMsg').innerHTML = '';
+    const t = KIND_RU[own.acc.type] ? own.acc.type : 'pp';
+    setRadio('ownCmpKind', t);                      // сверка — по типу анкеты аккаунта
+    if (!own.kindTouched){ setRadio('ownKind', t); ownKindChanged(); }   // новый владелец — того же типа, пока не выбрали другой
     renderOwnAcc(); ownCompare(); ownPreview();
   } catch (e) { $('#ownNotes').innerHTML = msg('fail', esc(e.message)); }
   finally { $('#ownLoad').disabled = false; }
@@ -612,16 +689,25 @@ function renderOwnAcc(){
   $('#ownBaAll').innerHTML = Object.entries(a.ba_all || {}).map(([k, v]) => `<tr><td class="mono">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')
     || '<tr><td class="hint">базовая анкета пустая</td></tr>';
 }
-// сверка: строки — из ответа сервера (поля и заголовки — account.OWNER_FIELDS)
+// сверка: строки — из ответа сервера (поля и заголовки — account.OWNER_FIELDS*, по типу анкеты)
+const CMP_HINT = {
+  pp: 'Зелёный — совпадает, красный — расходится, жёлтый — «кем выдан» написан по-разному, без цвета — сравнивать не с чем. Сравнение без учёта регистра, ё/е, пробелов и знаков препинания; паспорт и телефон — по цифрам.',
+  org: 'Зелёный — совпадает, красный — расходится, жёлтый — похоже (адрес совпал частично или записан по-разному; форма организации указана с одной стороны), без цвета — сравнивать не с чем. Название: «ООО» = «Общество с ограниченной ответственностью», само название должно совпасть. Адрес — по названиям и номерам («г.», «ул.», «д.» и порядок не важны). ИНН, КПП, телефон — по цифрам, e-mail — без учёта регистра.',
+};
+CMP_HINT.ip = CMP_HINT.pp + ' ИНН ИП — по цифрам.';
 async function ownCompare(){
-  const app = {};
-  $('#ownCmp tbody').querySelectorAll('input[data-f]').forEach(i => app[i.dataset.f] = i.value);
-  let j;
-  try { j = await api('/api/owner/compare', {ba: own.acc ? own.acc.ba : {}, app}); } catch (e) { return; }
+  const kind = radioVal('ownCmpKind');
   const tb = $('#ownCmp tbody');
-  if (!tb.children.length){
-    tb.innerHTML = j.rows.map(r => `<tr data-f="${r.field}"><td class="k">${esc(r.title)} <span class="mono">ru_pp.${esc(r.field)}</span></td>
-      <td class="ba"></td><td><input type="text" data-f="${r.field}"></td><td class="st"></td></tr>`).join('');
+  const app = Object.assign({}, own.cmpApp || {});
+  tb.querySelectorAll('input[data-f]').forEach(i => app[i.dataset.f] = i.value);
+  own.cmpApp = app;                                  // введённое сохраняется при смене типа (телефон, e-mail…)
+  let j;
+  try { j = await api('/api/owner/compare', {ba: own.acc ? own.acc.ba : {}, app, kind}); } catch (e) { return; }
+  $('#ownCmpHint').textContent = CMP_HINT[kind] || '';
+  if (tb.dataset.kind !== kind){
+    tb.dataset.kind = kind;
+    tb.innerHTML = j.rows.map(r => `<tr data-f="${r.field}"><td class="k">${esc(r.title)} <span class="mono">${esc(j.group)}.${esc(r.field)}</span></td>
+      <td class="ba"></td><td><input type="text" data-f="${r.field}" value="${esc(app[r.field] || '')}"></td><td class="st"></td></tr>`).join('');
     tb.querySelectorAll('input').forEach(i => i.addEventListener('input', () => later('cmp', ownCompare)));
   }
   const ST2 = {ok: 'совпадает', fail: 'расходится', warn: 'похоже'};
@@ -633,17 +719,46 @@ async function ownCompare(){
     tr.querySelector('.st').innerHTML = (r.status ? `<span class="badge s-${r.status}">${ST2[r.status]}</span>` : '')
       + (r.detail ? `<br><small class="hint">${esc(r.detail)}</small>` : '');
   });
-  $('#ownCmpSum').innerHTML = !j.total ? 'Введите данные заявления' : j.mismatch.length
+  const other = own.acc && own.acc.type && KIND_RU[own.acc.type] && own.acc.type !== kind
+    ? ` · <span class="badge s-warn">анкета аккаунта — ${esc(KIND_RU[own.acc.type])}</span>` : '';
+  $('#ownCmpSum').innerHTML = (!j.total ? 'Введите данные заявления' : j.mismatch.length
     ? `<span class="badge s-fail">Расхождения: ${j.mismatch.length}</span> ${esc(j.mismatch.join(', '))}`
-    : `<span class="badge s-ok">Совпадает ${j.ok} из ${j.total}</span>${j.warn.length ? ' · по-разному написано: ' + esc(j.warn.join(', ')) : ''}`;
+    : `<span class="badge s-ok">Совпадает ${j.ok} из ${j.total}</span>${j.warn.length ? ' · похоже / написано по-разному: ' + esc(j.warn.join(', ')) : ''}`) + other;
 }
+document.querySelectorAll('input[name=ownCmpKind]').forEach(r => r.addEventListener('change', ownCompare));
 // новый владелец
-const ownForm = () => { const f = {}; $('#ownForm').querySelectorAll('[data-k]').forEach(i => f[i.dataset.k] = i.value); return f; };
+function ownKindChanged(){
+  const kind = radioVal('ownKind');
+  $('#ownForm').querySelectorAll('label[data-for]').forEach(l => l.classList.toggle('hidden', !l.dataset.for.split(' ').includes(kind)));
+  $('#ownInnTitle').textContent = kind === 'org' ? 'ИНН организации' : 'ИНН ИП';
+  $('#ownForm [data-k=inn]').placeholder = kind === 'org' ? '10 цифр' : '12 цифр';
+  $('#ownRecHint').textContent = kind === 'org' ? '(пусто — название организации)' : '(пусто — ФИО)';
+  $('#ownAddrHint').textContent = kind === 'ip'
+    ? '(→ «Адрес регистр.» и «Почтовый адрес» 1 в 1, город — из адреса)' : '(→ «Почтовый адрес» 1 в 1, город — из адреса)';
+  const cur = own.acc && own.acc.type;
+  $('#ownKindHint').innerHTML = cur && KIND_RU[cur] && cur !== kind
+    ? `<b>Тип анкеты будет переключён: «${KIND_PAGE[cur]}» → «${KIND_PAGE[kind]}».</b>` : '';
+}
+document.querySelectorAll('input[name=ownKind]').forEach(r => r.addEventListener('change', () => {
+  own.kindTouched = true; ownKindChanged(); ownPreview(); }));
+const ownForm = () => {
+  const f = {}, kind = radioVal('ownKind');
+  $('#ownForm').querySelectorAll('label[data-for]').forEach(l => {
+    if (!l.dataset.for.split(' ').includes(kind)) return;          // поля другого типа владельца не отправляются
+    const i = l.querySelector('[data-k]'); if (i) f[i.dataset.k] = i.value;
+  });
+  return f;
+};
 $('#ownForm').addEventListener('input', () => later('prev', ownPreview));
+function curForm(kind){
+  const forms = (own.acc && own.acc.runic_forms) || {};
+  return (kind === 'org' ? forms.org : forms.pp) || {};
+}
 async function ownPreview(){
+  const kind = radioVal('ownKind');
   let j;
-  try { j = await api('/api/owner/prepare', {form: ownForm()}); } catch (e) { return; }
-  const cur = (own.acc && own.acc.runic) || {};
+  try { j = await api('/api/owner/prepare', {form: ownForm(), kind}); } catch (e) { return; }
+  const cur = curForm(kind);
   $('#ownPrev tbody').innerHTML = j.preview.map(r => `<tr><td class="k">${esc(r.title)} <span class="mono">${esc(r.field)}</span></td>
     <td class="${r.value && r.value !== (cur[r.field] || '') ? 'c-warn' : ''}">${r.value ? esc(r.value) : '<span class="hint">не трогаем</span>'}</td>
     <td>${own.acc ? esc(cur[r.field] || '') : '<span class="hint">загрузите аккаунт</span>'}</td></tr>`).join('');
@@ -653,22 +768,33 @@ async function ownPreview(){
 $('#ownClear').addEventListener('click', () => { $('#ownForm').querySelectorAll('[data-k]').forEach(i => i.value = ''); ownPreview(); });
 $('#ownFill').addEventListener('click', async () => {
   if (!own.acc){ $('#ownFillMsg').innerHTML = msg('warn', 'Сначала загрузите аккаунт (раздел 1)'); return; }
+  const kind = radioVal('ownKind');
   $('#ownFill').disabled = true; $('#ownFillMsg').innerHTML = msg('', `Открываю базовую анкету #${esc(own.acc.user_id)} в Chrome…`);
   try {
-    const j = await api('/api/owner/fill', {user_id: own.acc.user_id, form: ownForm()});
+    const j = await api('/api/owner/fill', {user_id: own.acc.user_id, form: ownForm(), kind});
     if (!j.ok){
       const e = j.error || {};
-      $('#ownFillMsg').innerHTML = msg(e.code === 'not_person' ? 'warn' : 'fail', esc(e.message || 'ошибка'));
+      $('#ownFillMsg').innerHTML = msg(['not_person', 'type_switch'].includes(e.code) ? 'warn' : 'fail', esc(e.message || 'ошибка'));
       return;
     }
     const d = j.data;
-    own.last = {fields: j.fields, changed: d.changed};
+    // повторное заполнение того же аккаунта: «Вернуть как было» возвращает к состоянию до первого заполнения
+    const prev = own.last && !own.last.undone && own.last.user_id === d.user_id && own.last.kind === kind ? own.last : null;
+    const changed = prev ? [...prev.changed] : [];
+    d.changed.forEach(c => { if (!changed.some(x => x.name === c.name)) changed.push(c); });
+    own.last = {user_id: d.user_id, fields: j.fields, changed, kind,
+                type_old: prev ? prev.type_old : d.type_old, switched: prev ? prev.switched || !!d.type_switched : !!d.type_switched};
     own.acc.runic = d.values || own.acc.runic;
-    $('#ownUndo').disabled = !d.changed.length; $('#ownVerify').disabled = false;
+    own.acc.runic_forms = {pp: d.values_pp || curForm('pp'), org: d.values_org || curForm('org')};
+    if (d.type_switched){ own.acc.type = kind; own.acc.type_ru = KIND_RU[kind]; ownKindChanged(); }
+    $('#ownUndo').disabled = !own.last.changed.length && !own.last.switched; $('#ownVerify').disabled = false;
+    const manual = ((j.prepared || {}).manual || []).map(x => `<b>${esc(x)}</b>`).join(', ');
     $('#ownFillMsg').innerHTML = msg('ok', `<b>Вкладка «Базовая анкета пользователя #${esc(d.user_id)}» ${d.tab_opened ? 'открыта' : 'найдена'} и заполнена.</b><br>
+      ${d.type_switched ? `Тип анкеты переключён: «${esc(KIND_PAGE[d.type_old] || d.type_old || '?')}» → «${esc(KIND_PAGE[kind])}».<br>` : ''}
       Заменено полей: ${d.changed.length}${d.changed.length ? ' — ' + esc(d.changed.map(c => c.label).join(', ')) : ''}.
       ${d.same.length ? `Уже были такими: ${d.same.length}. ` : ''}${d.missing.length ? `Не найдены на странице: ${esc(d.missing.join(', '))}. ` : ''}<br>
-      Выставьте сами: <b>Гражданство</b>, <b>Страна почтового адреса</b>. Проверьте форму (заполненные поля обведены) и нажмите «Сохранить» в manager.`);
+      Выставьте сами: ${manual}. Проверьте форму (заполненные поля обведены) и нажмите «Сохранить» в manager.`);
+    ownPreview();
   } catch (e) { $('#ownFillMsg').innerHTML = msg('fail', esc(e.message)); }
   finally { $('#ownFill').disabled = false; }
 });
@@ -676,25 +802,32 @@ $('#ownUndo').addEventListener('click', async () => {
   if (!own.last) return;
   const fields = {}; own.last.changed.forEach(c => fields[c.name] = c.old);
   try {
-    const j = await api('/api/owner/fill', {user_id: own.acc.user_id, restore: true, fields});
-    $('#ownFillMsg').innerHTML = j.ok ? msg('', `В форме manager возвращены прежние значения: ${j.data.changed.length} полей. Если вы уже нажали «Сохранить», это не отменит сохранение.`)
+    const j = await api('/api/owner/fill', {user_id: own.acc.user_id, restore: true, fields, kind: own.last.kind,
+      back_type: own.last.switched ? own.last.type_old : ''});
+    $('#ownFillMsg').innerHTML = j.ok ? msg('', `В форме manager возвращены прежние значения: ${j.data.changed.length} полей${j.data.type_back ? `, тип анкеты — снова «${esc(KIND_PAGE[j.data.type_back])}»` : ''}. Если вы уже нажали «Сохранить», это не отменит сохранение.`)
       : msg('fail', esc((j.error || {}).message || 'ошибка'));
-    if (j.ok){ $('#ownUndo').disabled = true; own.acc.runic = j.data.values || own.acc.runic; }
+    if (j.ok){
+      $('#ownUndo').disabled = true; own.last.undone = true;
+      own.acc.runic = j.data.values || own.acc.runic;
+      own.acc.runic_forms = {pp: j.data.values_pp || curForm('pp'), org: j.data.values_org || curForm('org')};
+      if (j.data.type_back){ own.acc.type = j.data.type_back; own.acc.type_ru = KIND_RU[j.data.type_back]; ownKindChanged(); }
+      ownPreview();
+    }
   } catch (e) { $('#ownFillMsg').innerHTML = msg('fail', esc(e.message)); }
 });
 $('#ownVerify').addEventListener('click', async () => {
   if (!own.last) return;
   try {
-    const j = await api('/api/owner/verify', {user_id: own.acc.user_id, fields: own.last.fields});
+    const j = await api('/api/owner/verify', {user_id: own.acc.user_id, fields: own.last.fields, kind: own.last.kind});
     if (!j.ok){ $('#ownFillMsg').innerHTML = msg('fail', esc((j.error || {}).message || 'ошибка')); return; }
     const v = j.verify;
-    own.acc.runic = j.account.runic; ownPreview();
+    own.acc.runic = j.account.runic; own.acc.runic_forms = j.account.runic_forms; own.acc.type = j.account.type; ownPreview();
     $('#ownFillMsg').innerHTML = msg(v.ok ? 'ok' : 'fail', (v.ok ? '<b>Базовая анкета перечитана: всё сохранено так, как заполняли.</b>'
       : `<b>Сохранено не всё: ${esc(v.mismatch.join(', '))}.</b> Возможно, «Сохранить» ещё не нажато.`)
       + `<table>${v.rows.map(r => `<tr><td>${esc(r.title)}</td><td class="${C(r.status)}">${esc(r.actual)}</td><td class="hint">${r.status === 'ok' ? '' : 'ожидалось: ' + esc(r.expected)}</td></tr>`).join('')}</table>`);
   } catch (e) { $('#ownFillMsg').innerHTML = msg('fail', esc(e.message)); }
 });
-ownCompare(); ownPreview();
+ownKindChanged(); ownCompare(); ownPreview();
 loadMeta();
 </script>
 </body>

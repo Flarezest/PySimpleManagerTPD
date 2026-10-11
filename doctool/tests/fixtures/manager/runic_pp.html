@@ -754,7 +754,9 @@
 
 <script>
 /* Фикстура doctool: заглушка поведения страницы manager (jQuery и скрипты manager не сохранены).
-   change — поле помечается как изменённое (класс unsaved); blur ФИО — пересчёт English name (как translit_pers_org). */
+   change — поле помечается как изменённое (класс unsaved); blur ФИО — пересчёт English name (как translit_pers_org).
+   (0.7.3) Переключатель типа «Физик / ИП / Юрик» — как на странице: показывает нужную форму, у ИП — строки ИНН и адреса
+   регистрации и is_entrepreneur = 1; blur названия организации — English name организации. */
 (function(){
   var T = {'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'i','к':'k','л':'l','м':'m','н':'n',
            'о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ъ':'ie','ы':'y',
@@ -764,6 +766,23 @@
   window.__fixtureEvents = [];
   document.querySelectorAll('.form-control').forEach(function(el){
     el.addEventListener('change', function(){ el.classList.remove('saved'); el.classList.add('unsaved'); window.__fixtureEvents.push('change:' + el.name); });
+  });
+  document.querySelectorAll('input[name=type]').forEach(function(r){
+    r.addEventListener('change', function(){
+      var v = r.value, pp = document.getElementById('ru_pp_contacts'), org = document.getElementById('ru_org_contacts');
+      if (v === 'pp' || v === 'ip') {
+        pp.classList.remove('hidden'); pp.classList.add('contacts_form'); org.classList.add('hidden'); org.classList.remove('contacts_form');
+        ['ip_p_addr_r', 'ip_inn'].forEach(function(id){ document.getElementById(id).classList.toggle('hidden', v === 'pp'); });
+        document.getElementById('is_entrepreneur').value = v === 'ip' ? '1' : '';
+      } else {
+        org.classList.remove('hidden'); org.classList.add('contacts_form'); pp.classList.add('hidden'); pp.classList.remove('contacts_form');
+      }
+      window.__fixtureEvents.push('type:' + v);
+    });
+  });
+  document.getElementById('org_r').addEventListener('blur', function(){
+    document.getElementById('trans_org_r').value = tr(document.getElementById('org_r').value);
+    window.__fixtureEvents.push('blur:org_r');
   });
   ['person_r_surname', 'person_r_name', 'person_r_patronimic'].forEach(function(id){
     document.getElementById(id).addEventListener('blur', function(){

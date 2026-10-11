@@ -133,6 +133,9 @@ def _run_scan(monkeypatch, tmp_path, band_texts):
         return _lines(PARA + band_texts[min(len(calls) - 2, len(band_texts) - 1)] + LABEL[:1])
 
     monkeypatch.setattr(application, "tesseract_lines", fake_lines)
+    # раздел «новому Администратору» перечитывает модуль бланка (forms/regru_transfer_person/hooks.py, с 0.7.3)
+    from doctool import formspec
+    monkeypatch.setattr(formspec.hooks(formspec.form_by_id("regru_transfer_person")), "tesseract_lines", fake_lines)
     # области полей на скане не нужны: поле берётся из текста страницы (как при «пустой» области)
     monkeypatch.setattr(application, "extract_from_scan",
                         lambda page, form, out_dir, vlm=None, handwritten_mode=None, prefer=None:

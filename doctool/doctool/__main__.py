@@ -8,7 +8,7 @@
   python -m doctool --llm-fields qwen3:8b check -a заявление.pdf   # поля заявления читает нейросеть (0.7.0)
   python -m doctool extract паспорт.pdf --type passport
   python -m doctool whois example.ru пример.рф             # статус домена в реестре (WHOIS)
-  python -m doctool validate                               # проверить forms/*.yaml и config/case_types.yaml
+  python -m doctool validate                               # проверить модули заявлений forms/ и config/case_types.yaml
 """
 from __future__ import annotations
 
@@ -118,9 +118,16 @@ def cmd_validate(args):
             print(f"  {cid:24} {d.title}{extra}")
             for n, rows in d.names.items():
                 print(f"  {'':24}   «{n}» — строка таблицы: {', '.join(rows) or '—'}")
-        print("\nРоли полей заявления (role: в forms/*.yaml):")
+        print("\nРоли полей заявления (role: в forms/<id>/form.yaml):")
         for r, t in ROLES.items():
             print(f"  {r:24} {t}")
+        from .formspec import module_dir, samples
+        print("\nМодули заявлений (forms/):")
+        for f in load_forms():
+            d = module_dir(f)
+            extra = (f"папка {d.name}/" + ("; hooks.py" if (d / "hooks.py").exists() else "")
+                     + f"; образцов {len(samples(f))}") if d else "один файл .yaml"
+            print(f"  {f.get('id', '?'):24} {extra}; чтение эталона по подписям: {'да' if f.get('reference') else 'нет'}")
         print("\nТипы заявлений:")
         for tid, ct in types.items():
             print(f"  {tid:24} бланк: {ct.get('form') or '—'}; проверки: {', '.join(checklib.ids_for(ct))}")
@@ -130,6 +137,9 @@ def cmd_validate(args):
         print(f"[!] {p}")
     if problems:
         sys.exit(f"Найдено проблем: {len(problems)}")
+    from .formspec import stale_files
+    for name in stale_files():
+        print(f"[i] forms/{name} не читается: есть папка-модуль с тем же id. Удалите устаревший файл.")
     print(f"Конфигурация в порядке: бланков {len(load_forms())}, типов заявлений {len(types)}, "
           f"проверок {len(checklib.REGISTRY)}.")
 

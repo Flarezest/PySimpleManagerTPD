@@ -1,0 +1,22 @@
+{
+ "_comment": "PDF с текстом в свободной форме (подписей бланка нет): поля читают регулярки text:",
+ "reader": null,
+ "fields": {
+  "applicant_header.raw_fio": "Свободнова Петра Алексеевича",
+  "applicant_header.birth_date": "17.08.1985",
+  "inn": "500100732259",
+  "passport": "4509 123456",
+  "passport.issue_date": "20.04.2010",
+  "issued_by": "ГУ МВД России по г. Москве",
+  "address": "г. Москва, ул. Тестовая, д. 1, кв. 1",
+  "applicant_fio": "Свободнов Пётр Алексеевич",
+  "domains.list": [
+   "svoboda-test.ru"
+  ],
+  "new_admin_fio.raw_fio": "Иванов Иван Иванович",
+  "new_admin_contact.emails": [
+   "ivanov@example.com"
+  ],
+  "contract": "№ 1111111"
+ }
+}

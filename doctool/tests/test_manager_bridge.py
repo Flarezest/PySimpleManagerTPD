@@ -278,7 +278,7 @@ def test_owner_account_and_fill(tmp_path):
 
         th, box = call("/api/owner/fill", {"user_id": "1000", "restore": True, "fields": {"person_r_surname": "Тестов"}})
         req = ws.receive_json()
-        assert req["params"] == {"user_id": "1000", "fields": {"person_r_surname": "Тестов"}, "restore": True}
+        assert req["params"] == {"user_id": "1000", "fields": {"person_r_surname": "Тестов"}, "restore": True, "type": "pp"}
         ws.send_json({"type": "result", "id": req["id"], "ok": False,
                       "error": {"code": "not_person", "message": "Аккаунт #1000 оформлен на юрлицо"}})
         th.join(10)

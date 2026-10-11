@@ -77,6 +77,8 @@ class CaseResult:
     notes: list = field(default_factory=list)
     admin: AdminData | None = None
     domains_sd: list = field(default_factory=list)   # domains.DomainInfo — данные доменов из manager
+    manual: bool = False                   # (0.7.3) данные заявления вводятся вручную, без файла (manual_case)
+    registered: bool = False               # строка дела уже записана в реестр проверок (Excel)
 
 
 # ------------------------------------------------------------------ строки таблицы (общие для GUI и выгрузки)
@@ -151,12 +153,13 @@ def table_rows(res: CaseResult) -> list[dict]:
             pas_src = res.pas.fields[r["pas"]].source
         rel = [c for c in res.checks if c.name in r["checks"]]
         status = max((c.status for c in rel), key=lambda s: _STATUS_RANK[s], default="")
-        if not app_val and not pas_val and not crop and not rel:
+        if not app_val and not pas_val and not crop and not rel and not (res.manual and r["app"]):
             continue
         out.append({"id": r["id"], "title": r["title"], "app": app_val, "app_source": app_src,
                     "passport": pas_val, "passport_source": pas_src, "crop": crop, "status": status,
                     "confirmed": r["id"] in res.confirmed, "editable_app": bool(r["app"]),
-                    "editable_passport": bool(r["pas"]),
+                    # правка паспорта работает, только когда паспорт загружен (иначе её некуда записать)
+                    "editable_passport": bool(r["pas"]) and res.pas is not None,
                     "details": [f"{c.name}: {c.detail}" for c in rel if c.detail]})
     return out
 
@@ -241,6 +244,10 @@ def _fields_reader(res: "CaseResult") -> str:
     calls = a.debug.get("llm") or []
     if calls:
         return "llm:" + str((calls[0].get("meta") or {}).get("model") or "")
+    if a.debug.get("mode") == "manual":
+        return "manual"
+    if a.debug.get("reader") == "reference":       # (0.7.3) эталон прочитан по подписям бланка
+        return "reference"
     return "regex"
 
 
@@ -316,7 +323,29 @@ def run_case(inp: CaseInput) -> CaseResult:
 
     _evaluate(res)
     save_outputs(res)
+    res.registered = True
     log(f"Готово: {res.decision.title}")
+    return res
+
+
+def manual_case(inp: CaseInput) -> CaseResult:
+    """(0.7.3) Дело без файлов: данные заявления оператор вписывает в таблицу сам и нажимает «Пересчитать»
+    (recompute). Проверки — те же, что у типа заявления; сверка с паспортом не выполняется (паспорта нет),
+    данные доменов из manager сверяются с введёнными данными заявления (domains.reference).
+    В реестр проверок дело попадает при первом пересчёте с данными."""
+    ct = load_case_types()[inp.case_type]
+    case_id = inp.case_id or "ручной ввод"
+    case_dir = Path(inp.out_root) / f"{datetime.now():%Y%m%d_%H%M%S}_{_safe_name(case_id)}"
+    case_dir.mkdir(parents=True, exist_ok=True)
+    res = CaseResult(inp=inp, case_type=ct, case_id=case_id, case_dir=case_dir, manual=True)
+    res.app = Extraction(doc_type=ct.get("form") or "none", source_file="")
+    res.app.debug["mode"] = "manual"
+    res.notes.append("Данные заявления вводятся вручную (без файла заявления).")
+    if ct.get("needs_passport"):
+        res.notes.append("Паспорт не загружен — сверка с паспортом не выполнялась.")
+    _evaluate(res)
+    save_outputs(res, registry=False)
+    log("Ручной ввод данных заявления: дело создано")
     return res
 
 
@@ -367,6 +396,7 @@ def recompute(res: CaseResult, overrides: dict | None = None, confirmed: set | l
     F = Fields(res.app)
     types = _field_types(F.form)
     rows = {r["id"]: r for r in rows_for(F.form)}
+    own_rows = {F.key(k) for r in rows.values() for k in r["app"] if "." in k}
     for row_id, vals in (overrides or {}).items():
         row = rows.get(row_id)
         if row is None:
@@ -382,6 +412,14 @@ def recompute(res: CaseResult, overrides: dict | None = None, confirmed: set | l
                     res.app.fields[key] = FieldValue(v, 1.0, "manual")
                     continue
                 old = res.app.fields.get(key)
+                if not v:
+                    # значение стёрто: поле и его подполя пустые (фрагмент скана остаётся). Подполя, у которых
+                    # своя строка таблицы (дата рождения, дата выдачи), не трогаем — их правят в своей строке.
+                    for k in [k for k in res.app.fields if (k == key or k.startswith(key + ".")) and k not in own_rows]:
+                        del res.app.fields[k]
+                    if old is not None and old.crop:
+                        res.app.fields[key] = FieldValue("", 1.0, "manual", "", False, old.crop)
+                    continue
                 _store(res.app, key, types.get(key, "text"), v, 1.0, "manual", crop=old.crop if old else None)
                 if key in res.app.fields:
                     res.app.fields[key].needs_review = False
@@ -400,7 +438,10 @@ def recompute(res: CaseResult, overrides: dict | None = None, confirmed: set | l
     if confirmed is not None:
         res.confirmed = set(confirmed)
     _evaluate(res)
-    save_outputs(res, registry=False)
+    # ручной ввод: в реестр проверок — при первом пересчёте, когда уже есть данные
+    register = res.manual and not res.registered and res.app is not None and any(f.value for f in res.app.fields.values())
+    save_outputs(res, registry=register)
+    res.registered = res.registered or register
     return res
 
 
@@ -463,10 +504,10 @@ def build_record(res: CaseResult) -> dict:
         },
         "contract": ag("contract"),
         "application_date": ag("application_date"),
-        # все поля бланка как есть (ключи — имена полей из forms/<бланк>.yaml): новый бланк попадает
+        # все поля бланка как есть (ключи — имена полей из forms/<id>/form.yaml): новый бланк попадает
         # в выгрузку без изменений кода
         "application_form": a.doc_type if a is not None else None,
-        "application_fields_reader": _fields_reader(res),      # (0.7.0) regex | llm:<модель>
+        "application_fields_reader": _fields_reader(res),      # regex | reference (0.7.3) | manual | llm:<модель>
         "application_fields": {k: f.value for k, f in a.fields.items() if "." not in k} if a is not None else {},
         "confirmed_by_operator": sorted(res.confirmed),
         "manual_edits": res.overrides,

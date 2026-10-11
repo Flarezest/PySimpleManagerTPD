@@ -1,16 +1,20 @@
-"""Смена владельца личного кабинета (аккаунта) — вкладка «Смена владельца ЛК» веб-интерфейса. Пока только физлица.
+"""Смена владельца личного кабинета (аккаунта) — вкладка «Смена владельца ЛК» веб-интерфейса.
+Физлица (с 0.6.0), ИП и юрлица (с 0.7.3).
 
 1. Аккаунт. parse_query() понимает, что ввёл оператор: номер аккаунта, «Данные пользователя #N»,
    «Базовая анкета пользователя #N», ссылку из manager, «договор № N», логин/e-mail или домен.
    resolve_account() получает данные через расширение Chrome (команда account; для домена — сначала lookup,
    номер аккаунта — владелец услуги из S): базовая анкета (скрытый блок страницы «Данные пользователя»),
    логин, обслуживающая организация, статус идентификации аккаунта, тип анкеты (Физик / ИП / Юрик).
-2. Текущий владелец. compare_owner(): базовая анкета ↔ данные заявления (пока вводятся вручную).
-3. Новый владелец. prepare_fill(): данные из формы → значения полей базовой анкеты (/user/N/runic_details).
-   Расширение (команда fill_runic) вписывает их во вкладку «Базовая анкета пользователя #N», которую видит
-   оператор. Кнопку «Сохранить» нажимает оператор. verify_saved() — сверка анкеты после сохранения.
+2. Текущий владелец. compare_owner(): базовая анкета ↔ данные заявления (пока вводятся вручную). Набор полей —
+   по типу анкеты аккаунта: физлицо (OWNER_FIELDS), ИП (+ ИНН ИП), юрлицо (OWNER_FIELDS_ORG, группа ru_org).
+3. Новый владелец. prepare_fill(form, kind): данные из формы → значения полей базовой анкеты
+   (/user/N/runic_details). kind — кто новый владелец: "pp" физлицо, "ip" ИП, "org" юрлицо. Расширение (команда
+   fill_runic) вписывает их во вкладку «Базовая анкета пользователя #N», которую видит оператор; если тип анкеты
+   другой («Физик» → «Юрик»), переключает его на странице. Кнопку «Сохранить» нажимает оператор.
+   verify_saved() — сверка анкеты после сохранения.
 
-Поля сверки и заполнения — списки OWNER_FIELDS и FILL_FIELDS: новое поле добавляется одной строкой
+Поля сверки и заполнения — списки OWNER_FIELDS* и FILL_FIELDS*: новое поле добавляется одной строкой
 (и, для заполнения, в RUNIC_FILL в doctool_extension/content/manager.js).
 """
 from __future__ import annotations
@@ -35,6 +39,31 @@ OWNER_FIELDS = (
     ("phone", "Телефон", "phone"),
 )
 
+# ИП: то же, что у физлица, плюс ИНН ИП (0.7.3)
+OWNER_FIELDS_IP = OWNER_FIELDS + (("code", "ИНН ИП", "digits"),)
+
+# Юрлицо (группа ru_org, 0.7.3): поле базовой анкеты ↔ поле заявления
+OWNER_FIELDS_ORG = (
+    ("org_r", "Название организации", "org"),
+    ("code", "ИНН организации", "digits"),
+    ("kpp", "КПП", "digits"),
+    ("address_r_addr", "Физический адрес", "address"),
+    ("p_addr_addr", "Почтовый адрес", "address"),
+    ("phone", "Телефон", "phone"),
+    ("e_mail", "E-mail", "email"),
+)
+_MULTI = ("phone", "email")          # в анкете бывает несколько значений через перевод строки или запятую
+
+
+def owner_fields(kind: str) -> tuple:
+    """Поля сверки «базовая анкета ↔ заявление» по типу анкеты (pp / ip / org)."""
+    return {"ip": OWNER_FIELDS_IP, "org": OWNER_FIELDS_ORG}.get(kind or "pp", OWNER_FIELDS)
+
+
+def ba_group(kind: str) -> str:
+    return "ru_org" if kind == "org" else "ru_pp"
+
+
 # Новый владелец: поле формы базовой анкеты в manager и заголовок. Порядок — как на странице.
 FILL_FIELDS = (
     ("person_r_surname", "Фамилия"),
@@ -51,14 +80,60 @@ FILL_FIELDS = (
     ("phone", "Телефон"),
     ("e_mail", "Email"),
 )
-FILL_TITLES = dict(FILL_FIELDS)
-# Что doctool в анкете не трогает (выставляет оператор или страница manager сама)
+# ИП (0.7.3): форма физлица + ИНН и адрес регистрации (строки, которые страница показывает при типе «ИП»)
+FILL_FIELDS_IP = (
+    ("person_r_surname", "Фамилия"),
+    ("person_r_name", "Имя"),
+    ("person_r_patronimic", "Отчество"),
+    ("passport_number", "Номер и серия"),
+    ("passport_date", "Дата выдачи"),
+    ("passport_place", "Кем выдан"),
+    ("code", "ИНН"),
+    ("birth_date", "Дата рождения"),
+    ("p_addr_r_zip", "Индекс (адрес регистрации)"),
+    ("p_addr_r_city", "Город (адрес регистрации)"),
+    ("p_addr_r_addr", "Адрес регистр."),
+    ("p_addr_zip", "Индекс"),
+    ("p_addr_city", "Город"),
+    ("p_addr_addr", "Почтовый адрес"),
+    ("p_addr_recipient", "Получатель"),
+    ("phone", "Телефон"),
+    ("e_mail", "Email"),
+)
+# Юрлицо (0.7.3): форма «Юрик» (form#ru_org_contacts)
+FILL_FIELDS_ORG = (
+    ("org_r", "Название"),
+    ("code", "ИНН"),
+    ("kpp", "КПП"),
+    ("address_r_zip", "Индекс (юр. адрес)"),
+    ("address_r_city", "Город (юр. адрес)"),
+    ("address_r_addr", "Юр. адрес"),
+    ("p_addr_zip", "Индекс"),
+    ("p_addr_city", "Город"),
+    ("p_addr_addr", "Почтовый адрес"),
+    ("p_addr_recipient", "Получатель"),
+    ("phone", "Телефон"),
+    ("e_mail", "Email"),
+    ("actt_e_mail", "Email для бухгалтерии"),
+)
+FILL_BY_KIND = {"pp": FILL_FIELDS, "ip": FILL_FIELDS_IP, "org": FILL_FIELDS_ORG}
+FILL_TITLES = {k: t for fields in FILL_BY_KIND.values() for k, t in fields}
+# Что программа в анкете не трогает (выставляет оператор или страница manager сама)
 MANUAL_FIELDS = ("Гражданство", "Страна почтового адреса")
+MANUAL_BY_KIND = {"pp": MANUAL_FIELDS, "ip": MANUAL_FIELDS, "org": ("Страна регистрации", "Страна почтового адреса")}
 UNTOUCHED_FIELDS = ("English name (пересчитывает страница manager)", "Область", "Телефонный номер sms-безопасности",
                     "Факс", "флажок «Внесены данные нового владельца аккаунта»")
+UNTOUCHED_BY_KIND = {
+    "pp": UNTOUCHED_FIELDS,
+    "ip": UNTOUCHED_FIELDS,
+    "org": ("English name (пересчитывает страница manager)", "Область", "Название родительской организации",
+            "Телефонный номер sms-безопасности", "Факс", "флажок «Внесены данные нового владельца аккаунта»"),
+}
 _VERIFY_KIND = {"passport_date": "date", "birth_date": "date", "phone": "phone", "passport_number": "digits",
-                "p_addr_zip": "digits"}
+                "p_addr_zip": "digits", "p_addr_r_zip": "digits", "address_r_zip": "digits", "code": "digits",
+                "kpp": "digits", "e_mail": "email", "actt_e_mail": "email"}
 TYPE_RU = {"pp": "физлицо", "ip": "ИП", "org": "юрлицо"}
+TYPE_PAGE = {"pp": "Физик", "ip": "ИП", "org": "Юрик"}        # подписи переключателя на странице базовой анкеты
 
 
 class AccountError(RuntimeError):
@@ -121,15 +196,15 @@ def account_from_extension(data: dict) -> dict:
     statuses = data.get("statuses") or []
     esia_acc = next((x for x in statuses if "Госуслуг" in x), "")
     notes = []
-    if typ and typ != "pp":
-        notes.append(f"Аккаунт оформлен на {TYPE_RU.get(typ, typ)}: автозаполнение пока только для физлиц.")
+    forms = {"pp": runic.get("values_pp") or ({} if typ == "org" else runic.get("values") or {}),
+             "org": runic.get("values_org") or (runic.get("values") or {} if typ == "org" else {})}
     return {
         "user_id": str(data.get("user_id") or ""), "login": data.get("login") or "", "statuses": statuses,
         "esia_account": esia_acc, "servicing_org": data.get("servicing_org") or "",
         "servicing_org_id": data.get("servicing_org_id") or "", "contypes": data.get("contypes") or "",
         "type": typ, "type_ru": TYPE_RU.get(typ, typ or "?"), "ba_group": group, "ba": ba,
-        "ba_all": data.get("ba") or {}, "runic": runic.get("values") or {}, "urls": data.get("urls") or {},
-        "notes": notes,
+        "ba_all": data.get("ba") or {}, "runic": runic.get("values") or {}, "runic_forms": forms,
+        "urls": data.get("urls") or {}, "notes": notes,
     }
 
 
@@ -179,18 +254,20 @@ def _multi_same(kind: str, a: str, b: str) -> tuple[str, str]:
     return next((r for r in res if r[0] == fieldnorm.OK), res[0])
 
 
-def compare_owner(ba: dict, app: dict) -> dict:
-    """Базовая анкета (поля без префикса ru_pp.) ↔ данные заявления {поле: значение}.
-    → {"rows": [{field, title, ba, app, status, detail}], "mismatch": [заголовки], "ok": n, "total": n}."""
+def compare_owner(ba: dict, app: dict, kind: str = "pp") -> dict:
+    """Базовая анкета (поля без префикса ru_pp. / ru_org.) ↔ данные заявления {поле: значение}.
+    kind — тип анкеты аккаунта: "pp" физлицо, "ip" ИП (+ ИНН ИП), "org" юрлицо (свои поля, OWNER_FIELDS_ORG).
+    → {"rows": [{field, title, ba, app, status, detail}], "kind", "group", "mismatch": [заголовки], "ok": n, "total": n}."""
+    kind = kind if kind in FILL_BY_KIND else "pp"
     rows = []
-    for key, title, kind in OWNER_FIELDS:
+    for key, title, vkind in owner_fields(kind):
         bv, av = (ba or {}).get(key, "") or "", (app or {}).get(key, "") or ""
-        st, det = _multi_same(kind, bv, av) if kind == "phone" else fieldnorm.same(kind, bv, av)
+        st, det = _multi_same(vkind, bv, av) if vkind in _MULTI else fieldnorm.same(vkind, bv, av)
         if st == fieldnorm.NONE:
             det = "не с чем сравнить" if bv else ("в базовой анкете пусто" if av else "")
         rows.append({"field": key, "title": title, "ba": bv, "app": av, "status": st, "detail": det})
     done = [r for r in rows if r["status"]]
-    return {"rows": rows, "mismatch": [r["title"] for r in rows if r["status"] == fieldnorm.FAIL],
+    return {"rows": rows, "kind": kind, "group": ba_group(kind), "mismatch": [r["title"] for r in rows if r["status"] == fieldnorm.FAIL],
             "warn": [r["title"] for r in rows if r["status"] == fieldnorm.WARN],
             "ok": sum(1 for r in done if r["status"] == fieldnorm.OK), "total": len(done)}
 
@@ -282,13 +359,37 @@ def split_issued(text: str) -> tuple[str, str, str]:
     return s, date_s, dept
 
 
-def prepare_fill(form: dict) -> dict:
+def _digits_field(value: str, title: str, need: tuple, notes: list) -> str:
+    """ИНН, КПП: только цифры; другое число цифр — с пометкой."""
+    d = re.sub(r"\D", "", value or "")
+    if d and len(d) not in need:
+        notes.append(f"{title}: {len(d)} цифр (ожидается {' или '.join(map(str, need))}) — проверьте.")
+    return d
+
+
+def prepare_fill(form: dict, kind: str | None = None) -> dict:
     """Форма «Новый владелец» → значения полей базовой анкеты в manager (только непустые).
-    form: surname, name, patronymic, birth_date, passport, issued («Кем и когда выдан документ» целиком),
-          passport_date, passport_place, address (адрес регистрации), city, zip, recipient, phone, email.
-    → {"fields": {поле: значение}, "preview": [{field, title, value}], "notes": [...], "manual": [...], "untouched": [...]}"""
+    kind — кто новый владелец: "pp" физлицо (по умолчанию), "ip" ИП, "org" юрлицо (или form["kind"]).
+    form (физлицо и ИП): surname, name, patronymic, birth_date, passport, issued («Кем и когда выдан документ»
+          целиком), passport_date, passport_place, address (адрес регистрации), city, zip, recipient, phone, email;
+          у ИП ещё inn (ИНН ИП).
+    form (юрлицо): org_name, inn, kpp, legal_address (физический / юридический адрес), legal_zip, legal_city,
+          postal_address (пусто — как физический), zip, city, recipient (пусто — название), phone, email, acct_email.
+    → {"kind", "fields": {поле: значение}, "preview": [{field, title, value}], "notes": [...], "manual": [...],
+       "untouched": [...]}"""
     f = {k: (v or "").strip() if isinstance(v, str) else (v or "") for k, v in (form or {}).items()}
+    kind = kind or f.get("kind") or "pp"
+    kind = kind if kind in FILL_BY_KIND else "pp"
     notes: list[str] = []
+    out = _prepare_org(f, notes) if kind == "org" else _prepare_person(f, notes, kind)
+    fields = {k: v for k, v in out.items() if v}
+    return {"kind": kind, "fields": fields,
+            "preview": [{"field": k, "title": t, "value": fields.get(k, "")} for k, t in FILL_BY_KIND[kind]],
+            "notes": notes, "manual": list(MANUAL_BY_KIND[kind]), "untouched": list(UNTOUCHED_BY_KIND[kind])}
+
+
+def _prepare_person(f: dict, notes: list, kind: str) -> dict:
+    """Физлицо (с 0.6.0) и ИП (0.7.3: + ИНН, адрес регистрации = почтовый адрес)."""
     out: dict[str, str] = {}
     sur, nam, pat = _clean_name(f.get("surname")), _clean_name(f.get("name")), _clean_name(f.get("patronymic"))
     out["person_r_surname"], out["person_r_name"], out["person_r_patronimic"] = sur, nam, pat
@@ -306,25 +407,63 @@ def prepare_fill(form: dict) -> dict:
             notes.append(f"Код подразделения {dept} в базовой анкете отдельного поля не имеет — не переносится.")
     out["passport_place"] = re.sub(r"\s+", " ", place)
     out["passport_date"] = _date(pdate, "Дата выдачи", notes)
+    if kind == "ip":
+        out["code"] = _digits_field(f.get("inn", ""), "ИНН ИП", (12,), notes)
     out["birth_date"] = _date(f.get("birth_date", ""), "Дата рождения", notes)
     address = re.sub(r"\s+", " ", f.get("address", ""))
-    out["p_addr_addr"] = address
-    out["p_addr_city"] = f.get("city") or city_from_address(address)
-    if address and not out["p_addr_city"]:
+    city = f.get("city") or city_from_address(address)
+    zip_ = re.sub(r"\s+", "", f.get("zip", ""))
+    if kind == "ip":
+        # у ИП адрес регистрации — отдельные поля («Адрес регистр.»); почтовый адрес — он же, 1 в 1
+        out["p_addr_r_zip"], out["p_addr_r_city"], out["p_addr_r_addr"] = zip_, city, address
+    out["p_addr_zip"], out["p_addr_city"], out["p_addr_addr"] = zip_, city, address
+    if address and not city:
         notes.append("Город по адресу не определён — впишите его в поле «Город».")
-    out["p_addr_zip"] = re.sub(r"\s+", "", f.get("zip", ""))
     out["p_addr_recipient"] = re.sub(r"\s+", " ", f.get("recipient", "")) or " ".join(x for x in (sur, nam, pat) if x)
     out["phone"] = _phone(f.get("phone", ""))
     out["e_mail"] = f.get("email", "").lower()
-    fields = {k: v for k, v in out.items() if v}
-    if not out["p_addr_zip"]:
-        notes.append("Индекс не указан — в анкете останется прежний.")
-    return {"fields": fields, "preview": [{"field": k, "title": t, "value": fields.get(k, "")} for k, t in FILL_FIELDS],
-            "notes": notes, "manual": list(MANUAL_FIELDS), "untouched": list(UNTOUCHED_FIELDS)}
+    if not zip_:
+        notes.append("Индекс не указан — в анкете останется прежний." +
+                     (" У ИП индекс адреса регистрации обязателен: если его в анкете нет, manager не даст сохранить."
+                      if kind == "ip" else ""))
+    return out
+
+
+def _prepare_org(f: dict, notes: list) -> dict:
+    """Юрлицо (0.7.3): форма «Юрик» базовой анкеты."""
+    out: dict[str, str] = {}
+    name = re.sub(r"\s+", " ", f.get("org_name", ""))
+    out["org_r"] = name
+    out["code"] = _digits_field(f.get("inn", ""), "ИНН организации", (10,), notes)
+    out["kpp"] = _digits_field(f.get("kpp", ""), "КПП", (9,), notes)
+    legal = re.sub(r"\s+", " ", f.get("legal_address", ""))
+    out["address_r_zip"] = re.sub(r"\s+", "", f.get("legal_zip", ""))
+    out["address_r_city"] = f.get("legal_city") or city_from_address(legal)
+    out["address_r_addr"] = legal
+    if legal and not out["address_r_city"]:
+        notes.append("Город по физическому адресу не определён — впишите его в поле «Город (юр. адрес)».")
+    postal = re.sub(r"\s+", " ", f.get("postal_address", ""))
+    if not postal and legal:
+        postal = legal
+        notes.append("Почтовый адрес не указан — вписывается физический адрес.")
+    out["p_addr_zip"] = re.sub(r"\s+", "", f.get("zip", "")) or (out["address_r_zip"] if postal == legal else "")
+    out["p_addr_city"] = f.get("city") or city_from_address(postal)
+    out["p_addr_addr"] = postal
+    if postal and not out["p_addr_city"]:
+        notes.append("Город почтового адреса не определён — впишите его в поле «Город».")
+    out["p_addr_recipient"] = re.sub(r"\s+", " ", f.get("recipient", "")) or name
+    out["phone"] = _phone(f.get("phone", ""))
+    out["e_mail"] = f.get("email", "").lower()
+    out["actt_e_mail"] = f.get("acct_email", "").lower()
+    if not out["address_r_zip"] or not out["p_addr_zip"]:
+        notes.append("Индекс не указан — в анкете останется прежний (у юрлица индексы юр. и почтового адреса "
+                     "обязательны: если их в анкете нет, manager не даст сохранить).")
+    return out
 
 
 def verify_saved(values: dict, fields: dict) -> dict:
-    """Анкета после «Сохранить» (values — поля формы, перечитанные из manager) ↔ то, что заполняли (fields)."""
+    """Анкета после «Сохранить» (values — поля формы, перечитанные из manager) ↔ то, что заполняли (fields).
+    values — форма того типа, который заполняли (физлицо/ИП или юрлицо)."""
     rows = []
     for k, v in (fields or {}).items():
         now = (values or {}).get(k, "")

@@ -1,0 +1,33 @@
+{
+ "_comment": "PDF с текстом по бланку (из LibreOffice, как из Word), вымышленные данные; новый администратор — юрлицо",
+ "reader": "reference",
+ "fields": {
+  "applicant_header.raw_fio": "Тестовой Анны Сергеевны",
+  "applicant_header.birth_date": "21.11.1990",
+  "inn": "772012345678",
+  "passport": "4012 654321",
+  "passport.issue_date": "03.12.2010",
+  "issued_by": "ТП № 5 ОУФМС России по Санкт-Петербургу в Тестовском районе",
+  "address": "198206, г. Санкт-Петербург, ул. Примерная, д. 38, кв. 579",
+  "applicant_fio": "Тестова Анна Сергеевна",
+  "domains.list": [
+   "alpha-test.ru",
+   "beta-test.ru",
+   "gamma-test.ru",
+   "пример-домен.рф"
+  ],
+  "services": "все",
+  "new_admin_org": "ООО «Ромашка-Тест»",
+  "new_admin_org_contact.emails": [
+   "info@romashka-test.ru"
+  ],
+  "new_admin_org_contact.phones": [
+   "+74950000000"
+  ],
+  "new_admin_fio": "",
+  "new_admin_contact": "",
+  "contract": "7654321",
+  "signature_fio": "Тестова А С",
+  "application_date": "03.10.2026"
+ }
+}

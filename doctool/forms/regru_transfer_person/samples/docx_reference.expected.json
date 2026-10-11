@@ -1,0 +1,32 @@
+{
+ "_comment": "DOCX по бланку, вымышленные данные; новый администратор — физлицо (таблица бланка)",
+ "reader": "reference",
+ "fields": {
+  "applicant_header.raw_fio": "Образцова Ивана Петровича",
+  "applicant_header.birth_date": "05.06.1981",
+  "inn": "",
+  "passport": "4511 223344",
+  "passport.issue_date": "12.03.2012",
+  "issued_by": "Отделом УФМС России по г. Москве по району Тестовый",
+  "address": "125000, г. Москва, ул. Образцовая, д. 7, кв. 21",
+  "applicant_fio": "Образцов Иван Петрович",
+  "domains.list": [
+   "obrazec-test.ru",
+   "образец-тест.рф"
+  ],
+  "services": "",
+  "new_admin_inline.raw_fio": "Новикову Сергею Андреевичу",
+  "new_admin_org": "",
+  "new_admin_fio.raw_fio": "Новиков Сергей Андреевич",
+  "new_admin_fio.kind": "person",
+  "new_admin_contact.emails": [
+   "novikov@example.com"
+  ],
+  "new_admin_contact.phones": [
+   "+79160001122"
+  ],
+  "contract": "1234567/NIC-REG",
+  "signature_fio": "Образцов И П",
+  "application_date": "05.10.2026"
+ }
+}

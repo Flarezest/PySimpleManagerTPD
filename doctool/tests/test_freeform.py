@@ -8,10 +8,12 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from doctool import application, formspec, names, parsers  # noqa: E402
-from doctool.application import extract_from_text, parse_new_admin_block  # noqa: E402
+from doctool.application import extract_from_text  # noqa: E402
 from doctool.ocr import Page  # noqa: E402
 
 FORM = formspec.form_by_id("regru_transfer_person")
+# раздел «новому Администратору» — логика модуля заявления REG.RU (forms/regru_transfer_person/hooks.py, с 0.7.3)
+parse_new_admin_block = formspec.hooks(FORM).parse_new_admin_block
 TOP = ("Заявление в ООО «Регистратор доменных имен РЕГ.РУ» от\nАдминистратора домена - физического лица о передаче права\n"
        "администрирования домена другому лицу\nГенеральному директору\nООО «Регистратор доменных имен РЕГ.РУ»\n")
 

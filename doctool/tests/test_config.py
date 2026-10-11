@@ -131,7 +131,7 @@ NEW_TYPE = {"title": "Тест", "form": "test_owner_form", "enabled": True, "ne
 def new_form(tmp_path, monkeypatch):
     forms = tmp_path / "forms"
     forms.mkdir()
-    shutil.copy(ROOT / "forms" / "regru_transfer_person.yaml", forms)
+    shutil.copytree(ROOT / "forms" / "regru_transfer_person", forms / "regru_transfer_person")
     (forms / "test_owner_form.yaml").write_text(yaml.safe_dump(NEW_FORM, allow_unicode=True), encoding="utf-8")
     monkeypatch.setattr(formspec, "FORMS_DIR", forms)
     return forms

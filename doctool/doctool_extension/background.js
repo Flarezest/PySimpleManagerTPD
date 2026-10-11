@@ -5,12 +5,13 @@
  *    lookup      — данные домена (счета, Sd, S, с 0.6.0 — идентификация через Госуслуги и JSON ЕСИА;
  *                  с 0.7.2 — и у юрлиц);
  *    account     — данные аккаунта и базовая анкета (0.6.0);
- *    fill_runic  — заполнить поля базовой анкеты во вкладке оператора (0.6.0).
+ *    fill_runic  — заполнить поля базовой анкеты во вкладке оператора (0.6.0; ИП и юрлица — 0.7.3).
  *    lookup и account читают страницы в отдельной фоновой вкладке manager.
  * 3) Если manager просит вход (окно «Войти»), показывает вкладку и сообщает doctool.
  *
  * Расширение читает страницы manager. Единственное, что оно меняет, — значения полей формы базовой анкеты
- * по кнопке «Заполнить автоматически» в doctool, во вкладке, которую видит оператор. Кнопки manager
+ * (и, с 0.7.3, переключатель типа анкеты «Физик / ИП / Юрик») по кнопке «Заполнить автоматически» в doctool,
+ * во вкладке, которую видит оператор. Кнопки manager
  * («Сохранить», «Изменить», «Удалить» и т. п.) оно не нажимает и формы не отправляет.
  */
 const VERSION = chrome.runtime.getManifest().version;
@@ -288,16 +289,21 @@ async function runicTab(userId) {
   return { tabId: tab.id, opened };
 }
 
-async function fillRunic(reqId, { user_id, fields, restore }) {
+// type (0.7.3) — тип нового владельца: pp / ip / org; страница переключается на него, если там другой.
+// back_type — при restore: вернуть и прежний тип анкеты.
+async function fillRunic(reqId, { user_id, fields, restore, type, back_type }) {
   if (!/^\d+$/.test(String(user_id || ''))) throw fail('bad_request', 'Не указан номер аккаунта');
   note(`Базовая анкета #${user_id}: ${restore ? 'возврат прежних значений' : 'заполнение'}`);
   progressTo(reqId, 'runic_tab', `открываю базовую анкету #${user_id}`);
   const { tabId, opened } = await runicTab(user_id);
   progressTo(reqId, 'fill', `${restore ? 'возвращаю' : 'заполняю'} поля во вкладке базовой анкеты #${user_id}`);
-  const out = await runInTab(tabId, 'fillRunic', [String(user_id), fields || {}, { restore: !!restore }]);
+  const opts = { restore: !!restore };
+  if (type) opts.type = type;
+  if (back_type) opts.back_type = back_type;
+  const out = await runInTab(tabId, 'fillRunic', [String(user_id), fields || {}, opts]);
   if (out.ok) out.data.tab_opened = opened;
   else out.error.tab_opened = opened;
-  note(`Базовая анкета #${user_id}: ${out.ok ? `изменено полей ${out.data.changed.length}` : out.error.message}`);
+  note(`Базовая анкета #${user_id}: ${out.ok ? `${out.data.type_switched ? `тип → ${out.data.type_page}, ` : ''}изменено полей ${out.data.changed.length}` : out.error.message}`);
   return out;
 }
 

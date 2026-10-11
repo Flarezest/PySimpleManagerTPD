@@ -191,7 +191,7 @@ def test_validate_llm_keys(tmp_path):
     import yaml
     d = tmp_path / "forms"
     d.mkdir()
-    src = formspec.FORMS_DIR / "regru_transfer_person.yaml"
+    src = formspec.FORMS_DIR / "regru_transfer_person" / "form.yaml"
     data = yaml.safe_load(src.read_text(encoding="utf-8"))
     data["fields"]["inn"]["digits"] = ["двенадцать"]
     data["fields"]["services"]["llm"] = 5

@@ -38,8 +38,11 @@ def test_account_from_extension():
     assert a["ba"]["person_r_surname"] == "Тестов" and a["ba"]["passport_number"] == "4509123456"
     assert a["esia_account"] == "Идентификация через Госуслуги пройдена" and a["servicing_org"] == 'ООО "РДХ"'
     assert not a["notes"]
-    org = account.account_from_extension({**ACCOUNT_DATA, "runic": {"type": "org", "values": {}}})
-    assert org["type"] == "org" and "юрлицо" in org["notes"][0]
+    # с 0.7.3 у юрлица и ИП тоже автозаполнение — пометки «только для физлиц» нет; формы анкеты — обе
+    org = account.account_from_extension({**ACCOUNT_DATA, "runic": {"type": "org", "values": {"org_r": "ООО «Тест»"},
+                                                                     "values_pp": {}, "values_org": {"org_r": "ООО «Тест»"}}})
+    assert org["type"] == "org" and not org["notes"]
+    assert org["runic"] == {"org_r": "ООО «Тест»"} and org["runic_forms"]["org"]["org_r"] == "ООО «Тест»"
     # без страницы анкеты тип — по группе базовой анкеты и флажку ИП
     ip = account.account_from_extension({**ACCOUNT_DATA, "runic": {}, "is_entrepreneur": True})
     assert ip["type"] == "ip"

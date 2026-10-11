@@ -1,0 +1,3 @@
+# Образцы модулей заявлений (forms/<id>/samples/*.pdf) нужны в репозитории: по ним идёт tests/test_form_samples.py.
+# Корневой .gitignore исключает *.pdf — здесь они возвращаются.
+!*/samples/*.pdf

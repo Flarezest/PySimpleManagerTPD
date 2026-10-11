@@ -13,7 +13,8 @@ from pathlib import Path
 from . import progress
 from .compare import STATUS_RU
 from .domains import PROBLEMS, sort_by_problem
-from .service import CaseInput, CaseResult, attach_domains, case_domains, recompute, run_case, table_rows
+from .domains import unicode_name
+from .service import CaseInput, CaseResult, attach_domains, case_domains, manual_case, recompute, run_case, table_rows
 
 
 @dataclass
@@ -42,6 +43,20 @@ class JobManager:
         with self.lock:
             self.jobs[job.id] = job
         self.pool.submit(self._run, job, on_update)
+        return job
+
+    def manual(self, inp: CaseInput) -> Job:
+        """(0.7.3) Дело без файлов — данные заявления оператор вводит сам (service.manual_case). Создаётся сразу."""
+        job = Job(id=uuid.uuid4().hex[:12], inp=inp, status="running", started=datetime.now())
+        with self.lock:
+            self.jobs[job.id] = job
+        progress.set_sink(lambda m: job.log.append(f"   0.0 с  {m}"), None)
+        try:
+            job.result = manual_case(inp)
+            job.status = "done"
+        finally:
+            progress.set_sink(None, None)
+            job.finished = datetime.now()
         return job
 
     def _run(self, job: Job, on_update):
@@ -138,6 +153,10 @@ def result_payload(res: CaseResult, file_url) -> dict:
         "domains": [d.to_dict() for d in sort_by_problem(res.domains_sd)],
         "domain_groups": dict(PROBLEMS),
         "domains_from_app": case_domains(res),
+        # (0.7.3) домены заявления, данных которых из manager ещё нет: после «Пересчитать» они уходят на поиск
+        "domains_pending": _pending_domains(res),
+        "manual": res.manual,
+        "has_passport": res.pas is not None,
         "record": res.record,
         "status_ru": STATUS_RU,
         "case_dir": str(Path(res.case_dir).resolve()),
@@ -145,3 +164,8 @@ def result_payload(res: CaseResult, file_url) -> dict:
         "export_url": file_url(str(Path(res.case_dir) / "export.json")),
         "regions_url": file_url(res.app.debug["regions_overlay"]) if res.app and res.app.debug.get("regions_overlay") else None,
     }
+
+
+def _pending_domains(res: CaseResult) -> list[str]:
+    loaded = {unicode_name(d.domain).lower() for d in res.domains_sd}
+    return [d for d in case_domains(res) if unicode_name(d).lower() not in loaded]

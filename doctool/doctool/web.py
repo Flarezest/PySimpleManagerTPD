@@ -100,6 +100,15 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         job = jobs.submit(inp)
         return {"job_id": job.id}
 
+    @app.post("/api/jobs/manual")
+    def create_manual(body: dict = Body(default={})):
+        """(0.7.3) Ручной ввод данных заявления: пустое дело выбранного типа, данные — в таблице результата."""
+        ct = body.get("case_type") or "admin_change_person"
+        if ct not in load_case_types():
+            raise HTTPException(400, f"Неизвестный тип заявления: {ct}")
+        job = jobs.manual(CaseInput(case_type=ct, out_root=out_root, case_id=body.get("case_id") or None, ollama=ollama))
+        return {"job_id": job.id, "result": result_payload(job.result, file_url(job.id))}
+
     @app.get("/api/jobs/{job_id}")
     def job_status(job_id: str, since: int = 0):
         job = jobs.get(job_id)
@@ -240,7 +249,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
             t.cancel.set()
         return {"ok": True}
 
-    # ---------------------------------------------------------------- смена владельца ЛК (физлица)
+    # ---------------------------------------------------------------- смена владельца ЛК (физлица, с 0.7.3 — ИП и юрлица)
     def _need_extension():
         if not bridge.connected():
             raise HTTPException(409, "Расширение «PySimpleManager» не подключено: откройте Chrome с расширением "
@@ -275,33 +284,41 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
 
     @app.post("/api/owner/compare")
     def owner_compare(body: dict = Body(...)):
-        """Текущий владелец: базовая анкета ↔ данные заявления."""
-        return account.compare_owner(body.get("ba") or {}, body.get("app") or {})
+        """Текущий владелец: базовая анкета ↔ данные заявления. kind — тип анкеты аккаунта (pp / ip / org)."""
+        return account.compare_owner(body.get("ba") or {}, body.get("app") or {}, body.get("kind") or "pp")
 
     @app.post("/api/owner/prepare")
     def owner_prepare(body: dict = Body(...)):
-        """Новый владелец: что и как будет вписано в базовую анкету (предпросмотр)."""
-        return account.prepare_fill(body.get("form") or {})
+        """Новый владелец: что и как будет вписано в базовую анкету (предпросмотр). kind — pp / ip / org."""
+        return account.prepare_fill(body.get("form") or {}, body.get("kind") or None)
 
     @app.post("/api/owner/fill")
     def owner_fill(body: dict = Body(...)):
-        """«Заполнить автоматически» / «Вернуть как было» (restore: значения, которые были до заполнения)."""
+        """«Заполнить автоматически» / «Вернуть как было» (restore: значения, которые были до заполнения).
+        kind — тип нового владельца (pp / ip / org): страница базовой анкеты переключается на него. При restore
+        kind — тип заполненной формы, back_type — тип анкеты до заполнения (вернуть и его)."""
         uid = str(body.get("user_id") or "").strip()
         if not uid.isdigit():
             raise HTTPException(400, "Сначала загрузите аккаунт (нужен номер аккаунта)")
         restore = bool(body.get("restore"))
+        kind = body.get("kind") or "pp"
+        if kind not in account.FILL_BY_KIND:
+            raise HTTPException(400, f"Неизвестный тип нового владельца: {kind}")
         prepared = None
         if restore:
             fields = {k: str(v) for k, v in (body.get("fields") or {}).items()}
         else:
-            prepared = account.prepare_fill(body.get("form") or {})
+            prepared = account.prepare_fill(body.get("form") or {}, kind)
             fields = prepared["fields"]
-        if not fields:
+        if not fields and not (restore and body.get("back_type")):
             raise HTTPException(400, "Нечего заполнять: форма нового владельца пустая")
         _need_extension()
-        reply = _ext("fill_runic", {"user_id": uid, "fields": fields, "restore": restore}, timeout=300)
+        params = {"user_id": uid, "fields": fields, "restore": restore, "type": kind}
+        if restore and body.get("back_type") in account.FILL_BY_KIND:
+            params["back_type"] = body["back_type"]
+        reply = _ext("fill_runic", params, timeout=300)
         return {"ok": bool(reply.get("ok")), "data": reply.get("data"), "error": reply.get("error"),
-                "prepared": prepared, "fields": fields}
+                "prepared": prepared, "fields": fields, "kind": kind}
 
     @app.post("/api/owner/verify")
     def owner_verify(body: dict = Body(...)):
@@ -314,7 +331,13 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         if not reply.get("ok"):
             return {"ok": False, "error": reply.get("error")}
         acc = account.account_from_extension(reply.get("data") or {})
-        return {"ok": True, "verify": account.verify_saved(acc["runic"], body.get("fields") or {}), "account": acc}
+        form = acc["runic_forms"].get("org" if body.get("kind") == "org" else "pp") or acc["runic"]
+        v = account.verify_saved(form, body.get("fields") or {})
+        if body.get("kind") and acc["type"] and acc["type"] != body["kind"]:
+            v["ok"] = False
+            v["mismatch"].insert(0, f"тип анкеты: {account.TYPE_RU.get(acc['type'], acc['type'])}, а заполняли "
+                                    f"{account.TYPE_RU.get(body['kind'], body['kind'])}")
+        return {"ok": True, "verify": v, "account": acc}
 
     return app
 

@@ -18,6 +18,12 @@
   house   — дом: «11» = «Д. 11» = «дом 11»; совпал только номер, а корпус/строение записаны иначе → «похоже»;
   street  — улица: «ул. Промышленная» = «УЛ. ПРОМЫШЛЕННАЯ» = «Промышленная улица»; тот же адрес с другим
             типом улицы или похожее название (≥ 85 %) → «похоже».
+
+С 0.7.3 — для базовой анкеты юрлица (вкладка «Смена владельца ЛК»):
+  email   — адрес e-mail без учёта регистра и пробелов;
+  address — адрес целиком: «г. Москва, ул. Ленина, д. 5, кв. 1» = «Москва город, улица Ленина, дом 5, квартира 1»
+            (сокращения и порядок типов не важны, важны названия и номера). С одной стороны есть части, которых нет
+            с другой (индекс, область, квартира), или адрес похож (≥ 90 %) → «похоже».
 """
 from __future__ import annotations
 
@@ -75,13 +81,15 @@ def norm(kind: str, value) -> str:
         return phone_digits(s)
     if kind == "country":
         return country_code(s)
+    if kind == "email":
+        return re.sub(r"\s+", "", s).lower()
     # text, issuer
     return re.sub(r"\s+", " ", re.sub(r"[^0-9a-zа-я]+", " ", s.lower().replace("ё", "е"))).strip()
 
 
 def same(kind: str, a, b) -> tuple[str, str]:
     """Сравнение двух значений: (статус, пояснение). Статус NONE — сравнивать не с чем (одно из значений пустое)."""
-    special = {"org": same_org, "house": same_house, "street": same_street}.get(kind)
+    special = {"org": same_org, "house": same_house, "street": same_street, "address": same_address}.get(kind)
     if special is not None:
         return special(a, b)
     na, nb = norm(kind, a), norm(kind, b)
@@ -264,5 +272,58 @@ def same_street(a, b) -> tuple[str, str]:
     from rapidfuzz import fuzz
     sim = fuzz.token_set_ratio(na, nb)
     if sim >= 85:
+        return WARN, f"написано по-разному, сходство {sim:.0f}%"
+    return FAIL, f"сходство {sim:.0f}%"
+
+
+# ------------------------------------------------------------------ адрес целиком (0.7.3)
+
+# Обозначения в адресе: пропускаются (тип улицы, «г.», «д.», «обл.» — сокращение и полное слово равны)
+_ADDR_DROP = {
+    "г", "гор", "город", "ул", "улица", "д", "дом", "обл", "область", "край", "респ", "республика", "р", "н", "рн",
+    "район", "пос", "поселок", "п", "пгт", "с", "село", "дер", "деревня", "ст", "ца", "станица", "х", "хутор", "мкр",
+    "микрорайон", "пер", "переулок", "б", "бульвар", "ш", "шоссе", "пл", "площадь", "пр", "кт", "проспект", "просп",
+    "проезд", "наб", "набережная", "туп", "тупик", "ал", "аллея", "тер", "территория", "о", "округ", "городской",
+    "вн", "муниципальный", "россия", "рф", "российская", "федерация", "a", "е", "кв", "квартира", "оф", "офис",
+    "пом", "помещение", "комн", "комната", "ком",
+}
+# Корпус, строение, литера — остаются, но в одном виде
+_ADDR_MARK = {"к": "к", "корп": "к", "корпус": "к", "кор": "к", "стр": "стр", "строение": "стр", "лит": "лит",
+              "литер": "лит", "литера": "лит"}
+
+
+def address_tokens(s) -> list[str]:
+    """«г. Москва, ул. Ленина, д.5, корп. 2, кв. 1» → ['москва', 'ленина', '5', 'к', '2', '1']."""
+    t = ("" if s is None else str(s)).lower().replace("ё", "е")
+    t = re.sub(r"(?<=[a-zа-я])\.(?=[a-zа-я0-9])", ". ", t)          # «г.Фрязино», «д.19»
+    out = []
+    for w in _words(t).split():
+        if w in _ADDR_MARK:
+            out.append(_ADDR_MARK[w])
+        elif w not in _ADDR_DROP:
+            out.append(w)
+    return out
+
+
+def same_address(a, b) -> tuple[str, str]:
+    from collections import Counter
+
+    ta, tb = address_tokens(a), address_tokens(b)
+    if not ta or not tb:
+        return NONE, ""
+    ca, cb = Counter(ta), Counter(tb)
+    if ca == cb:
+        return OK, ""
+    only_a, only_b = ca - cb, cb - ca
+    num_a = sorted(x for x in only_a.elements() if any(c.isdigit() for c in x))
+    num_b = sorted(x for x in only_b.elements() if any(c.isdigit() for c in x))
+    if num_a and num_b:                                   # разные номера дома, квартиры, индекс — это другой адрес
+        return FAIL, f"номера не совпадают: {' '.join(num_a)} ≠ {' '.join(num_b)}"
+    if not only_a or not only_b:
+        extra = " ".join((only_a or only_b).elements())
+        return WARN, f"совпадает частично: с одной стороны есть «{extra}»"
+    from rapidfuzz import fuzz
+    sim = fuzz.token_set_ratio(" ".join(ta), " ".join(tb))
+    if sim >= 90:
         return WARN, f"написано по-разному, сходство {sim:.0f}%"
     return FAIL, f"сходство {sim:.0f}%"

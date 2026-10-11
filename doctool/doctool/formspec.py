@@ -1,4 +1,14 @@
-"""Описания бланков (forms/*.yaml): загрузка с кэшем, роли полей, подписи бланка, проверка конфигов.
+"""Модули заявлений (forms/): загрузка с кэшем, роли полей, подписи бланка, хуки бланка, проверка конфигов.
+
+Модуль заявления (с 0.7.3) — папка forms/<id>/:
+  form.yaml   описание бланка: поля (type, role), подписи бланка для чтения эталона (reference:), регулярки (text:),
+              области на скане (scan:), detect, labels_re, strip_prefixes, rows;
+  hooks.py    (необязательно) особая логика бланка — функции с известными именами (HOOKS ниже), например раздел
+              «новому Администратору» у REG.RU. Ядро вызывает их через call_hook(); без hooks.py ничего не вызывается;
+  samples/    (необязательно) образцы заявлений (DOCX, PDF с текстом) и рядом <имя>.expected.json — ожидаемые
+              значения полей. tests/test_form_samples.py проверяет образцы всех модулей сам.
+Описание в одном файле forms/<id>.yaml (как до 0.7.3) тоже читается. Если для одного id есть и папка, и файл,
+берётся папка (файл — устаревшая копия; validate напомнит его удалить).
 
 Роль поля — его смысл для проверок: «ФИО в тексте», «домены», «новый администратор» (словарь ROLES ниже).
 Проверки (compare.py, domains.py), таблица интерфейса, выгрузка и отчёт обращаются к полю заявления
@@ -40,18 +50,102 @@ ROLES = {
 }
 
 _cache: dict[str, tuple] = {}
+MODULE_FILE = "form.yaml"
+
+
+def _form_files(d: Path) -> list[Path]:
+    """Описания бланков: forms/<id>/form.yaml (модули) и forms/<id>.yaml (одним файлом, как до 0.7.3)."""
+    return sorted(d.glob(f"*/{MODULE_FILE}")) + sorted(d.glob("*.yaml"))
 
 
 def load_forms(forms_dir: Path | str | None = None) -> list[dict]:
-    """Все бланки из папки. Перечитываются, только если файлы изменились. Результат не изменять."""
+    """Все бланки из папки. Перечитываются, только если файлы изменились. Результат не изменять.
+    У бланка-модуля есть ключ `_module` — путь к его папке (hooks.py, samples/)."""
     d = Path(forms_dir or FORMS_DIR)
-    files = sorted(d.glob("*.yaml"))
-    key = tuple((p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in files)
+    files = _form_files(d)
+    key = tuple((str(p.relative_to(d)), p.stat().st_mtime_ns, p.stat().st_size) for p in files)
     hit = _cache.get(str(d))
     if hit is None or hit[0] != key:
-        hit = (key, [yaml.safe_load(p.read_text(encoding="utf-8")) for p in files])
+        forms, seen, dups = [], set(), []
+        for p in files:
+            f = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+            if p.name == MODULE_FILE:
+                f["_module"] = str(p.parent)
+            elif f.get("id") in seen:          # папка-модуль с тем же id уже есть: файл — устаревшая копия
+                dups.append(str(p.relative_to(d)))
+                continue
+            seen.add(f.get("id"))
+            forms.append(f)
+        hit = (key, forms, dups)
         _cache[str(d)] = hit
     return hit[1]
+
+
+def stale_files(forms_dir: Path | str | None = None) -> list[str]:
+    """forms/<id>.yaml, у которых есть папка-модуль с тем же id (файлы не читаются)."""
+    load_forms(forms_dir)
+    return list(_cache[str(Path(forms_dir or FORMS_DIR))][2])
+
+
+def module_dir(form: dict | None) -> Path | None:
+    """Папка модуля заявления (forms/<id>/) или None, если бланк описан одним файлом."""
+    m = (form or {}).get("_module")
+    return Path(m) if m else None
+
+
+# ------------------------------------------------------------------ хуки бланка (forms/<id>/hooks.py)
+
+# Точки, в которых ядро вызывает особую логику бланка. Хук — функция с этим именем в hooks.py модуля.
+HOOKS = {
+    "after_text": "after_text(ex, text, form, conf, source) -> bool — после чтения полей из текста (текстовый слой "
+                  "или OCR страницы); True — хук что-то нашёл",
+    "scan_page": "scan_page(page, lines, page_text, form, prefer) — скан: после чтения полей из текста страницы "
+                 "(можно перечитать часть страницы)",
+}
+_hooks_cache: dict[str, tuple] = {}
+
+
+def hooks(form: dict | None):
+    """Модуль hooks.py бланка (загружается по пути, перечитывается при изменении файла) или None."""
+    d = module_dir(form)
+    p = d / "hooks.py" if d else None
+    if p is None or not p.exists():
+        return None
+    mtime = p.stat().st_mtime_ns
+    hit = _hooks_cache.get(str(p))
+    if hit is None or hit[0] != mtime:
+        import importlib.util
+        name = f"doctool_form_{re.sub(r'[^0-9A-Za-z_]', '_', form.get('id') or d.name)}"
+        spec = importlib.util.spec_from_file_location(name, p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        hit = (mtime, mod)
+        _hooks_cache[str(p)] = hit
+    return hit[1]
+
+
+SAMPLE_EXT = (".docx", ".pdf")
+
+
+def samples(form: dict | None) -> list[tuple[Path, Path]]:
+    """Образцы модуля: [(файл образца, <имя>.expected.json)] из forms/<id>/samples/."""
+    d = module_dir(form)
+    if d is None or not (d / "samples").is_dir():
+        return []
+    out = []
+    for e in sorted((d / "samples").glob("*.expected.json")):
+        stem = e.name[:-len(".expected.json")]
+        src = next((e.with_name(stem + x) for x in SAMPLE_EXT if e.with_name(stem + x).exists()), None)
+        out.append((src, e))
+    return out
+
+
+def call_hook(form: dict | None, name: str, *args, default=None, **kw):
+    """Вызвать хук бланка, если он есть; иначе вернуть default."""
+    if name not in HOOKS:
+        raise KeyError(f"неизвестный хук {name!r}")
+    fn = getattr(hooks(form), name, None) if form else None
+    return fn(*args, **kw) if callable(fn) else default
 
 
 def form_by_id(form_id: str | None, forms_dir: Path | str | None = None) -> dict | None:
@@ -157,12 +251,69 @@ def field_title(form: dict | None, key: str) -> str | None:
 
 # ------------------------------------------------------------------ проверка конфигов
 
+def _validate_module(f: dict, fid: str) -> list[str]:
+    """Модуль заявления: раздел reference:, hooks.py, образцы; подписи reference: — по пустому бланку blank.docx."""
+    import json
+    out: list[str] = []
+    fields = f.get("fields") or {}
+    ref = f.get("reference")
+    if ref is not None:
+        where = f"бланк {fid}, reference"
+        mf = ref.get("min_found", 0.9) if isinstance(ref, dict) else None
+        if not isinstance(ref, dict) or not isinstance(ref.get("fields"), dict) or not ref["fields"]:
+            out.append(f"{where}: нужен словарь fields: {{поле: {{before: …, after: …}}}}")
+        else:
+            if not isinstance(mf, (int, float)) or not 0 < mf <= 1:
+                out.append(f"{where}: min_found — доля от 0 до 1")
+            for key, spec in ref["fields"].items():
+                if key not in fields:
+                    out.append(f"{where}: поля {key!r} нет в fields бланка")
+                if not isinstance(spec, dict) or not isinstance(spec.get("before"), str) or not spec["before"].strip():
+                    out.append(f"{where}, поле {key}: нужна подпись before (строка)")
+                    continue
+                a = spec.get("after")
+                if a is not None and not (isinstance(a, str) or (isinstance(a, list) and all(isinstance(x, str) for x in a))):
+                    out.append(f"{where}, поле {key}: after — строка или список строк")
+    d = module_dir(f)
+    if d is None:
+        return out
+    if (d / "hooks.py").exists():
+        try:
+            mod = hooks(f)
+            if not any(callable(getattr(mod, h, None)) for h in HOOKS):
+                out.append(f"бланк {fid}: в hooks.py нет ни одного хука ({', '.join(HOOKS)})")
+        except Exception as e:  # noqa: BLE001
+            out.append(f"бланк {fid}: hooks.py не загружается: {type(e).__name__}: {e}")
+    for src, exp in samples(f):
+        where = f"бланк {fid}, образец {exp.name}"
+        if src is None:
+            out.append(f"{where}: нет файла образца ({' / '.join(SAMPLE_EXT)} с тем же именем)")
+        try:
+            data = json.loads(exp.read_text(encoding="utf-8"))
+        except ValueError as e:
+            out.append(f"{where}: не JSON: {e}")
+            continue
+        for key in (data.get("fields") or {}):
+            base = key.split(".")[0]
+            if base not in fields and base not in ROLES:
+                out.append(f"{where}: поле {key!r} не найдено в бланке")
+    blank = d / "blank.docx"
+    if blank.exists() and isinstance(ref, dict) and isinstance(ref.get("fields"), dict):
+        from . import reference as reflib
+        from .ocr import docx_text
+        rd = reflib.read(docx_text(blank), f)
+        if rd.missing:
+            out.append(f"бланк {fid}: в пустом бланке blank.docx не нашлись по порядку подписи reference: "
+                       + "; ".join(f"«{m}»" for m in rd.missing[:8]))
+    return out
+
+
 STATUSES = {"ok", "warn", "fail", "review", "info"}
 REGION_KEYS = {"dy0", "dy1", "x0", "x1"}
 
 
 def validate_config(forms_dir: Path | str | None = None, case_types: dict | None = None) -> list[str]:
-    """Проблемы в forms/*.yaml и config/case_types.yaml: неизвестные типы полей, роли, проверки, бланки,
+    """Проблемы в модулях заявлений forms/ и config/case_types.yaml: неизвестные типы полей, роли, проверки, бланки,
     флаги, ошибки в регулярных выражениях. Пустой список — всё в порядке.
     Запуск: python -m doctool validate; в тестах — tests/test_config.py."""
     from . import checks as checklib
@@ -221,6 +372,7 @@ def validate_config(forms_dir: Path | str | None = None, case_types: dict | None
                     problems.append(f"{where}: в scan.region нет {', '.join(sorted(miss))}")
                 if sc.get("block_start") and spec.get("type") != "domains":
                     problems.append(f"{where}: scan.block_start поддерживается только у type: domains")
+        problems += _validate_module(f, fid)
         for pat in f.get("labels_re") or []:
             rx(f"бланк {fid}, labels_re", pat)
         for pat in f.get("strip_prefixes") or []:

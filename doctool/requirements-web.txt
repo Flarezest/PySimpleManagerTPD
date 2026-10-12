@@ -1,0 +1,5 @@
+# Для веб-интерфейса (дополнительно к requirements.txt): python -m doctool web
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+websockets>=12          # связь с расширением Chrome «PySimpleManager» (данные Sd доменов)

@@ -1,7 +1,6 @@
 """Командная строка PySimpleManager (пакет doctool).
 
 Примеры (подробно — docs/USAGE.md):
-  python -m doctool gui                                    # окно приложения
   python -m doctool web                                    # веб-интерфейс в браузере
   python -m doctool check -a заявление.pdf -p паспорт.pdf
   python -m doctool --vlm qwen3-vl:4b-instruct check -a заявление.jpg -p паспорт.pdf --handwritten
@@ -144,11 +143,6 @@ def cmd_validate(args):
           f"проверок {len(checklib.REGISTRY)}.")
 
 
-def cmd_gui(args):
-    from .qt_app import main as qt_main
-    qt_main(out_root=args.out, model=args.vlm or DEFAULT_MODEL, ollama=args.ollama, llm_model=args.llm_fields or None)
-
-
 def main(argv=None):
     for stream in (sys.stdout, sys.stderr):
         if stream is not None and hasattr(stream, "reconfigure"):
@@ -161,7 +155,7 @@ def main(argv=None):
     p.add_argument("-q", "--quiet", action="store_true", help="не показывать ход работы")
     p.add_argument("--llm-fields", metavar="МОДЕЛЬ", default=None,
                    help="поля заявления читает нейросеть (модель Ollama, напр. qwen3:8b) вместо регулярок бланка; "
-                        "для web/gui — модель по умолчанию для галки «Поля заявления — нейросетью»")
+                        "для web — модель по умолчанию для галки «Поля заявления — нейросетью»")
     p.add_argument("--llm-think", choices=["on", "off"], default="on",
                    help="нейросеть для полей рассуждает перед ответом (qwen3): on — точнее, off — быстрее")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -194,10 +188,6 @@ def main(argv=None):
     w.add_argument("-o", "--out", default="results")
     w.add_argument("--no-browser", action="store_true", help="не открывать браузер автоматически")
     w.set_defaults(func=cmd_web)
-
-    g = sub.add_parser("gui", help="запустить окно приложения (Qt)")
-    g.add_argument("-o", "--out", default="results")
-    g.set_defaults(func=cmd_gui)
 
     wh = sub.add_parser("whois", help="статус домена в реестре (WHOIS, порт 43)")
     wh.add_argument("domains", nargs="+", help="домены")

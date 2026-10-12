@@ -293,7 +293,7 @@ def esia_compare(info: "DomainInfo") -> list[dict]:
 
 
 def esia_summary(info: "DomainInfo") -> dict:
-    """Итог ЕСИА домена: {status, state, text, rows}. status — ключ ESIA_STATUS_RU ("" — не применимо)."""
+    """Итог ЕСИА домена: {status, state, text, rows}. status — ключ ESIA_STATUS_RU """
     e = info.esia or {}
     out = {"status": "", "state": e.get("state", "") or "", "text": "", "rows": []}
     if info.status != FOUND or info.kind not in ("person", "org"):

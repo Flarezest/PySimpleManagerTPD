@@ -1,0 +1,131 @@
+# Сборка установщиков PySimpleManager (0.7.5). Подробно — doctool/docs/RELEASE.md.
+#
+# Когда запускается:
+#   - тег v* (git tag v0.7.5 && git push origin v0.7.5) — сборка + выпуск на странице Releases;
+#   - кнопка «Run workflow» на вкладке Actions — пробная сборка, файлы — внизу страницы запуска (Artifacts).
+# Программа лежит в подпапке doctool/ репозитория — команды выполняются там.
+
+name: Сборка установщиков
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    # macOS — пробная сборка: её ошибка не мешает выпуску для Windows и Linux
+    continue-on-error: ${{ matrix.experimental }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-2025
+            experimental: false
+          - name: Linux
+            os: ubuntu-22.04          # старее glibc — пакет ставится и на более новые Ubuntu/Debian
+            experimental: false
+          - name: macOS
+            os: macos-15              # Apple Silicon (arm64)
+            experimental: true
+    defaults:
+      run:
+        working-directory: doctool
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            doctool/requirements.txt
+            doctool/requirements-web.txt
+            doctool/installer/requirements-build.txt
+
+      - name: Пакеты Python
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-web.txt -r installer/requirements-build.txt
+
+      - name: "Linux: Tesseract (для тестов и проверки сборки)"
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-rus
+
+      - name: "Windows: Inno Setup"
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+
+      - name: "macOS: Tesseract и dylibbundler"
+        if: runner.os == 'macOS'
+        run: brew install tesseract dylibbundler
+
+      - name: Тесты
+        if: runner.os == 'Linux'
+        run: python -m pytest tests -q -p no:cacheprovider
+
+      - name: Сборка и проверка собранной программы
+        run: python installer/build.py
+
+      - name: "Проверка установщика (Windows): тихая установка и запуск"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem installer/_out/*-setup.exe | Select-Object -First 1
+          $p = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/LOG=installer/_out/install.log' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content installer/_out/install.log -Tail 50; exit $p.ExitCode }
+          Remove-Item installer/_out/install.log
+          python installer/smoke_test.py "$env:LOCALAPPDATA\Programs\PySimpleManager\PySimpleManager.exe"
+
+      - name: "Проверка установщика (Linux): установка пакета и запуск"
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y ./installer/_out/*.deb
+          python installer/smoke_test.py /usr/bin/pysimplemanager
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: PySimpleManager-${{ runner.os }}
+          path: doctool/installer/_out/*
+          if-no-files-found: error
+          compression-level: 0        # установщики уже сжаты
+
+  release:
+    name: Выпуск (Releases)
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: doctool/installer/release_notes.md
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: release
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          name: PySimpleManager ${{ github.ref_name }}
+          body_path: doctool/installer/release_notes.md
+          files: release/*
+          fail_on_unmatched_files: true

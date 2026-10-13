@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,16 +17,36 @@ import pymupdf
 import pytesseract
 from rapidfuzz import fuzz
 
-# путь к tesseract: переменная TESSERACT_CMD, PATH или стандартная папка Windows
-_tess = os.environ.get("TESSERACT_CMD") or shutil.which("tesseract")
-if not _tess and os.name == "nt":
-    for cand in (r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+
+def find_tesseract() -> str | None:
+    """Путь к tesseract: переменная TESSERACT_CMD → Tesseract в составе установленной программы (папка tesseract/
+    рядом с forms/, 0.7.5) → PATH → стандартные папки Windows и Homebrew (у программы, запущенной из Finder,
+    в PATH нет /opt/homebrew/bin)."""
+    env = os.environ.get("TESSERACT_CMD")
+    if env:
+        return env
+    from .paths import APP_DIR
+    bundled = APP_DIR / "tesseract" / ("tesseract.exe" if os.name == "nt" else "tesseract")
+    if bundled.is_file():
+        if (bundled.parent / "tessdata").is_dir():          # языки — только свои, не чужой установки
+            os.environ["TESSDATA_PREFIX"] = str(bundled.parent / "tessdata")
+        return str(bundled)
+    found = shutil.which("tesseract")
+    if found:
+        return found
+    if os.name == "nt":
+        cands = (r"C:\Program Files\Tesseract-OCR\tesseract.exe",
                  r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
                  os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
-                 os.path.expandvars(r"%LOCALAPPDATA%\Tesseract-OCR\tesseract.exe")):
-        if os.path.exists(cand):
-            _tess = cand
-            break
+                 os.path.expandvars(r"%LOCALAPPDATA%\Tesseract-OCR\tesseract.exe"))
+    elif sys.platform == "darwin":
+        cands = ("/opt/homebrew/bin/tesseract", "/usr/local/bin/tesseract")
+    else:
+        cands = ()
+    return next((c for c in cands if os.path.exists(c)), None)
+
+
+_tess = find_tesseract()
 if _tess:
     pytesseract.pytesseract.tesseract_cmd = _tess
 

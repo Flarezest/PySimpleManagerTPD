@@ -58,10 +58,31 @@ def _form_files(d: Path) -> list[Path]:
     return sorted(d.glob(f"*/{MODULE_FILE}")) + sorted(d.glob("*.yaml"))
 
 
+def forms_dirs() -> list[Path]:
+    """Папки модулей заявлений: свои из папки данных пользователя (если есть, 0.7.5), затем встроенные forms/."""
+    from . import paths
+    return paths.forms_dirs(FORMS_DIR)
+
+
 def load_forms(forms_dir: Path | str | None = None) -> list[dict]:
-    """Все бланки из папки. Перечитываются, только если файлы изменились. Результат не изменять.
+    """Все бланки из папки (по умолчанию — из forms_dirs(): свой модуль с тем же id заменяет встроенный).
+    Перечитываются, только если файлы изменились. Результат не изменять.
     У бланка-модуля есть ключ `_module` — путь к его папке (hooks.py, samples/)."""
-    d = Path(forms_dir or FORMS_DIR)
+    if forms_dir is not None:
+        return _load_dir(Path(forms_dir))[1]
+    dirs = forms_dirs()
+    if len(dirs) == 1:
+        return _load_dir(dirs[0])[1]
+    merged, seen = [], set()
+    for d in dirs:
+        for f in _load_dir(d)[1]:
+            if f.get("id") not in seen:
+                seen.add(f.get("id"))
+                merged.append(f)
+    return merged
+
+
+def _load_dir(d: Path) -> tuple:
     files = _form_files(d)
     key = tuple((str(p.relative_to(d)), p.stat().st_mtime_ns, p.stat().st_size) for p in files)
     hit = _cache.get(str(d))
@@ -78,13 +99,18 @@ def load_forms(forms_dir: Path | str | None = None) -> list[dict]:
             forms.append(f)
         hit = (key, forms, dups)
         _cache[str(d)] = hit
-    return hit[1]
+    return hit
 
 
 def stale_files(forms_dir: Path | str | None = None) -> list[str]:
-    """forms/<id>.yaml, у которых есть папка-модуль с тем же id (файлы не читаются)."""
-    load_forms(forms_dir)
-    return list(_cache[str(Path(forms_dir or FORMS_DIR))][2])
+    """forms/<id>.yaml, у которых есть папка-модуль с тем же id (файлы не читаются). Для своих модулей из папки
+    данных пользователя — с полным путём."""
+    if forms_dir is not None:
+        return list(_load_dir(Path(forms_dir))[2])
+    out = []
+    for d in forms_dirs():
+        out += [n if d == FORMS_DIR else str(d / n) for n in _load_dir(d)[2]]
+    return out
 
 
 def module_dir(form: dict | None) -> Path | None:

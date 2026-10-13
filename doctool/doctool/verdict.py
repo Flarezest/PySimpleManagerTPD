@@ -8,14 +8,19 @@ import yaml
 
 from .compare import Check
 
-CONFIG = Path(__file__).resolve().parent.parent / "config" / "case_types.yaml"
+CONFIG = Path(__file__).resolve().parent.parent / "config" / "case_types.yaml"   # встроенные правила
 
 ACCEPT, REJECT, REVIEW = "accept", "reject", "review"
 DECISION_RU = {ACCEPT: "Принять", REJECT: "Отклонить", REVIEW: "Ручная проверка"}
 
 
-def load_case_types(path: Path = CONFIG) -> dict[str, dict]:
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+def load_case_types(path: Path | None = None) -> dict[str, dict]:
+    """Типы заявлений. По умолчанию — свой config/case_types.yaml из папки данных пользователя, если он есть
+    (0.7.5, doctool/paths.py), иначе встроенный CONFIG."""
+    if path is None:
+        from .paths import config_file
+        path = config_file()
+    data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     return data["case_types"]
 
 

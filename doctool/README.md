@@ -37,7 +37,24 @@
 
 Адрес регистрации пока не сверяется: он стоит в штампе на страницах прописки и требует отдельного модуля.
 
-## Установка (Windows)
+## Установка установщиком (с 0.7.5) — для работы
+
+Готовые установщики — на странице **Releases** репозитория (собирает GitHub Actions, как — [docs/RELEASE.md](docs/RELEASE.md)):
+
+- **Windows 10/11** — `PySimpleManager-<версия>-windows-x64-setup.exe`: запустить и нажать «Установить». Права
+  администратора не нужны, Python и Tesseract с русским языком уже внутри. Если Windows покажет «Система Windows
+  защитила ваш компьютер» — «Подробнее» → «Выполнить в любом случае» (установщик не подписан сертификатом).
+- **Linux** (Ubuntu 22.04+, Debian 12) — `sudo apt install ./pysimplemanager_<версия>_amd64.deb`.
+- **macOS** (Apple Silicon, пробная сборка) — `.dmg`: папку `PySimpleManager` перетащить в «Программы», запускать
+  `Запустить PySimpleManager.command`.
+
+Запуск — ярлык «PySimpleManager»: откроется браузер, окно консоли остаётся, пока программа работает (закрыли окно —
+программа остановилась). Результаты, реестр и свои настройки — в папке **«Документы\PySimpleManager»**, обновление
+и удаление программы её не трогают. Обновление — новый установщик поверх старого. Расширение Chrome ставится один
+раз вручную из папки `chrome_extension` программы (Пуск → PySimpleManager → «Расширение Chrome (папка)»;
+[docs/MANAGER.md](docs/MANAGER.md), раздел 1).
+
+## Установка из исходников (Windows) — для разработки
 
 1. **Python 3.10–3.13** (рекомендуется 3.12) с https://www.python.org. Старый Python можно не удалять — новый ставится рядом, запуск через `py -3.12`.
 2. **Tesseract OCR** — отдельная программа (pip её не ставит): установщик `tesseract-ocr-w64-setup-5.x.exe` от UB Mannheim (https://github.com/UB-Mannheim/tesseract/wiki).
@@ -62,13 +79,15 @@
 
 Linux: `apt install tesseract-ocr tesseract-ocr-rus`, затем те же шаги 3–4.
 
+При запуске из исходников всё как раньше: `results/` — в папке программы, бланки и правила — `forms/`, `config/`. Чтобы работать с папкой данных, как установленная программа, задайте `DOCTOOL_HOME` (docs/USAGE.md, раздел 9).
+
 ## Использование
 
 Полное руководство — интерфейсы, флаги, правила вердикта, формат выгрузки, параметры командной строки, типичные ошибки: **[docs/USAGE.md](docs/USAGE.md)**.
 
 | Что | Как запустить |
 |---|---|
-| Веб-интерфейс | `doctool_web.bat` или `python -m doctool web` → http://127.0.0.1:8765 |
+| Веб-интерфейс | ярлык «PySimpleManager» (установленная программа), `doctool_web.bat` или `python -m doctool web` → http://127.0.0.1:8765 |
 | Проверка из консоли | `python -m doctool check -a заявление.pdf -p паспорт.pdf` |
 | Рукописное заявление | `python -m doctool --vlm qwen3-vl:4b-instruct check -a заявление.jpg --handwritten -p паспорт.pdf` |
 | Поля заявления нейросетью (0.7.0) | галка «Поля заявления — нейросетью» или `python -m doctool --llm-fields qwen3:8b check -a заявление.pdf` |
@@ -77,6 +96,8 @@ Linux: `apt install tesseract-ocr tesseract-ocr-rus`, затем те же ша�
 | Проверить описания бланков и типов заявлений | `python -m doctool validate` (`--list` — проверки, роли полей, типы) |
 | Данные доменов из manager | веб-интерфейс + расширение Chrome из папки `doctool_extension` — см. [docs/MANAGER.md](docs/MANAGER.md) |
 | WHOIS домена | `python -m doctool whois example.ru` |
+| То же в установленной программе | `PySimpleManager.exe check …`, `… validate` (Windows, папка программы); `pysimplemanager …` (Linux) |
+| Собрать установщик | тег `vX.Y.Z` → GitHub Actions; у себя — `python installer/build.py` ([docs/RELEASE.md](docs/RELEASE.md)) |
 
 Каждая проверка создаёт папку `results/<дата_время>_<дело>/`:
 
@@ -103,6 +124,7 @@ doctool/
   checks.py       реестр проверок: какие выполнять для типа заявления, к какой строке таблицы относятся
   compare.py      сверка и проверки (в т.ч. «прежний паспорт», данные администратора) — функции реестра
   verdict.py      вердикт по правилам из config/case_types.yaml
+  paths.py        (0.7.5) папка данных пользователя (Документы/PySimpleManager, DOCTOOL_HOME), свои forms/config поверх встроенных
   service.py      сценарий проверки целиком, правки оператора, выгрузка export.json
   integrations.py данные администратора вручную / JSON; автозаполнение — заглушка
   domains.py      данные доменов из manager (Sd, S, ЕСИА): сверка с паспортом и заявлением, проверки для вердикта
@@ -126,6 +148,9 @@ doctool_extension/ расширение Chrome «PySimpleManager» (Manifest V3,
   background.js     связь с программой, очередь, фоновая вкладка manager, ожидание входа
   content/manager.js разбор страниц manager: счета, Sd, S, ЕСИА, данные пользователя, базовая анкета; заполнение анкеты
   popup.*, options.* окно расширения и настройки
+installer/        (0.7.5) сборка установщиков: build.py, pysimplemanager.spec (PyInstaller), launcher.py (точка входа),
+                  smoke_test.py (проверка собранной программы), windows/pysimplemanager.iss (Inno Setup),
+                  release_notes.md (текст выпуска); инструкция для GitHub — .github/workflows/build.yml в корне репозитория
 ```
 
 ### Как добавить новое заявление (модуль заявления, с 0.7.3)

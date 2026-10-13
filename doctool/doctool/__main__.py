@@ -21,7 +21,7 @@ import argparse
 import json
 from pathlib import Path
 
-from . import APP_NAME, __version__
+from . import APP_NAME, __version__, paths
 from .compare import STATUS_RU
 from .integrations import JsonFileAdminData
 from .ocr import OllamaVLM, check_tesseract, load_document
@@ -82,6 +82,8 @@ def cmd_extract(args):
         from . import llm_extract
         cfg = llm_extract.make_config(args.llm_fields, host=args.ollama, think=args.llm_think != "off") \
             if args.llm_fields else None
+        if cfg:
+            cfg.cache_dir = str(Path(args.out) / ".llm_cache")
         with llm_extract.session(cfg):
             ex = extract_application(pages, Path(args.out), vlm)
     print(json.dumps(ex.to_dict(), ensure_ascii=False, indent=2, default=str))
@@ -131,6 +133,8 @@ def cmd_validate(args):
         for tid, ct in types.items():
             print(f"  {tid:24} бланк: {ct.get('form') or '—'}; проверки: {', '.join(checklib.ids_for(ct))}")
         print()
+    for line in paths.describe():
+        print(line)
     problems = validate_config(case_types=types)
     for p in problems:
         print(f"[!] {p}")
@@ -138,7 +142,8 @@ def cmd_validate(args):
         sys.exit(f"Найдено проблем: {len(problems)}")
     from .formspec import stale_files
     for name in stale_files():
-        print(f"[i] forms/{name} не читается: есть папка-модуль с тем же id. Удалите устаревший файл.")
+        print(f"[i] {name if Path(name).is_absolute() else 'forms/' + name} не читается: есть папка-модуль "
+              f"с тем же id. Удалите устаревший файл.")
     print(f"Конфигурация в порядке: бланков {len(load_forms())}, типов заявлений {len(types)}, "
           f"проверок {len(checklib.REGISTRY)}.")
 
@@ -147,7 +152,8 @@ def main(argv=None):
     for stream in (sys.stdout, sys.stderr):
         if stream is not None and hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
-    p = argparse.ArgumentParser(prog="python -m doctool",
+    out_default = paths.results_dir()       # 0.7.5: у установленной программы — Документы/PySimpleManager/results
+    p = argparse.ArgumentParser(prog=APP_NAME if paths.FROZEN else "python -m doctool",
                                 description=f"{APP_NAME} {__version__} — локальная проверка заявлений и паспортов РФ")
     p.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     p.add_argument("--vlm", default=None, help=f"модель Ollama для рукописного текста, напр. {DEFAULT_MODEL}")
@@ -170,7 +176,7 @@ def main(argv=None):
     c.add_argument("--handwritten", action="store_true", help="заявление заполнено от руки (нужен --vlm)")
     c.add_argument("--passport-mode", choices=["auto", "scan", "photo"], default="auto", help="паспорт: скан или фото")
     c.add_argument("--admin", help="JSON с данными текущего администратора из внутренней системы")
-    c.add_argument("-o", "--out", default="results", help="папка для результатов (по умолчанию results)")
+    c.add_argument("-o", "--out", default=out_default, help=f"папка для результатов (по умолчанию {out_default})")
     c.add_argument("--case", help="название дела (по умолчанию — имя файла)")
     c.add_argument("--date", help=argparse.SUPPRESS)   # с 0.5.0 не используется: срок действия паспорта не проверяется
     c.set_defaults(func=cmd_check)
@@ -179,13 +185,13 @@ def main(argv=None):
     e.add_argument("file", help="файл документа")
     e.add_argument("--type", choices=["passport", "application"], default="application",
                    help="тип документа (по умолчанию application — заявление)")
-    e.add_argument("-o", "--out", default="results", help="куда сохранять фрагменты сканов (crops)")
+    e.add_argument("-o", "--out", default=out_default, help="куда сохранять фрагменты сканов (crops)")
     e.set_defaults(func=cmd_extract)
 
     w = sub.add_parser("web", help="запустить веб-интерфейс (откроется в браузере)")
     w.add_argument("--host", default="127.0.0.1", help="0.0.0.0 — открыть доступ из локальной сети")
     w.add_argument("--port", type=int, default=8765)
-    w.add_argument("-o", "--out", default="results")
+    w.add_argument("-o", "--out", default=out_default, help=f"папка для результатов (по умолчанию {out_default})")
     w.add_argument("--no-browser", action="store_true", help="не открывать браузер автоматически")
     w.set_defaults(func=cmd_web)
 
@@ -199,6 +205,7 @@ def main(argv=None):
     v.set_defaults(func=cmd_validate)
 
     args = p.parse_args(argv)
+    paths.ensure_user_dir()                 # установленная программа: папка данных, ПРОЧТИ.txt
     import doctool.progress as _pr
     _pr.quiet = args.quiet
     if args.cmd == "check" and not args.application and not args.passport:

@@ -342,6 +342,27 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
     return app
 
 
+def already_running(host: str, port: int) -> str | None:
+    """Порт свободен — None; на нём уже работает PySimpleManager — его версия; занят другой программой — ""."""
+    import socket
+    import urllib.request
+    probe = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
+    try:
+        with socket.create_connection((probe, port), timeout=1):
+            pass
+    except OSError:
+        return None
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))   # мимо прокси из настроек системы
+        with opener.open(f"http://{probe}:{port}/api/meta", timeout=5) as r:
+            meta = json.loads(r.read().decode("utf-8"))
+        if meta.get("app") == APP_NAME:
+            return str(meta.get("version") or "?")
+    except Exception:
+        pass
+    return ""
+
+
 def serve(host: str = "127.0.0.1", port: int = 8765, out_root: str = "results",
           model: str = "qwen3-vl:4b-instruct", ollama: str = "http://127.0.0.1:11434", open_browser: bool = True,
           llm_model: str | None = None):
@@ -350,7 +371,16 @@ def serve(host: str = "127.0.0.1", port: int = 8765, out_root: str = "results",
 
     import uvicorn
     url = f"http://{'127.0.0.1' if host in ('0.0.0.0', '::') else host}:{port}"
-    print(f"{APP_NAME} {__version__}: веб-интерфейс на {url}  (остановить — Ctrl+C)")
+    running = already_running(host, port)
+    if running is not None:
+        if not running:
+            raise SystemExit(f"[!] Порт {port} занят другой программой. Закройте её или запустите с --port <номер>.")
+        print(f"{APP_NAME} {running} уже запущен: {url} — открываю в браузере.")
+        if open_browser:
+            webbrowser.open(url)
+        return
+    print(f"{APP_NAME} {__version__}: веб-интерфейс на {url}  (остановить — Ctrl+C или закрыть это окно)")
+    print(f"Результаты проверок: {Path(out_root).resolve()}")
     if host not in ("127.0.0.1", "localhost"):
         print("[!] Интерфейс доступен другим компьютерам сети. Документы будут обрабатываться на этом компьютере.")
     if open_browser:

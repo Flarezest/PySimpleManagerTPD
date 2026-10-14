@@ -1,0 +1,45 @@
+# Рабочее место оператора (с 0.7.6): строка таблицы и проверки доменов.
+#
+# Свой вариант этого файла можно положить в папку данных программы: «Документы/PySimpleManager/config/workspace.yaml»
+# (у установленной программы) — он целиком заменит встроенный. Проверить файл: python -m doctool validate.
+
+# ------------------------------------------------------------------ строка таблицы (xlsx)
+# Колонки строки, по порядку (копируются через табуляцию, вставляются в таблицу Ctrl+V):
+#   дата обработки · принял · обработал · домен или номер договора · тип операции · способ получения ·
+#   номер тикета и статус (одно поле: «#20261012373031821 готово»)
+table:
+  status_default: готово            # дописывается к номеру тикета; в рабочем месте поле можно поправить
+  receipt_methods: [отрс, отрс пр-ва, офис, почта, курьер]
+  # Типы операций. column4 — что пишется в 4-й колонке: domain — название домена (несколько — через запятую),
+  # contract — номер договора (аккаунта). case_type — тип заявления для проверки (config/case_types.yaml);
+  # без него документы только показываются и сверяются вручную. manager_page: domain_move — кнопка «Открыть смену
+  # в manager» (страница «Перенос доменов между аккаунтами»); у остальных операций кнопки нет.
+  operations:
+    - {title: Смена администратора, column4: domain, case_type: admin_change_person, manager_page: domain_move}
+    - {title: Корректировка данных домена, column4: domain}
+    - {title: Смена владельца аккаунта, column4: contract}
+    - {title: Восстановление доступа, column4: contract}
+    - {title: Деактивация номера, column4: contract}
+  # Сотрудники: логин manager → фамилия для колонок «принял» и «обработал». Логин программа узнаёт у
+  # расширения (шапка страниц manager: [логин]); фамилию можно и просто вписать в рабочем месте — она запомнится.
+  operators: {}
+  #  a.ivanov: Иванов
+
+# ------------------------------------------------------------------ проверки доменов
+# level: stop — «стоп»: смену в manager программа откроет только с указанной причиной;
+#        warn — «внимание»; info — «к сведению»; off — не проверять.
+domain_checks:
+  admin_comment:       {level: warn, title: "В S есть комментарий администратора («К»)"}
+  recent_admin_change: {level: warn, days: 30, title: "Недавняя смена администратора"}
+  s_prohibited:
+    level: warn
+    title: "В S стоят запреты"
+    fields: [changeProhibited, clientUpdateProhibited, serverUpdateProhibited, clientHold, serverHold]
+  frozen:              {level: warn, title: "Услуга заморожена (freeze_reason / freeze_date в S)"}
+  operation_blocks:    {level: warn, title: "В S заданы блокировки операций (operation_blocks)"}
+  transfer_lock:       {level: info, title: "Перенос к другому регистратору запрещён до даты (lock_transfer_till)"}
+  not_active:          {level: warn, title: "Услуга не активна (state в S — не A)"}
+  expires_soon:        {level: info, days: 30, title: "Срок регистрации скоро заканчивается"}
+  trustee:             {level: info, title: "Подключена услуга Trustee"}
+  esia_none:           {level: info, title: "Администратор не проходил идентификацию через Госуслуги"}
+  bill_owner_differs:  {level: info, title: "Владелец счёта — другой аккаунт"}

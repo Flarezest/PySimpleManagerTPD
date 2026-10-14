@@ -390,6 +390,8 @@ def extract_from_scan(page: Page, form: dict, out_dir: Path, vlm: OllamaVLM | No
                 if by0 < y0 - 0.8 * h and by1 > ry0 and min(bx1, rx1) - max(bx0, rx0) > 0.3 * (bx1 - bx0):
                     ry0 = max(ry0, (by0 + by1) // 2)  # рукопись часто наезжает на строку выше
         overlay_boxes.append((key, (rx0, ry0, rx1, ry1), a.box))
+        # (0.7.6) где поле на странице — рабочее место подсвечивает это место в просмотре документа
+        ex.debug.setdefault("boxes", {})[key] = {"page": page.index, "box": [rx0, ry0, rx1, ry1], "size": [W, H]}
         if ry1 - ry0 < 10 or rx1 - rx0 < 10:
             continue
         crop = img[ry0:ry1, rx0:rx1]

@@ -111,7 +111,10 @@ def test_cli_default_out_is_user_results(home, monkeypatch):
 def test_bundled_tesseract_first(tmp_path, monkeypatch):
     from doctool import ocr
     monkeypatch.delenv("TESSERACT_CMD", raising=False)
-    monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
+    # setenv перед delenv: monkeypatch запоминает исходное состояние и после теста вернёт его — иначе TESSDATA_PREFIX,
+    # заданный find_tesseract(), остаётся и следующие тесты с OCR ищут языки во временной папке этого теста
+    monkeypatch.setenv("TESSDATA_PREFIX", "")
+    monkeypatch.delenv("TESSDATA_PREFIX")
     exe = tmp_path / "tesseract" / ("tesseract.exe" if os.name == "nt" else "tesseract")
     (exe.parent / "tessdata").mkdir(parents=True)
     exe.write_text("")

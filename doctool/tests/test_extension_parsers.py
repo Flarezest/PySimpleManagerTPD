@@ -47,6 +47,12 @@ def test_sd_and_s(page):
     assert org["group"] == "ru_org" and org["fields"]["code"] == "7701234567" and "FOA_token" not in org["fields"]
     s = json.loads(run(page, "s_org.html", "M.parseS(document)"))
     assert s["provider"] == "cctldru" and s["dname"] == "testdomain-org.ru" and s["user_id"] == "2000"
+    # (0.7.6) логин аккаунта со страницы S, комментарий администратора — да, комментарий пользователя — нет
+    assert s["login"] == "org@example.com" and s["admin_comment"] == ""
+    s = json.loads(run(page, "s_pp.html", "M.parseS(document)"))
+    assert s["login"] == "person@example.com" and s["user_id"] == "1000"
+    assert s["admin_comment"].startswith("Тест: смену администратора") and "comment" not in s
+    assert s["changeProhibited"] == "0" and s["state"] == "A"
 
 
 def test_sd_email_and_intl(page):
@@ -180,3 +186,69 @@ def test_esia_fields_org_and_person(page):
     pp = page.evaluate(f"j => {{ {src}; return esiaFields(j); }}",
                        json.loads((FIX / "esia_pp.json").read_text(encoding="utf-8")))
     assert pp["last_name"] == "Тестов" and "inn" not in pp and "snils" not in pp and "kind" not in pp
+
+
+# ------------------------------------------------------------------ 0.7.6: смена администратора и Госуслуги
+
+def test_domain_move_fill(page):
+    # шаг 1 «Перенос доменов между аккаунтами»: домены, флажки, принимающий аккаунт, документы в поле файлов
+    import base64
+    files = [{"name": "Заявление.pdf", "type": "application/pdf", "b64": base64.b64encode(b"%PDF-1.4 test").decode()},
+             {"name": "Паспорт.pdf", "type": "application/pdf", "b64": base64.b64encode(b"%PDF-1.4 pass").decode()}]
+    params = {"domains": ["testdomain-pp.ru", "пример.рф"], "change_admin": True, "change_account": True,
+              "login_to": "user_id:2000", "files": files}
+    r = json.loads(run(page, "domain_move.html", f"M.domainMoveFill({json.dumps(params, ensure_ascii=False)})"))
+    assert r["ok"] and r["data"]["attached"] == ["Заявление.pdf", "Паспорт.pdf"], r
+    st = page.evaluate("""() => { const f = document.querySelector('[name=domains]').closest('form');
+      return {domains: f.querySelector('[name=domains]').value, admin: f.querySelector('[name=do_change_admin]').checked,
+              acc: f.querySelector('[name=do_change_account]').checked, login: f.querySelector('[name=login_to]').value,
+              loginShown: getComputedStyle(f.querySelector('[name=login_to]').closest('tr')).display !== 'none',
+              files: [...f.querySelector('input[type=file]').files].map(x => x.name + ':' + x.size),
+              untouched: ['skip_contacts_check', 'allow_rereg_only_bill', 'keep_partcontrol', 'force_cancel_deal']
+                .map(n => f.querySelector('[name=' + n + ']').checked)}; }""")
+    assert st["domains"] == "testdomain-pp.ru\nпример.рф" and st["admin"] and st["acc"] and st["loginShown"]
+    assert st["login"] == "user_id:2000" and st["files"] == ["Заявление.pdf:13", "Паспорт.pdf:13"]
+    assert st["untouched"] == [False, False, False, False]          # остальные флажки страницы не трогаются
+    # не та страница — ошибка, ничего не заполняется
+    r = json.loads(run(page, "domain_move_contacts.html", f"M.domainMoveFill({json.dumps(params, ensure_ascii=False)})"))
+    assert not r["ok"] and r["error"]["code"] == "bad_page"
+
+
+def test_domain_move_step2(page):
+    # шаг 2 «данные нового администратора»: чтение блока «данные нового аккаунта», подсветка, «заполнить вручную»
+    r = json.loads(run(page, "domain_move_contacts.html", "M.domainMoveRead()"))
+    assert r["ok"], r
+    d = r["data"]
+    assert d["mode"] == "new_owner" and d["domains"] == "testdomain-pp.ru" and d["current_user_id"] == "1000"
+    b = d["base"]
+    assert b["fio"] == "Тестов Пётр Иванович" and b["fio_en"] == "Testov Petr Ivanovich"
+    assert b["passport_series"] == "4000" and b["passport_number"] == "123456" and b["passport_date"] == "01.02.2020"
+    assert b["passport_place"] == "ГУ МВД РОССИИ ПО Г. ТЕСТОГРАДУ" and b["birth_date"] == "03.04.1990"
+    assert b["email"] == "person@example.com" and b["phone"] == "+79990000000" and b["address"].startswith("190000")
+    r = json.loads(page.evaluate("() => JSON.stringify(window.__doctoolManager.domainMoveMark({fio: 'ok', email: 'fail'}))"))
+    assert r["ok"] and r["data"]["marked"] >= 2
+    colors = page.evaluate("""() => [...document.querySelectorAll('#base-contacts b')].map(b => b.style.outlineColor).filter(Boolean)""")
+    assert len(colors) == 2
+    fields = {"person_r_surname": "Белов", "person_r_name": "Игорь", "person_r_patronimic": "Сергеевич",
+              "phone": "+7 900 000-00-00", "e_mail": "belov@example.ru"}
+    r = json.loads(page.evaluate(f"() => JSON.stringify(window.__doctoolManager.domainMoveFillContacts({json.dumps(fields, ensure_ascii=False)}))"))
+    assert r["ok"] and len(r["data"]["changed"]) == 5, r
+    st = page.evaluate("""() => ({fill: document.querySelector('#fill').checked,
+        shown: document.getElementById('fill-contacts').style.display !== 'none',
+        sur: document.getElementById('person_r_surname').value, mail: document.getElementById('e_mail').value,
+        blank: document.getElementById('person_r_surname').classList.contains('blank'),
+        code: document.getElementById('code').value, translit: window.translitCalls || 0})""")
+    assert st["fill"] and st["shown"] and st["sur"] == "Белов" and st["mail"] == "belov@example.ru" and not st["blank"]
+    assert st["code"] == "ИНН частного лица" and st["translit"] >= 3      # незаполненное поле осталось с подсказкой
+
+
+def test_gosuslugi_fill(page):
+    # fillGosuslugiForm() из background.js на копии формы «Проверка действительности паспорта» (маска серии «00 00»)
+    import re
+    src = re.search(r"function fillGosuslugiForm\(p\) \{.*?\n\}\n", BG, re.S).group(0)
+    page.goto((FIX / "gosuslugi_passport_form.html").as_uri())
+    r = page.evaluate(f"p => {{ {src}; return fillGosuslugiForm(p); }}",
+                      {"series": "4510", "number": "123456", "surname": "Тестова", "name": "Анна"})
+    assert r["ok"] and r["data"]["problems"] == [] and r["data"]["button_enabled"], r
+    assert r["data"]["filled"]["series"] == "45 10" and r["data"]["filled"]["surname"] == "Тестова"
+    assert page.evaluate("() => document.querySelector('button').disabled") is False    # «Продолжить» не нажимается

@@ -20,9 +20,17 @@
  * подсветила изменённые поля и пересчитала English name. Кнопку «Сохранить» не нажимает.
  * С 0.7.3 — формы ИП и юрлица: если новый владелец другого типа, переключатель «Физик / ИП / Юрик» на странице
  * переводится на нужный тип (страница сама показывает нужную форму), затем заполняется эта форма.
+ *
+ * С 0.7.6 — смена администратора домена (рабочее место программы), только во вкладке оператора:
+ *   domainMoveFill        — шаг 1 «Перенос доменов между аккаунтами»: домены, «смена администратора»,
+ *                           «перенос на другой аккаунт» и принимающий аккаунт, документы в «Загрузить документы»;
+ *   domainMoveRead        — шаг 2 «данные нового администратора»: прочитать данные на странице;
+ *   domainMoveMark        — подсветить их по итогам сверки с заявлением (зелёный / красный);
+ *   domainMoveFillContacts — шаг 2, «заполнить вручную»: ФИО, телефон, e-mail из заявления.
+ * Кнопки «Далее», «Использовать» и остальные флажки страницы скрипт не трогает.
  */
 (() => {
-  const VERSION = '0.7.3';
+  const VERSION = '0.7.6';
   if (window.__doctoolManager && window.__doctoolManager.version === VERSION) return;
 
   // Поля Sd, которые передаются в doctool. authinfo, телефоны, адреса и служебные поля не передаются.
@@ -49,7 +57,12 @@
     return names.find(g => g === 'ru_pp' || g === 'ru_org') || names.find(g => /^o_/.test(g))
       || (Object.entries(groups).sort((a, b) => b[1] - a[1])[0] || [''])[0];
   };
-  const S_FIELDS = ['provider', 'dname', 'contype', 'state', 'user_id', 'expiration_date', 'creation_date', 'trans_in_from'];
+  // S: с 0.7.6 — комментарий администратора (admin_comment, в программе — буква «К») и поля для проверок домена
+  // на рабочем месте (запреты, заморозка, блокировки). Комментарий пользователя (comment) не передаётся.
+  const S_FIELDS = ['provider', 'dname', 'contype', 'state', 'substate', 'user_id', 'expiration_date', 'creation_date',
+    'trans_in_from', 'admin_comment', 'changeProhibited', 'clientHold', 'serverHold', 'clientUpdateProhibited',
+    'serverUpdateProhibited', 'clientTransferProhibited', 'serverTransferProhibited', 'clientDeleteProhibited',
+    'serverDeleteProhibited', 'freeze_date', 'freeze_reason', 'operation_blocks', 'lock_transfer_till', 'trans_out_to'];
 
   class LookupError extends Error {
     constructor(code, message, extra) { super(message); this.code = code; this.extra = extra || {}; }
@@ -460,6 +473,11 @@
       const el = form.querySelector(`[name="${k}"]`);
       if (el) out[k] = (el.value || '').trim();
     }
+    // (0.7.6) логин аккаунта: кнопка «Клиент обращается через Телефон» над формой (data-user-login, data-user-id)
+    const who = doc.querySelector('[data-user-login]');
+    if (who && (!out.user_id || who.getAttribute('data-user-id') === out.user_id)) {
+      out.login = (who.getAttribute('data-user-login') || '').trim();
+    }
     return out;
   }
 
@@ -506,6 +524,7 @@
         ok: true,
         data: {
           domain, service_id: found.service_id, account: s.user_id || found.user_id, bill_owner: found.bill_owner,
+          login: s.login || '',
           bill_state: found.state, sd, s, esia,
           urls: {
             bills: `${location.origin}/bill/bills?searchstring=${encodeURIComponent(found.query)}`,
@@ -520,8 +539,178 @@
     }
   }
 
+  // ------------------------------------------------------------------ смена администратора домена (0.7.6)
+
+  const fireEv = (el, type) => el.dispatchEvent(new Event(type, { bubbles: type !== 'blur' && type !== 'focus' }));
+  const mark = (el, color) => { if (el) { el.style.outline = color ? `2px solid ${color}` : ''; el.style.outlineOffset = color ? '1px' : ''; } };
+
+  // Шаг 1: /manager/domain_move — form с textarea[name=domains]. p: {domains: [], change_admin, change_account,
+  // login_to, files: [{name, type, b64}]}. Формы не отправляются.
+  function domainMoveFill(p) {
+    p = p || {};
+    const ta = document.querySelector('textarea[name="domains"]');
+    const form = ta && ta.closest('form');
+    if (!form) {
+      return { ok: false, error: { code: 'bad_page', message: 'Во вкладке не первый шаг «Перенос доменов между аккаунтами» (нет поля «Домены»).' } };
+    }
+    const changed = [], notes = [];
+    const setVal = (el, v, label) => {
+      if (!el) { notes.push(`нет поля «${label}»`); return; }
+      if (el.value !== v) {
+        el.value = v;
+        fireEv(el, 'input');
+        fireEv(el, 'change');
+        changed.push(label);
+      }
+      mark(el, '#f0ad4e');
+    };
+    const check = (name, on, label) => {
+      const el = form.querySelector(`input[type="checkbox"][name="${name}"]`);
+      if (!el) { notes.push(`нет флажка «${label}»`); return; }
+      if (el.checked !== !!on) {
+        el.checked = !!on;
+        fireEv(el, 'change');          // страница показывает/скрывает поля этой операции (jQuery .change)
+        changed.push(`${label}: ${on ? 'да' : 'нет'}`);
+      }
+      mark(el.closest('label') || el, '#f0ad4e');
+    };
+    setVal(ta, (p.domains || []).join('\n'), 'Домены');
+    check('do_change_admin', p.change_admin !== false, 'смена администратора');
+    check('do_change_account', !!p.change_account, 'перенос на другой аккаунт');
+    if (p.change_account) setVal(form.querySelector('input[name="login_to"]'), String(p.login_to || ''), 'Принимающий аккаунт');
+    let attached = [];
+    if (p.files && p.files.length) {
+      const fi = form.querySelector('input[type="file"][name="attachment"]');
+      if (!fi) notes.push('нет поля «Загрузить документы»');
+      else {
+        const dt = new DataTransfer();
+        for (const f of p.files) {
+          const bin = atob(f.b64 || '');
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          dt.items.add(new File([bytes], f.name, { type: f.type || 'application/octet-stream' }));
+        }
+        fi.files = dt.files;
+        fireEv(fi, 'change');
+        attached = [...fi.files].map(x => x.name);
+        mark(fi, '#f0ad4e');
+      }
+    }
+    try { ta.scrollIntoView({ block: 'center' }); } catch (e) { /* ничего */ }
+    return { ok: true, data: { step: 1, changed, attached, notes, domains: p.domains || [],
+      untouched: ['не проверять наличие контактов и документов', 'allow_rereg_only_bill', 'сохранить ЧУ', 'расторгнуть сделку в Магазине доменов'] } };
+  }
+
+  // Шаг 2: form[name=contacts_form] (POST /manager/domain_move_contacts). Блок #base-contacts — «изменить на данные
+  // нового аккаунта» (только чтение, значения в <b>), #fill-contacts — «заполнить вручную» (поля формы).
+  const BASE_LABELS = [
+    [/^Гражданство/, 'citizenship'], [/^Ф\.?И\.?О/, 'fio'], [/^Паспорт/, 'passport'], [/^ИНН/, 'inn'],
+    [/^Дата рождения/, 'birth_date'], [/^Почтовый адрес/, 'address'], [/^Телефон/, 'phone'],
+    [/^Номер sms/i, 'sms'], [/^Факс/, 'fax'], [/^Электронная почта/, 'email'],
+  ];
+  function baseContacts(box) {
+    const out = {}, cells = {};
+    if (!box) return { out, cells };
+    for (const td of box.querySelectorAll('td.col1')) {
+      const label = text(td.querySelector('span:last-child') || td);
+      const hit = BASE_LABELS.find(([re]) => re.test(label));
+      const val = td.nextElementSibling;
+      if (!hit || !val) continue;
+      const bs = [...val.querySelectorAll('b')];
+      let v = bs.length ? text(bs[0]) : text(val);
+      if (hit[1] === 'fio' && bs[1]) out.fio_en = text(bs[1]);
+      v = v.replace(/\s*,\s*/g, ', ').replace(/(,\s*)+$/, '').trim();
+      out[hit[1]] = v;
+      cells[hit[1]] = bs[0] || val;
+    }
+    // «4000, 123456, ГУ МВД …, 01.02.2020» → части
+    const m = /^(\d{2}\s?\d{2})\s*,\s*(\d{6})\s*,\s*(.*?)\s*,\s*(\d{2}\.\d{2}\.\d{4})(?:\s*,\s*(.*))?$/.exec(out.passport || '');
+    if (m) Object.assign(out, { passport_series: m[1].replace(/\s/g, ''), passport_number: m[2], passport_place: m[3], passport_date: m[4], passport_place_id: m[5] || '' });
+    return { out, cells };
+  }
+  const FILL_NAMES = ['person_r_surname', 'person_r_name', 'person_r_patronimic', 'passport_series', 'passport_number_short',
+    'passport_place', 'passport_date', 'passport_place_id', 'code', 'birth_date', 'p_addr_zip', 'p_addr_area',
+    'p_addr_district', 'p_addr_city', 'p_addr_street', 'p_addr_house', 'p_addr_building', 'p_addr_frame', 'p_addr_flat',
+    'p_addr_additional', 'phone', 'e_mail'];
+  function contactsForm() {
+    const form = document.querySelector('form[name="contacts_form"]');
+    if (!form) return null;
+    return form;
+  }
+  function notStep2() {
+    return { ok: false, error: { code: 'bad_page', message: 'Во вкладке manager не второй шаг смены администратора («данные нового администратора»). Нажмите «Далее» на первом шаге и повторите.' } };
+  }
+  function domainMoveRead() {
+    const form = contactsForm();
+    if (!form) return notStep2();
+    const hidden = n => ((form.querySelector(`input[type="hidden"][name="${n}"]`) || {}).value || '').trim();
+    const mode = (form.querySelector('input[name="change_contacts"]:checked') || {}).value || '';
+    const { out } = baseContacts(form.querySelector('#base-contacts'));
+    const fill = {};
+    const fc = form.querySelector('#fill-contacts');
+    if (fc) {
+      for (const n of FILL_NAMES) {
+        const el = fc.querySelector(`[name="${n}"]`);
+        if (el && !el.classList.contains('blank')) fill[n] = (el.value || '').trim();
+      }
+    }
+    return { ok: true, data: { step: 2, mode, base: out, fill, domains: hidden('domains'), to_user_id: hidden('to_user_id'),
+      current_user_id: hidden('current_user_id'), change_account: hidden('do_change_account') === '1',
+      change_admin: hidden('do_change_admin') === '1' } };
+  }
+  const MARK_COLOR = { ok: '#2e9d57', fail: '#d0453b', warn: '#e0a100' };
+  const MARK_FILL = { fio: ['person_r_surname', 'person_r_name', 'person_r_patronimic'], email: ['e_mail'], phone: ['phone'] };
+  function domainMoveMark(marks) {
+    const form = contactsForm();
+    if (!form) return notStep2();
+    const { cells } = baseContacts(form.querySelector('#base-contacts'));
+    let n = 0;
+    for (const [k, st] of Object.entries(marks || {})) {
+      const color = MARK_COLOR[st] || '';
+      if (cells[k]) { mark(cells[k], color); cells[k].style.background = color ? `${color}22` : ''; n++; }
+      for (const name of MARK_FILL[k] || []) {
+        const el = form.querySelector(`#fill-contacts [name="${name}"]`);
+        if (el) { mark(el, color); n++; }
+      }
+    }
+    return { ok: true, data: { marked: n } };
+  }
+  function domainMoveFillContacts(fields) {
+    const form = contactsForm();
+    if (!form) return notStep2();
+    const radio = form.querySelector('input[name="change_contacts"][value="fill"]');
+    if (radio && !radio.checked) {
+      radio.checked = true;
+      fireEv(radio, 'change');        // страница показывает блок «заполнить вручную»
+    }
+    const box = form.querySelector('#fill-contacts');
+    if (!box) return { ok: false, error: { code: 'bad_page', message: 'На странице нет блока «заполнить вручную».' } };
+    if (box.style.display === 'none') box.style.display = '';
+    const changed = [], missing = [];
+    for (const name of FILL_NAMES) {
+      if (!(name in (fields || {}))) continue;
+      const value = String(fields[name] ?? '').trim();
+      if (!value) continue;
+      const el = box.querySelector(`[name="${name}"]`);
+      if (!el) { missing.push(name); continue; }
+      const old = el.classList.contains('blank') ? '' : el.value;
+      try { el.focus({ preventScroll: true }); } catch (e) { /* ничего */ }
+      fireEv(el, 'focus');              // страница убирает текст-подсказку из пустого поля
+      el.classList.remove('blank');
+      el.value = value;
+      fireEv(el, 'input');
+      fireEv(el, 'change');
+      try { el.blur(); } catch (e) { /* ничего */ }
+      fireEv(el, 'blur');               // у ФИО — пересчёт имени по-английски (translit_pers_org)
+      mark(el, '#f0ad4e');
+      changed.push({ name, old, new: value });
+    }
+    return { ok: true, data: { step: 2, mode: 'fill', changed, missing } };
+  }
+
   window.__doctoolManager = {
     version: VERSION, lookup, account, fillRunic, parseBills, pickService, parseSd, parseS, parseEsiaList,
     parseUserDetails, parseRunic, setRunicType, isManagerPage,
+    domainMoveFill, domainMoveRead, domainMoveMark, domainMoveFillContacts,
   };
 })();

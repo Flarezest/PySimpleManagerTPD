@@ -2,10 +2,12 @@
 
 **Windows 10/11** — скачайте `PySimpleManager-…-windows-x64-setup.exe` и запустите. Права администратора не нужны.
 Если Windows покажет «Система Windows защитила ваш компьютер», нажмите «Подробнее» → «Выполнить в любом случае»
-(установщик не подписан сертификатом). Tesseract с русским языком уже внутри — отдельно ставить ничего не нужно.
+(установщик не подписан сертификатом). Tesseract с русским языком и 7-Zip (архивы rar и 7z) уже внутри — отдельно
+ставить ничего не нужно.
 
 **Linux (Ubuntu 22.04 и новее, Debian 12)** — скачайте `pysimplemanager_…_amd64.deb` и выполните
-`sudo apt install ./pysimplemanager_…_amd64.deb` (Tesseract с русским языком поставится сам). Запуск — «PySimpleManager»
+`sudo apt install ./pysimplemanager_…_amd64.deb` (Tesseract с русским языком поставится сам; для архивов rar —
+`sudo apt install 7zip unrar`, в Debian `unrar` — из раздела non-free). Запуск — «PySimpleManager»
 в меню приложений или `pysimplemanager` в терминале.
 
 **macOS (Apple Silicon, пробная сборка)** — откройте `.dmg`, перетащите папку `PySimpleManager` в «Программы»,
@@ -21,6 +23,7 @@
 Ставится один раз: `chrome://extensions` → «Режим разработчика» → «Загрузить распакованное расширение» → папка
 `chrome_extension` в папке программы (Windows: Пуск → PySimpleManager → «Расширение Chrome (папка)»;
 Linux: `/opt/pysimplemanager/chrome_extension`). После обновления программы — кнопка «Обновить» на карточке
-расширения.
+расширения. С 0.7.6 расширение заполняет страницу проверки паспорта на Госуслугах — Chrome попросит разрешение на
+сайт gosuslugi.ru.
 
 Что изменилось — CHANGELOG.md.

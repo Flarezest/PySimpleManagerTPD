@@ -6,17 +6,27 @@
  *                  с 0.7.2 — и у юрлиц);
  *    account     — данные аккаунта и базовая анкета (0.6.0);
  *    fill_runic  — заполнить поля базовой анкеты во вкладке оператора (0.6.0; ИП и юрлица — 0.7.3).
+ *    (0.7.6, рабочее место программы)
+ *    gosuslugi_fill   — вписать серию, номер, фамилию и имя на странице «Проверка действительности паспорта»
+ *                       (Госуслуги, вкладка оператора; «Продолжить» нажимает оператор);
+ *    domain_move_fill — шаг 1 смены администратора в manager: домены, флажки операции, принимающий аккаунт,
+ *                       документы в «Загрузить документы»;
+ *    domain_move_read / domain_move_mark / domain_move_fill_contacts — шаг 2 («данные нового администратора»):
+ *                       прочитать, подсветить итог сверки, вписать ФИО и контакты при «заполнить вручную».
  *    lookup и account читают страницы в отдельной фоновой вкладке manager.
  * 3) Если manager просит вход (окно «Войти»), показывает вкладку и сообщает doctool.
  *
- * Расширение читает страницы manager. Единственное, что оно меняет, — значения полей формы базовой анкеты
- * (и, с 0.7.3, переключатель типа анкеты «Физик / ИП / Юрик») по кнопке «Заполнить автоматически» в doctool,
- * во вкладке, которую видит оператор. Кнопки manager
- * («Сохранить», «Изменить», «Удалить» и т. п.) оно не нажимает и формы не отправляет.
+ * Расширение читает страницы manager. Меняет оно только значения полей форм во вкладках, которые видит оператор,
+ * и только по кнопке в программе: базовая анкета (с 0.7.3 — и переключатель «Физик / ИП / Юрик»), с 0.7.6 —
+ * страницы смены администратора и форма проверки паспорта на Госуслугах. Кнопки («Сохранить», «Далее»,
+ * «Продолжить», «Изменить», «Удалить» и т. п.) оно не нажимает и формы не отправляет.
  */
 const VERSION = chrome.runtime.getManifest().version;
 const MANAGER = 'https://manager.reg.ru/';
 const IDENTITY = 'https://identity.reg.ru/';
+const GOSUSLUGI = 'https://www.gosuslugi.ru/';
+const GOSUSLUGI_FORM = 'https://www.gosuslugi.ru/621102/1/form';   // «Проверка действительности паспорта»
+const DOMAIN_MOVE = 'https://manager.reg.ru/manager/domain_move';
 const DEFAULTS = { port: 8765, authWaitSec: 180, pauseMs: 300, closeTabAfterSec: 60 };
 
 let ws = null;
@@ -116,6 +126,11 @@ async function handle(m) {
     else if (m.cmd === 'account') reply = await readAccount(m.id, m.params || {});
     else if (m.cmd === 'fill_runic') reply = await fillRunic(m.id, m.params || {});
     else if (m.cmd === 'check_manager') reply = await checkManager();
+    else if (m.cmd === 'gosuslugi_fill') reply = await gosuslugiFill(m.id, m.params || {});
+    else if (m.cmd === 'domain_move_fill') reply = await domainMoveFill(m.id, m.params || {});
+    else if (m.cmd === 'domain_move_read') reply = await domainMoveStep2(m.id, 'domainMoveRead', []);
+    else if (m.cmd === 'domain_move_mark') reply = await domainMoveStep2(m.id, 'domainMoveMark', [(m.params || {}).marks || {}]);
+    else if (m.cmd === 'domain_move_fill_contacts') reply = await domainMoveStep2(m.id, 'domainMoveFillContacts', [(m.params || {}).fields || {}]);
     else reply = { ok: false, error: { code: 'unknown_cmd', message: `Неизвестная команда: ${m.cmd}` } };
   } catch (e) {
     reply = { ok: false, error: { code: e.code || 'error', message: e.message || String(e) } };
@@ -307,6 +322,129 @@ async function fillRunic(reqId, { user_id, fields, restore, type, back_type }) {
   return out;
 }
 
+// ------------------------------------------------------------------ смена администратора домена (0.7.6)
+
+async function focusTab(tabId) {
+  try {
+    const t = await chrome.tabs.update(tabId, { active: true });
+    await chrome.windows.update(t.windowId, { focused: true });
+  } catch { /* окно недоступно */ }
+}
+
+async function probe(tabId, func) {
+  try {
+    const [r] = await chrome.scripting.executeScript({ target: { tabId }, func });
+    return !!(r && r.result);
+  } catch {
+    return false;
+  }
+}
+
+// Вкладка оператора со страницей смены администратора: уже открытая на нужном шаге или новая (шаг 1).
+async function domainMoveTab(step) {
+  const tabs = await chrome.tabs.query({ url: `${DOMAIN_MOVE}*` });
+  const want = step === 1 ? () => !!document.querySelector('textarea[name="domains"]')
+                          : () => !!document.querySelector('form[name="contacts_form"]');
+  for (const t of tabs) {
+    if (await probe(t.id, want)) return { tabId: t.id, opened: false };
+  }
+  if (step !== 1) {
+    throw fail('no_tab', 'Не найдена вкладка manager со вторым шагом смены администратора («данные нового администратора»). Нажмите «Далее» на первом шаге в manager и повторите.');
+  }
+  const tab = await chrome.tabs.create({ url: DOMAIN_MOVE, active: true });
+  return { tabId: tab.id, opened: true };
+}
+
+async function domainMoveFill(reqId, params) {
+  if (!params.domains || !params.domains.length) throw fail('bad_request', 'Нет доменов для смены администратора');
+  note(`Смена администратора: ${params.domains.join(', ')}`);
+  progressTo(reqId, 'domain_move', 'открываю «Перенос доменов между аккаунтами» в manager');
+  const { tabId, opened } = await domainMoveTab(1);
+  await focusTab(tabId);
+  const { authWaitSec } = await settings();
+  await waitLoaded(tabId, 30000, authWaitSec * 1000);
+  await waitForLogin(tabId);
+  progressTo(reqId, 'fill', `вписываю домены${(params.files || []).length ? ' и прикрепляю документы' : ''}`);
+  const out = await runInTab(tabId, 'domainMoveFill', [params]);
+  if (out.ok) out.data.tab_opened = opened;
+  note(`Смена администратора: ${out.ok ? `заполнено (${(out.data.changed || []).length}), файлов ${(out.data.attached || []).length}` : out.error.message}`);
+  return out;
+}
+
+async function domainMoveStep2(reqId, fn, args) {
+  const { tabId } = await domainMoveTab(2);
+  if (fn !== 'domainMoveRead') await focusTab(tabId);
+  progressTo(reqId, 'domain_move', 'шаг 2: данные нового администратора');
+  return runInTab(tabId, fn, args);
+}
+
+// ------------------------------------------------------------------ Госуслуги: проверка действительности паспорта (0.7.6)
+
+// Выполняется во вкладке Госуслуг (изолированный мир расширения). Поля маскированные (Angular): значение вписывается
+// по символу с событиями клавиатуры и ввода, затем проверяется, что поле его приняло. «Продолжить» не нажимается.
+function fillGosuslugiForm(p) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  const typeInto = (el, value) => {
+    el.focus();
+    el.dispatchEvent(new FocusEvent('focus'));
+    setter.call(el, '');
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+    for (const ch of String(value)) {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keypress', { key: ch, bubbles: true }));
+      setter.call(el, el.value + ch);
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
+    }
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.blur();
+    el.dispatchEvent(new FocusEvent('blur'));
+    el.style.outline = '2px solid #f0ad4e';
+    return el.value;
+  };
+  const fields = [['series', '#series', 'Серия'], ['number', '#number', 'Номер'],
+                  ['surname', '#component_lastname, input[name="component_lastname"]', 'Фамилия'],
+                  ['name', '#component_firstname, input[name="component_firstname"]', 'Имя']];
+  const filled = {}, problems = [];
+  for (const [key, sel, label] of fields) {
+    const el = document.querySelector(sel);
+    if (!el) { problems.push(`нет поля «${label}»`); continue; }
+    if (!p[key]) continue;
+    const got = typeInto(el, p[key]);
+    filled[key] = got;
+    const norm = s => String(s || '').replace(/[\s_-]/g, '').toLowerCase();
+    if (norm(got) !== norm(p[key])) problems.push(`«${label}»: поле приняло «${got}» вместо «${p[key]}» — поправьте вручную`);
+  }
+  const btn = [...document.querySelectorAll('button')].find(b => /Продолжить/i.test(b.textContent || ''));
+  return { ok: true, data: { filled, problems, button_enabled: !!(btn && !btn.disabled && !btn.classList.contains('disabled')) } };
+}
+
+async function gosuslugiFill(reqId, p) {
+  if (!p.series || !p.number) throw fail('bad_request', 'Нет серии и номера паспорта');
+  note(`Госуслуги: проверка паспорта ${p.series} ${p.number}`);
+  progressTo(reqId, 'gosuslugi', 'открываю «Проверка действительности паспорта» на Госуслугах');
+  const tabs = await chrome.tabs.query({ url: `${GOSUSLUGI}621102/*` });
+  let tab = tabs[0];
+  if (!tab) tab = await chrome.tabs.create({ url: GOSUSLUGI_FORM, active: true });
+  await focusTab(tab.id);
+  await waitLoaded(tab.id, 60000, 60000);
+  // страница — приложение Angular: форма появляется после загрузки скриптов; без входа Госуслуги покажут вход
+  const has = () => !!document.querySelector('#series') && !!document.querySelector('#number');
+  let ready = false;
+  for (let i = 0; i < 90 && !ready; i++) {
+    ready = await probe(tab.id, has);
+    if (!ready) await sleep(1000);
+  }
+  if (!ready) {
+    throw fail('gosuslugi_form', 'На странице Госуслуг нет формы «Паспорт РФ» (серия, номер). Если Госуслуги просят вход — войдите во вкладке и нажмите кнопку в программе ещё раз.');
+  }
+  progressTo(reqId, 'fill', 'вписываю серию, номер, фамилию и имя');
+  const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: fillGosuslugiForm, args: [p] });
+  const out = (res && res.result) || { ok: false, error: { code: 'error', message: 'Скрипт на странице Госуслуг не вернул результат' } };
+  note(`Госуслуги: ${out.ok ? (out.data.problems.length ? out.data.problems.join('; ') : 'данные вписаны') : out.error.message}`);
+  return out;
+}
+
 async function checkManager() {
   const tabId = await ensureManagerTab();
   const [res] = await chrome.scripting.executeScript({
@@ -352,7 +490,7 @@ function waitLoaded(tabId, ms, authMs) {
     authHooks.set(tabId, () => { clearTimeout(timer); timer = setTimeout(() => done(false), authMs); });
     timer = setTimeout(() => done(false), ms);
     chrome.tabs.get(tabId).then(t => {
-      if (t.status === 'complete' && t.url && (t.url.startsWith(MANAGER) || t.url.startsWith(IDENTITY))) done(true);
+      if (t.status === 'complete' && t.url && (t.url.startsWith(MANAGER) || t.url.startsWith(IDENTITY) || t.url.startsWith(GOSUSLUGI))) done(true);
     }).catch(() => done(false));
   });
 }

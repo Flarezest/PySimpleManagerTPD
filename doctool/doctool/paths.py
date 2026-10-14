@@ -10,6 +10,7 @@
       results/                 результаты проверок и реестр_проверок.xlsx
       forms/<id>/              свои модули заявлений; модуль с тем же id заменяет встроенный
       config/case_types.yaml   свои типы заявлений и правила вердикта (если файла нет — встроенные)
+      config/workspace.yaml    (0.7.6) своя строка таблицы и проверки доменов рабочего места
       ПРОЧТИ.txt               что где лежит
 
   Обновление программы папку данных не трогает.
@@ -27,6 +28,7 @@ APP_DIR = Path(__file__).resolve().parent.parent
 FROZEN = bool(getattr(sys, "frozen", False))
 BUNDLED_FORMS = APP_DIR / "forms"
 BUNDLED_CONFIG = APP_DIR / "config" / "case_types.yaml"
+BUNDLED_WORKSPACE = APP_DIR / "config" / "workspace.yaml"     # (0.7.6) рабочее место: строка таблицы, проверки доменов
 README_NAME = "ПРОЧТИ.txt"
 
 
@@ -106,6 +108,14 @@ def config_file() -> Path:
     return own if own and own.is_file() else BUNDLED_CONFIG
 
 
+def workspace_config_file() -> Path:
+    """(0.7.6) Настройки рабочего места (строка таблицы, проверки доменов): свой config/workspace.yaml из папки
+    данных, если он есть, иначе встроенный."""
+    u = user_dir()
+    own = u / "config" / "workspace.yaml" if u else None
+    return own if own and own.is_file() else BUNDLED_WORKSPACE
+
+
 def ensure_user_dir() -> Path | None:
     """Создаёт папку данных (results, forms, config) и ПРОЧТИ.txt. None — режим исходников."""
     u = user_dir()
@@ -130,7 +140,8 @@ def describe() -> list[str]:
     u = user_dir()
     return [f"Папка данных: {u}" if u else "Папка данных: нет (запуск из исходников, results — в текущей папке)",
             "Модули заявлений: " + "; ".join(str(d) for d in dirs()),
-            f"Типы заявлений и правила: {config_file()}"]
+            f"Типы заявлений и правила: {config_file()}",
+            f"Рабочее место (строка таблицы, проверки доменов): {workspace_config_file()}"]
 
 
 README_TEXT = """\
@@ -146,6 +157,8 @@ forms\\          свои модули заявлений (необязател�
                 Модуль с тем же id, что у встроенного, заменяет встроенный.
 config\\         свои типы заявлений и правила вердикта (необязательно): файл config\\case_types.yaml.
                 Если файла нет, действуют встроенные правила.
+                Своя строка таблицы и проверки доменов рабочего места — config\\workspace.yaml
+                (копия встроенного workspace.yaml из папки программы).
 
 Встроенные модули заявлений: {forms}
 Встроенные правила:          {config}

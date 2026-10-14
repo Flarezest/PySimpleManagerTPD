@@ -7,7 +7,7 @@
   python -m doctool --llm-fields qwen3:8b check -a заявление.pdf   # поля заявления читает нейросеть (0.7.0)
   python -m doctool extract паспорт.pdf --type passport
   python -m doctool whois example.ru пример.рф             # статус домена в реестре (WHOIS)
-  python -m doctool validate                               # проверить модули заявлений forms/ и config/case_types.yaml
+  python -m doctool validate                               # проверить модули заявлений forms/, config/case_types.yaml и config/workspace.yaml
 """
 from __future__ import annotations
 
@@ -136,6 +136,8 @@ def cmd_validate(args):
     for line in paths.describe():
         print(line)
     problems = validate_config(case_types=types)
+    from .wsconfig import validate as validate_ws          # (0.7.6) config/workspace.yaml рабочего места
+    problems += validate_ws()
     for p in problems:
         print(f"[!] {p}")
     if problems:

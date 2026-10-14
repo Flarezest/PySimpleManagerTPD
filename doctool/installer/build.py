@@ -1,4 +1,4 @@
-"""Сборка установщика PySimpleManager на текущей системе (0.7.5).
+"""Сборка установщика PySimpleManager на текущей системе (0.7.6).
 
     python installer/build.py                 # всё: Tesseract → PyInstaller → проверка → установщик
     python installer/build.py --no-smoke      # без проверки сборки (installer/smoke_test.py)
@@ -45,6 +45,10 @@ TESSDATA = {
     "osd": "e19f2ae860792fdf372cf48d8ce70ae5da3c4052962fe22e9de1f680c374bb0e",
 }
 TESSDATA_URL = "https://raw.githubusercontent.com/tesseract-ocr/tessdata/4.1.0/{}.traineddata"
+# (0.7.6) 7-Zip для Windows: rar и 7z из тикетницы распаковываются без установленного 7-Zip (doctool/archive.py).
+# Из установщика берутся только 7z.exe, 7z.dll (в нём и rar) и лицензия; файл проверяется по SHA-256.
+WIN_7ZIP = ("https://github.com/ip7z/7zip/releases/download/24.09/7z2409-x64.exe",
+            "bdd1a33de78618d16ee4ce148b849932c05d0015491c34887846d431d29f308e")
 
 
 def log(msg: str) -> None:
@@ -149,6 +153,21 @@ def tesseract_windows() -> Path:
     return dest
 
 
+def seven_zip_windows() -> Path:
+    """7z.exe + 7z.dll из установщика 7-Zip (без его запуска) → <программа>/_internal/7zip."""
+    url, digest = WIN_7ZIP
+    setup = download(url, BUILD / "cache" / url.rsplit("/", 1)[1], digest)
+    dest = BUILD / "7zip"
+    shutil.rmtree(dest, ignore_errors=True)
+    sh(seven_zip(), "x", "-y", f"-o{dest}", setup, "7z.exe", "7z.dll", "License.txt", "readme.txt",
+       stdout=subprocess.DEVNULL)
+    p = subprocess.run([str(dest / "7z.exe"), "i"], capture_output=True, text=True, errors="replace")
+    if p.returncode != 0 or not re.search(r"\bRar5?\b", p.stdout):
+        sys.exit(f"[!] 7-Zip из {setup.name} не работает или без поддержки rar:\n{p.stdout[-1500:]}{p.stderr[-500:]}")
+    print("   7z.exe + 7z.dll (форматы zip, rar, 7z)")
+    return dest
+
+
 def tesseract_macos() -> Path:
     """Tesseract из Homebrew (brew install tesseract dylibbundler) с библиотеками рядом (@executable_path/libs)."""
     def brew(*args: str) -> Path:
@@ -200,11 +219,14 @@ def icon() -> Path | None:
     return ico
 
 
-def pyinstaller(tess: Path | None, ico: Path | None) -> Path:
+def pyinstaller(tess: Path | None, ico: Path | None, sevenzip: Path | None = None) -> Path:
     env = {**os.environ, "PYTHONPATH": str(ROOT)}
     env.pop("PYSM_TESSERACT", None)
+    env.pop("PYSM_7ZIP", None)
     if tess:
         env["PYSM_TESSERACT"] = str(tess)
+    if sevenzip:
+        env["PYSM_7ZIP"] = str(sevenzip)
     if ico:
         env["PYSM_ICON"] = str(ico)
     shutil.rmtree(DIST, ignore_errors=True)
@@ -291,7 +313,8 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Depends: tesseract-ocr, tesseract-ocr-rus
-Recommends: xdg-user-dirs, xdg-utils
+Recommends: xdg-user-dirs, xdg-utils, 7zip | p7zip-full
+Suggests: unrar | 7zip-rar
 Installed-Size: {kb}
 Maintainer: PySimpleManager <noreply@github.com>
 Homepage: https://github.com/Flarezest/PyTextRecognitionTPD
@@ -299,6 +322,9 @@ Description: PySimpleManager - проверка заявлений и паспо
  Локальная проверка заявлений и паспортов РФ: веб-интерфейс в браузере,
  сверка с данными manager через расширение Chrome (папка
  /opt/pysimplemanager/chrome_extension).
+ .
+ Архивы zip распаковываются самой программой; для rar и 7z нужен 7-Zip
+ (пакет 7zip или p7zip-full), для rar — ещё unrar или 7zip-rar.
 """
 
 
@@ -367,10 +393,12 @@ def main() -> None:
     args = ap.parse_args()
     v = version()
     log(f"{APP} {v}: {platform.system()} {platform.machine()}, Python {platform.python_version()}")
-    tess = None
+    tess = sevenzip = None
     if os.name == "nt":
         log("Tesseract для Windows")
         tess = tesseract_windows()
+        log("7-Zip для Windows (архивы rar и 7z)")
+        sevenzip = seven_zip_windows()
     elif sys.platform == "darwin":
         log("Tesseract для macOS")
         tess = tesseract_macos()
@@ -378,7 +406,7 @@ def main() -> None:
         check_tesseract(tess)
     ico = icon()
     log("PyInstaller")
-    exe = pyinstaller(tess, ico)
+    exe = pyinstaller(tess, ico, sevenzip)
     extras()
     if not args.no_smoke:
         log("Проверка собранной программы")

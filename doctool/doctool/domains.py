@@ -13,12 +13,15 @@
 а не к аккаунту), берёт поле state последней записи и файл данных ЕСИА. Сверка Sd ↔ ЕСИА — esia_compare().
 С 0.7.2 — и у доменов юрлиц (ru_org): ИНН, КПП, название организации, юридический адрес (дом, улица, индекс).
 На вердикт дела ЕСИА не влияет.
+
+С 0.7.6 со страницы S берутся комментарий администратора (admin_comment — в таблице буква «К») и логин аккаунта,
+а проверки домена для рабочего места (domain_flags: «стоп / внимание / к сведению») задаются в config/workspace.yaml.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 
 from . import fieldnorm, names, parsers
 from .checks import Ctx, register
@@ -92,6 +95,7 @@ class DomainInfo:
     error: str = ""
     service_id: str = ""
     account: str = ""                # user_id владельца услуги (страница S)
+    login: str = ""                  # (0.7.6) логин этого аккаунта (страница S, кнопка «Клиент обращается через»)
     bill_owner: str = ""             # логин владельца счёта (колонка «Владелец» в счетах)
     group: str = ""                  # группа контактов Sd: ru_pp, ru_org, …
     kind: str = ""                   # person | org
@@ -128,6 +132,11 @@ class DomainInfo:
         return intl_holder(self.sd)
 
     @property
+    def admin_comment(self) -> str:
+        """(0.7.6) Комментарий администратора из S (поле admin_comment): в таблице — буква «К»."""
+        return (self.s.get("admin_comment") or "").strip()
+
+    @property
     def emails(self) -> list[str]:
         """Контактный e-mail администратора из Sd: e_mail (.RU/.РФ/.SU) или o_email (остальные зоны)."""
         return split_emails(self.sd.get("e_mail") or self.sd.get("o_email") or "")
@@ -136,8 +145,10 @@ class DomainInfo:
         d = asdict(self)
         code = problem(self)
         es = esia_summary(self)
+        flags = domain_flags(self)
         d.update(fio=self.fio, passport=self.passport, holder=self.holder, kind_ru=KIND_RU.get(self.kind, "?"),
-                 emails=self.emails,
+                 emails=self.emails, admin_comment=self.admin_comment,
+                 flags=flags, flags_level=flags_level(flags),
                  last_admin_change=_date(self.sd.get("last_admin_change", "")),
                  problem=code, problem_ru=PROBLEM_RU[code], problem_rank=PROBLEM_RANK[code],
                  esia_rows=es["rows"], esia_status=es["status"], esia_state=es["state"], esia_ru=es["text"])
@@ -203,6 +214,7 @@ def from_extension(domain: str, reply: dict) -> DomainInfo:
     info.s = data.get("s") or {}
     info.account = str(data.get("account") or info.s.get("user_id", ""))
     info.bill_owner = data.get("bill_owner") or ""
+    info.login = str(data.get("login") or info.s.get("login") or "")
     info.esia = data.get("esia") or {}
     info.provider = info.s.get("provider", "")
     info.group = sd.get("group", "") or info.s.get("contype", "")
@@ -216,6 +228,78 @@ def from_extension(domain: str, reply: dict) -> DomainInfo:
     elif contype in ORG_GROUPS or info.sd.get("org_r"):
         info.kind = "org"
     return info
+
+
+# ------------------------------------------------------------------ проверки домена для рабочего места (0.7.6)
+
+FLAG_RANK = {"stop": 3, "warn": 2, "info": 1, "": 0}
+FLAG_RU = {"stop": "стоп", "warn": "внимание", "info": "к сведению"}
+
+
+def _on(v) -> bool:
+    """Флаг S включён: «1», «yes», непустое значение, кроме «0» и «no»."""
+    v = str(v or "").strip().lower()
+    return v not in ("", "0", "no", "false", "нет")
+
+
+def _days_since(s: str, today: date) -> int | None:
+    d = parsers.parse_date(_date(s))
+    return (today - d).days if d else None
+
+
+def domain_flags(info: "DomainInfo", cfg: dict | None = None, today: date | None = None) -> list[dict]:
+    """Проверки домена (config/workspace.yaml, раздел domain_checks): [{code, level, text}] — stop / warn / info.
+    Только для найденных доменов; на вердикт дела не влияют (их видит оператор на рабочем месте и в таблице)."""
+    if info.status != FOUND:
+        return []
+    if cfg is None:
+        from .wsconfig import load
+        cfg = load()["domain_checks"]
+    today = today or date.today()
+    out: list[dict] = []
+
+    def add(code: str, text: str = "") -> None:
+        rule = cfg.get(code) or {}
+        lvl = rule.get("level", "off")
+        if lvl in FLAG_RU:
+            title = rule.get("title") or code
+            out.append({"code": code, "level": lvl, "text": f"{title}: {text}" if text else title})
+
+    s = info.s or {}
+    if info.admin_comment:
+        add("admin_comment")
+    days = (cfg.get("recent_admin_change") or {}).get("days", 30)
+    n = _days_since(info.sd.get("last_admin_change", ""), today)
+    if n is not None and 0 <= n <= days:
+        add("recent_admin_change", f"{_date(info.sd.get('last_admin_change', ''))} ({n} дн. назад)")
+    on = [f for f in (cfg.get("s_prohibited") or {}).get("fields") or [] if _on(s.get(f))]
+    if on:
+        add("s_prohibited", ", ".join(on))
+    if (s.get("freeze_reason") or "").strip() or (s.get("freeze_date") or "").strip():
+        add("frozen", " ".join(x for x in (s.get("freeze_reason", "").strip(), _date(s.get("freeze_date", ""))) if x))
+    if (s.get("operation_blocks") or "").strip():
+        add("operation_blocks", s["operation_blocks"].strip())
+    lock = parsers.parse_date(_date(s.get("lock_transfer_till", "")))
+    if lock and lock >= today:
+        add("transfer_lock", parsers.fmt(lock))
+    if s.get("state") and s.get("state") != "A":
+        add("not_active", f"state = {s['state']}" + (f", {s['substate']}" if s.get("substate") else ""))
+    exp = parsers.parse_date(_date(s.get("expiration_date", "")))
+    days = (cfg.get("expires_soon") or {}).get("days", 30)
+    if exp and 0 <= (exp - today).days <= days:
+        add("expires_soon", f"до {parsers.fmt(exp)}")
+    if (info.trustee or "").lower() == "да":
+        add("trustee")
+    if info.kind in ("person", "org") and (info.esia or {}).get("count") == 0:
+        add("esia_none")
+    if info.bill_owner and info.login and info.bill_owner.strip().lower() != info.login.strip().lower():
+        add("bill_owner_differs", f"счёт — {info.bill_owner}, услуга — {info.login}")
+    return out
+
+
+def flags_level(flags: list[dict]) -> str:
+    """Самый строгий уровень проверок домена: stop / warn / info / ""."""
+    return max((f["level"] for f in flags), key=lambda x: FLAG_RANK.get(x, 0), default="")
 
 
 # ------------------------------------------------------------------ ЕСИА (идентификация через Госуслуги)

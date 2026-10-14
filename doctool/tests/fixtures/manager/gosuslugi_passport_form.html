@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>Проверка действительности паспорта (фикстура)</title></head>
+<body>
+<!-- Обезличенная копия формы https://www.gosuslugi.ru/621102/1/form (0.7.6): поля с теми же id, что на странице
+     Госуслуг. Вместо скриптов Angular — заглушка: маска серии «00 00» и номера (6 цифр), кнопка «Продолжить»
+     становится доступной, когда заполнены все четыре поля. -->
+<form class="form" novalidate>
+  <h4>Укажите данные</h4>
+  <div>Паспорт РФ</div>
+  <label for="series">Серия</label> <input class="text-input masked-input" type="text" id="series" autocomplete="off">
+  <label for="number">Номер</label> <input class="text-input masked-input" type="text" id="number" autocomplete="off">
+  <label id="label_component_lastname" for="component_lastname">Фамилия</label>
+  <input class="text-input" type="text" role="textbox" id="component_lastname" name="component_lastname">
+  <label id="label_component_firstname" for="component_firstname">Имя</label>
+  <input class="text-input" type="text" role="textbox" id="component_firstname" name="component_firstname">
+  <button type="button" role="button" class="button disabled" disabled>Продолжить</button>
+</form>
+<script>
+var masks = {series: function(d){ d = d.slice(0, 4); return d.length > 2 ? d.slice(0, 2) + ' ' + d.slice(2) : d; },
+             number: function(d){ return d.slice(0, 6); }};
+document.addEventListener('input', function(e){
+  var m = masks[e.target.id];
+  if (m) e.target.value = m(e.target.value.replace(/\D/g, ''));
+  var full = document.getElementById('series').value.replace(/\D/g, '').length === 4
+    && document.getElementById('number').value.length === 6
+    && document.getElementById('component_lastname').value && document.getElementById('component_firstname').value;
+  var b = document.querySelector('button'); b.disabled = !full; b.classList.toggle('disabled', !full);
+});
+</script>
+</body>
+</html>

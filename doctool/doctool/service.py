@@ -56,6 +56,11 @@ class CaseInput:
     llm_fields: bool = False               # (0.7.0) поля заявления читает нейросеть, а не регулярки бланка
     llm_model: str | None = None           # модель Ollama для полей (по умолчанию llm_extract.DEFAULT_MODEL, qwen3:8b)
     llm_think: bool | None = True          # модель «рассуждает» перед ответом (qwen3); None — как у модели
+    # (0.7.6) рабочее место: страницы из разных файлов, разложенные оператором/программой. Элемент —
+    # {"path": файл, "index": № страницы с 0, "rotate": 0/90/180/270, "crop": [x, y, w, h] в пикселях страницы}.
+    # Если задано, application/passport/combined не используются.
+    app_sources: list | None = None
+    pas_sources: list | None = None
 
 
 @dataclass
@@ -255,11 +260,43 @@ def _safe_name(s: str) -> str:
     return re.sub(r'[\\/:*?"<>|\s]+', "_", s).strip("_")[:60] or "дело"
 
 
+def load_sources(sources: list, cache: dict | None = None) -> list[Page]:
+    """(0.7.6) Страницы рабочего места → Page по порядку: из файла берётся страница index, поворачивается на rotate
+    (по часовой стрелке) и обрезается по crop. Номера страниц (Page.index) — сквозные по списку."""
+    from .ocr import rotate as rot_img
+    cache = {} if cache is None else cache
+    out: list[Page] = []
+    for i, src in enumerate(sources or []):
+        path = str(src["path"])
+        if path not in cache:
+            cache[path] = load_document(path)
+        pages = cache[path]
+        n = int(src.get("index") or 0)
+        if n >= len(pages):
+            continue
+        p = pages[n]
+        img = p.image
+        if img is not None:
+            if src.get("rotate"):
+                img = rot_img(img, int(src["rotate"]) % 360)
+            c = src.get("crop")
+            if c:
+                x, y, w, h = (int(round(v)) for v in c)
+                H, W = img.shape[:2]
+                x, y = max(0, min(x, W - 1)), max(0, min(y, H - 1))
+                img = img[y:min(H, y + max(1, h)), x:min(W, x + max(1, w))].copy()
+        text = p.text_layer if not src.get("crop") else ""
+        name = Path(path).stem + (f"_стр{n + 1}" if len(pages) > 1 else "") + ("_вырезка" if src.get("crop") else "")
+        out.append(Page(image=img, text_layer=text, source=name + Path(path).suffix, index=i))
+    return out
+
+
 def run_case(inp: CaseInput) -> CaseResult:
     types = load_case_types()
     ct = types[inp.case_type]
     forms = load_forms()
-    case_id = inp.case_id or Path(inp.application or inp.passport or "дело").stem
+    first_src = (inp.app_sources or inp.pas_sources or [{}])[0].get("path")
+    case_id = inp.case_id or Path(inp.application or inp.passport or first_src or "дело").stem
     case_dir = Path(inp.out_root) / f"{datetime.now():%Y%m%d_%H%M%S}_{_safe_name(case_id)}"
     case_dir.mkdir(parents=True, exist_ok=True)
     res = CaseResult(inp=inp, case_type=ct, case_id=case_id, case_dir=case_dir)
@@ -268,7 +305,13 @@ def run_case(inp: CaseInput) -> CaseResult:
     # --- файлы и страницы
     app_pages: list[Page] = []
     pas_pages: list[Page] = []
-    if inp.combined:
+    if inp.app_sources is not None or inp.pas_sources is not None:
+        log("Рабочее место: читаю страницы, разложенные по документам…")
+        cache: dict = {}
+        app_pages = load_sources(inp.app_sources or [], cache)
+        pas_pages = load_sources(inp.pas_sources or [], cache)
+        log(f"Страницы: заявление — {len(app_pages)}, паспорт — {len(pas_pages)}")
+    elif inp.combined:
         log("Общий файл: читаю страницы…")
         pages = load_document(inp.application or inp.passport)
         roles = inp.page_roles or classify_pages(pages, forms)
@@ -517,7 +560,10 @@ def build_record(res: CaseResult) -> dict:
         "system_update": _system_update(res),
         "checks": [c.to_dict() for c in res.checks],
         "files": {"application": res.inp.application, "passport": res.inp.passport,
-                  "combined": res.inp.combined, "page_roles": {str(k): v for k, v in res.page_roles.items()}},
+                  "combined": res.inp.combined, "page_roles": {str(k): v for k, v in res.page_roles.items()},
+                  # (0.7.6) рабочее место: какие страницы каких файлов — заявление и паспорт
+                  **({"app_sources": res.inp.app_sources or [], "pas_sources": res.inp.pas_sources or []}
+                     if res.inp.app_sources is not None or res.inp.pas_sources is not None else {})},
     }
     return rec
 

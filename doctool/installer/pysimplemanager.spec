@@ -9,6 +9,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 
 ROOT = Path(SPECPATH).resolve().parent          # корень программы: doctool/, forms/, config/
 TESSERACT = os.environ.get("PYSM_TESSERACT")    # папка с Tesseract для установщика (Windows, macOS), иначе нет
+SEVENZIP = os.environ.get("PYSM_7ZIP")         # (0.7.6) папка с 7z.exe и 7z.dll (Windows), иначе нет
 ICON = os.environ.get("PYSM_ICON") or None
 
 def tree(src: Path, dest: str) -> list[tuple[str, str]]:
@@ -28,6 +29,8 @@ datas = (tree(ROOT / "forms", "forms")          # встроенные моду�
 datas += collect_data_files("pymorphy3") + collect_data_files("pymorphy3_dicts_ru") + copy_metadata("pymorphy3_dicts_ru")
 if TESSERACT:
     datas.append((TESSERACT, "tesseract"))      # → ocr.find_tesseract: <программа>/_internal/tesseract
+if SEVENZIP:
+    datas.append((SEVENZIP, "7zip"))            # → archive.find_7z: <программа>/_internal/7zip/7z.exe
 
 a = Analysis(
     [str(ROOT / "installer" / "launcher.py")],

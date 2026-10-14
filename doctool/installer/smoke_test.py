@@ -1,4 +1,4 @@
-"""Проверка собранной или установленной программы (0.7.5): запускает её как пользователь и смотрит на результат.
+"""Проверка собранной или установленной программы (0.7.6): запускает её как пользователь и смотрит на результат.
 
     python installer/smoke_test.py <путь к PySimpleManager[.exe]>
 
@@ -8,7 +8,9 @@
 3. check по образцам модулей (DOCX, PDF): поля совпадают с <образец>.expected.json;
 4. check по картинке (страница PDF-образца → PNG): работает Tesseract из состава программы, найдены домены;
 5. web: /api/meta отвечает; повторный запуск (без аргументов, как с ярлыка) видит запущенную программу
-   и завершается.
+   и завершается;
+6. (0.7.6) рабочее место: дело из zip-архива (заявление + подпись) разбирается на страницы и проверяется;
+   у сборки для Windows — 7-Zip в составе программы распаковывает .7z.
 
 Нужен pymupdf (есть в requirements.txt). Временные файлы — во временной папке, она удаляется.
 """
@@ -24,6 +26,8 @@ import sys
 import tempfile
 import time
 import urllib.request
+import uuid
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -87,6 +91,48 @@ def meta(port: int) -> dict | None:
         return None
 
 
+def http(port: int, path: str, data: bytes | None = None, headers: dict | None = None, timeout: int = 30):
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data, headers=headers or {})
+    with opener.open(req, timeout=timeout) as r:
+        body = r.read()
+        return json.loads(body.decode("utf-8")) if "json" in (r.headers.get("Content-Type") or "") else body
+
+
+def ws_case(port: int, files: list[Path], what: str) -> None:
+    """Рабочее место: дело из файлов → страницы → проверка → сверка (как оператор, перетащивший архив)."""
+    b = "----pysm" + uuid.uuid4().hex
+    body = b""
+    for f in files:
+        body += (f'--{b}\r\nContent-Disposition: form-data; name="files"; filename="{f.name}"\r\n'
+                 "Content-Type: application/octet-stream\r\n\r\n").encode() + f.read_bytes() + b"\r\n"
+    state = json.dumps({"ticket": "#1", "operation": "Смена администратора", "via": "отрс"})
+    body += (f'--{b}\r\nContent-Disposition: form-data; name="state"\r\n\r\n{state}\r\n--{b}--\r\n').encode()
+    try:
+        ws = http(port, "/api/ws", body, {"Content-Type": f"multipart/form-data; boundary={b}"}, 120)
+        d = {}
+        for _ in range(300):
+            d = http(port, f"/api/ws/{ws['id']}")
+            job = d.get("job") or {}
+            if d.get("status") == "error" or job.get("status") in ("done", "error"):
+                break
+            time.sleep(1)
+        cls = sorted({p["cls"] for p in d.get("pages") or []})
+        ok(d.get("status") == "ready" and "application" in cls, f"рабочее место ({what}): страницы {cls}, {d.get('status')}"
+           + (f" — {d.get('error')}" if d.get("error") else ""))
+        r = http(port, f"/api/ws/{ws['id']}/result")
+        rows = ((r.get("matrix") or {}).get("rows")) or []
+        ok(r.get("ready") and len(rows) > 3, f"рабочее место ({what}): сверка, строк {len(rows)}")
+    except Exception as e:  # noqa: BLE001
+        ok(False, f"рабочее место ({what}): {e}")
+
+
+def bundled_7z(exe: str) -> Path | None:
+    """7-Zip в составе программы (установщик для Windows): <папка программы>/_internal/7zip/7z.exe."""
+    p = Path(exe).resolve().parent / "_internal" / "7zip" / ("7z.exe" if os.name == "nt" else "7z")
+    return p if p.is_file() else None
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -145,6 +191,22 @@ def main() -> int:
                 time.sleep(1)
             ok(bool(got) and got.get("app") == "PySimpleManager" and got.get("version") == version,
                f"web: /api/meta на порту {port}")
+            if got:
+                ok(b"WS" in http(port, "/static/workspace.js"), "web: интерфейс рабочего места (static/workspace.js)")
+                arch = tmp / "ticket.zip"
+                with zipfile.ZipFile(arch, "w") as z:
+                    z.write(pdf, "zayavlenie.pdf")
+                    z.writestr("zayavlenie.pdf.sig", b"0\x82fake")
+                ws_case(port, [arch], "zip")
+                sz = bundled_7z(exe)
+                if os.name == "nt":
+                    ok(sz is not None, "7-Zip в составе программы (_internal/7zip/7z.exe)")
+                if sz:
+                    a7 = tmp / "ticket.7z"
+                    subprocess.run([str(sz), "a", "-y", str(a7), str(pdf)], capture_output=True, timeout=120)
+                    ok(a7.exists(), "7-Zip из состава программы создаёт .7z")
+                    if a7.exists():
+                        ws_case(port, [a7], "7z")
             if port == 8765:          # повторный запуск с ярлыка (без аргументов)
                 p = run(exe, [], env, 60)
             else:

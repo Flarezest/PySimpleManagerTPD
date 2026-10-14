@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PySimpleManager</title>
+<link rel="stylesheet" href="/static/workspace.css">
 <style>
 :root{
   --bg:#f5f6f8;--card:#fff;--text:#1d1f23;--muted:#667085;--line:#dfe3e8;--accent:#2b6cb0;--accent-text:#fff;
@@ -106,6 +107,15 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 dialog .hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
 dialog .hd h3{margin:0;font-size:16px}
 dialog .bd{padding:14px 18px;max-height:75vh;overflow:auto}
+/* (0.7.6) «К» — комментарий администратора в S; маленькое окошко с текстом */
+.kbtn{display:inline-block;min-width:20px;padding:0 5px;margin-left:4px;border-radius:5px;background:#c2410c;color:#fff;font-weight:700;font-size:12px;line-height:19px;text-align:center;border:0;cursor:pointer;vertical-align:1px}
+.kbtn:hover{filter:brightness(1.12)}
+.kpop{position:fixed;z-index:1000;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 28px rgba(16,24,40,.22);padding:10px 12px;max-width:360px;font-size:13px}
+.kpop h4{margin:0 0 6px;font-size:13px}
+.kpop .tx{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-bottom:8px;overflow-wrap:anywhere}
+.kpop .ft{display:flex;gap:8px;align-items:center}
+ul.flags{margin:4px 0 0 16px;padding:0}
+ul.flags li{margin:2px 0}
 </style>
 </head>
 <body>
@@ -115,9 +125,64 @@ dialog .bd{padding:14px 18px;max-height:75vh;overflow:auto}
   <span class="ext" id="extState" title="Расширение Chrome «PySimpleManager»"><span class="dot"></span><span>manager: …</span></span>
 </header>
 <nav class="tabs">
+  <button data-tab="tabWork">Рабочее место</button>
   <button data-tab="tabCheck" class="on">Проверка заявления и домены</button>
   <button data-tab="tabOwner">Смена владельца ЛК</button>
+  <div class="ws-steps hidden" id="wsSteps"></div>
 </nav>
+<!-- ================================================================ (0.7.6) рабочее место: static/workspace.js -->
+<div id="tabWork" class="wsx hidden">
+  <section id="wsIntake" class="ws-intake">
+    <h2 style="margin:0 0 4px;font-size:18px">Новое дело</h2>
+    <p class="hint" style="margin:0 0 6px">Архив из тикетницы раскладывается по страницам: заявление, паспорт, прочее. Программа сразу читает
+      поля, загружает Sd, S и ЕСИА доменов из manager и показывает всё рядом для сверки.</p>
+    <div class="ws-row">
+      <label class="f">Номер тикета <span style="display:flex;gap:4px"><input type="text" id="wsTicketNew" placeholder="#20261012373031821">
+        <button class="sm" data-wspaste="wsTicketNew" title="Вставить из буфера обмена">Вставить</button></span></label>
+      <label class="f">Тип операции <select id="wsOpNew"></select></label>
+      <label class="f">Способ получения <select id="wsViaNew"></select></label>
+    </div>
+    <div class="ws-drop" id="wsDrop"><b>Перетащите сюда архив из тикетницы</b><br>
+      <span class="hint">zip или rar — или сами файлы: заявление, паспорт (PDF, JPG, PNG, TIFF, DOCX), подпись .sig</span><br><br>
+      <button id="wsPick" type="button">Выбрать файлы…</button><input type="file" id="wsFiles" multiple class="hidden"></div>
+    <div class="msg hidden" id="wsIntakeMsg"></div>
+    <div class="ws-recent" id="wsRecent"></div>
+  </section>
+  <div id="wsMain" class="hidden" style="flex:1;min-height:0;display:flex;flex-direction:column">
+    <div class="ws-case">
+      <label class="f">Номер тикета <span style="display:flex;gap:4px"><input type="text" id="wsTicket">
+        <button class="sm" data-wspaste="wsTicket" title="Вставить из буфера обмена">Вставить</button></span></label>
+      <label class="f">Тип операции <select id="wsOp"></select></label>
+      <label class="f">Способ получения <select id="wsVia"></select></label>
+      <div class="ws-arch" id="wsArch"></div>
+      <span class="ws-status" id="wsStatus"></span>
+    </div>
+    <div class="ws-strip" id="wsStrip"></div>
+    <div class="ws-tbar">
+      <button id="wsStripT" title="Лента страниц: миниатюры / одной строкой">Лента ▴</button>
+      <span>Раскладка:</span>
+      <button data-wspreset="cols3">3 колонки</button>
+      <button data-wspreset="docs">Документы крупно</button>
+      <button data-wspreset="grid">Сетка 2×2</button>
+      <button data-wspreset="cascade">Каскад</button>
+      <label><input type="checkbox" id="wsSnapOn" checked> прилипание</label>
+      <button id="wsSaveLayout" title="Запомнить расположение окон для этого типа операции">Запомнить мою</button>
+      <button data-wspreset="mine">Моя</button>
+      <button id="wsJoin" class="hidden">Собрать страницы</button>
+      <button id="wsRecheck" class="hidden" title="Страницы переложены — прочитать документы заново">Перепроверить</button>
+      <div class="ws-dock" id="wsDock"></div>
+    </div>
+    <div class="ws-desk" id="wsDesk"><div class="ws-snap" id="wsSnap"></div></div>
+    <div class="ws-abar">
+      <div class="chips" id="wsGate"></div>
+      <div class="act">
+        <button id="wsOpenMgr">Открыть смену в manager</button>
+        <button id="wsCopyRow2">Копировать строку таблицы</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="wsToast"></div>
 <main>
 <div id="tabCheck">
 <section class="card" id="formCard">
@@ -505,12 +570,50 @@ function domainRow(d){
   const sv = d.verdict ? `<span class="badge s-${d.verdict}">${ST[d.verdict]}</span>` : '';
   const esiaBtn = d.esia_status || (d.esia && Object.keys(d.esia).length) ? `<button class="sm esiaBtn" data-esia="${esc(d.domain)}" title="Идентификация через Госуслуги: сверка Sd ↔ ЕСИА">ESIA</button>` : '';
   const accBtn = d.account ? ` <button class="sm" data-acc="${esc(d.account)}" title="Открыть вкладку «Смена владельца ЛК» с этим аккаунтом">→ ЛК</button>` : '';
-  return `<tr><td><b>${esc(d.domain)}</b><br><small>${link((d.urls||{}).sd,'Sd')} ${link((d.urls||{}).s,'S')}</small>${esiaBtn}</td>
+  const kBtn = d.admin_comment ? `<button class="kbtn" data-k="${esc(d.domain)}" title="Комментарий администратора в S — показать">К</button>` : '';
+  const flags = (d.flags || []).length ? '<ul class="flags">' + d.flags.map(f => `<li><span class="badge s-${FLAG_CLS[f.level] || 'info'}">${FLAG_RU[f.level] || f.level}</span> ${esc(f.text)}</li>`).join('') + '</ul>' : '';
+  return `<tr><td><b>${esc(d.domain)}</b>${kBtn}<br><small>${link((d.urls||{}).sd,'Sd')} ${link((d.urls||{}).s,'S')}</small>${esiaBtn}</td>
     <td><span class="badge s-ok">найден</span><br><small>${esc(d.service_status||'')}</small></td>
     <td>${who}</td><td>${doc}</td><td>${esiaCell(d)}</td><td>${esc(sd.country||sd.o_country_code||'—')}</td><td>${esc(d.last_admin_change||'—')}</td>
-    <td>${esc(d.provider||'—')}</td><td>${esc(d.account||'—')}${accBtn}</td>
-    <td>${d.verdict ? '' : '<small>сверка — после проверки заявления и паспорта</small>'}${sv}${cmp.length ? '<ul>' + cmp.map(r => `<li>${esc(r.title)}: ${ST[r.status]}${r.detail ? ' — ' + esc(r.detail) : ''}${r.status==='fail' ? `<br><small>Sd: ${esc(r.sd)} · документы: ${esc(r.doc)}</small>` : ''}</li>`).join('') + '</ul>' : ''}</td></tr>`;
+    <td>${esc(d.provider||'—')}</td><td>${esc(d.account||'—')}${accBtn}${d.login ? `<br><small>${esc(d.login)}</small>` : ''}</td>
+    <td>${d.verdict ? '' : '<small>сверка — после проверки заявления и паспорта</small>'}${sv}${cmp.length ? '<ul>' + cmp.map(r => `<li>${esc(r.title)}: ${ST[r.status]}${r.detail ? ' — ' + esc(r.detail) : ''}${r.status==='fail' ? `<br><small>Sd: ${esc(r.sd)} · документы: ${esc(r.doc)}</small>` : ''}</li>`).join('') + '</ul>' : ''}${flags}</td></tr>`;
 }
+// (0.7.6) проверки домена (config/workspace.yaml) и окошко «К»
+const FLAG_RU = {stop: 'стоп', warn: 'внимание', info: 'к сведению'}, FLAG_CLS = {stop: 'fail', warn: 'warn', info: 'info'};
+let kPop = null;
+function closeKPop(){ if (kPop){ kPop.remove(); kPop = null; } }
+function copyText(t, okMsg){
+  const fallback = () => {
+    const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove(); return ok;
+  };
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t).then(() => true, () => fallback());
+  return Promise.resolve(fallback());
+}
+function showKPop(anchor, domain, comment){
+  closeKPop();
+  kPop = document.createElement('div'); kPop.className = 'kpop';
+  kPop.innerHTML = `<h4>${esc(domain)} — комментарий администратора</h4><div class="tx"></div>
+    <div class="ft"><span class="hint">S · admin_comment</span><button class="sm" style="margin-left:auto" data-kcopy>Копировать</button></div>`;
+  kPop.querySelector('.tx').textContent = comment;
+  document.body.appendChild(kPop);
+  const r = anchor.getBoundingClientRect(), w = kPop.offsetWidth, h = kPop.offsetHeight;
+  let top = r.bottom + 6; if (top + h > innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  kPop.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px'; kPop.style.top = top + 'px';
+  kPop.querySelector('[data-kcopy]').onclick = e => copyText(comment).then(ok => { e.target.textContent = ok ? 'Скопировано' : 'Не удалось'; });
+}
+document.addEventListener('click', e => {
+  const k = e.target.closest && e.target.closest('.kbtn[data-k]');
+  if (k){
+    const d = dom.items[k.dataset.k] || (window.WS && WS.domainByName && WS.domainByName(k.dataset.k));
+    if (d) showKPop(k, d.domain, d.admin_comment || '');
+    return;
+  }
+  if (kPop && !kPop.contains(e.target)) closeKPop();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeKPop(); });
 
 const dom = {taskId:null, logLen:0, timer:null, items:{}};
 $('#domList').addEventListener('input', () => $('#domList').dataset.touched = '1');
@@ -628,11 +731,15 @@ function showEsia(d){
 // ------------------------------------------------------------------ вкладки
 function showTab(id){
   document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === id));
-  ['tabCheck', 'tabOwner'].forEach(t => $('#' + t).classList.toggle('hidden', t !== id));
+  ['tabCheck', 'tabOwner', 'tabWork'].forEach(t => $('#' + t).classList.toggle('hidden', t !== id));
+  document.body.classList.toggle('ws-mode', id === 'tabWork');              // (0.7.6) рабочее место — во всё окно
+  $('#wsSteps').classList.toggle('hidden', id !== 'tabWork');
   try { localStorage.setItem('doctool.tab', id); } catch (e) {}
+  if (id === 'tabWork' && window.WS) WS.shown();
 }
 document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
-try { const t = localStorage.getItem('doctool.tab'); if (t === 'tabOwner') showTab(t); } catch (e) {}
+// (0.7.6) по умолчанию — рабочее место; дальше открывается последняя вкладка
+try { const t = /ws=/.test(location.hash) ? 'tabWork' : localStorage.getItem('doctool.tab') || 'tabWork'; if (t === 'tabOwner' || t === 'tabWork') showTab(t); } catch (e) {}
 document.addEventListener('click', e => {
   const es = e.target.closest && e.target.closest('[data-esia]');
   if (es && dom.items[es.dataset.esia]) showEsia(dom.items[es.dataset.esia]);
@@ -830,5 +937,6 @@ $('#ownVerify').addEventListener('click', async () => {
 ownKindChanged(); ownCompare(); ownPreview();
 loadMeta();
 </script>
+<script src="/static/workspace.js"></script>
 </body>
 </html>

@@ -4,27 +4,35 @@
 Сюда же подключается расширение Chrome «PySimpleManager» (WebSocket /ext) — через него
 загружаются данные доменов (Sd, S, ЕСИА) и аккаунтов из manager и заполняется базовая анкета
 (вкладка «Смена владельца ЛК», API /api/owner/*).
+
+С 0.7.6 — «Рабочее место» (API /api/ws/*, doctool/workspace.py): дело из архива тикетницы, страницы по
+документам, сверка Sd / ЕСИА / заявление / паспорт, заполнение «Проверки действительности паспорта» на Госуслугах
+и страницы смены администратора в manager (через расширение), строка таблицы.
 """
 from __future__ import annotations
 
+import base64
 import json
 import shutil
+import tempfile
 import uuid
 from pathlib import Path
 from urllib.parse import quote
+
+import re
 
 import cv2
 import numpy as np
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from . import APP_NAME, __version__, account, domain_report
+from . import APP_NAME, __version__, account, domain_report, workspace, wsconfig
 from .domains import ManagerUnavailable, sort_by_problem, split_domains
 from .integrations import push_to_system
 from .jobs import JobManager, result_payload
 from .manager_bridge import ExtensionBridge, ManagerTasks
 from .ocr import IMAGE_EXT, OllamaVLM, downscale
-from .service import APP_MODES, PAS_MODES, CaseInput
+from .service import APP_MODES, PAS_MODES, CaseInput, table_rows
 from .verdict import load_case_types
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -49,6 +57,15 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
     @app.get("/", response_class=HTMLResponse)
     def index():
         return (STATIC / "index.html").read_text(encoding="utf-8")
+
+    @app.get("/static/{name}")
+    def static_file(name: str):
+        """(0.7.6) Скрипт и стили рабочего места (doctool/static/), без внешних CDN."""
+        if name not in ("workspace.js", "workspace.css"):
+            raise HTTPException(404)
+        media = "text/javascript; charset=utf-8" if name.endswith(".js") else "text/css; charset=utf-8"
+        return Response((STATIC / name).read_text(encoding="utf-8"), media_type=media,
+                        headers={"Cache-Control": "no-cache"})
 
     @app.get("/api/meta")
     def meta():
@@ -339,7 +356,261 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
                                     f"{account.TYPE_RU.get(body['kind'], body['kind'])}")
         return {"ok": True, "verify": v, "account": acc}
 
+    # ---------------------------------------------------------------- рабочее место (0.7.6)
+    def _ws_check(ws: workspace.Workspace) -> str | None:
+        """Проверка дела рабочего места: run_case по страницам заявления и паспорта + данные доменов из manager."""
+        op = ws.operation()
+        ct = op.get("case_type") or ""
+        if not ct or ct not in load_case_types():
+            ws.logmsg(f"Операция «{op.get('title')}»: проверка заявления не настроена — документы сверяются вручную")
+            ws.save()
+            return None
+        app_src, pas_src = ws.sources()
+        if not app_src and not pas_src:
+            ws.logmsg("Нет страниц заявления и паспорта — проверка не запускалась")
+            ws.save()
+            return None
+        ticket = (ws.state.get("ticket") or "").strip().lstrip("#")
+        inp = CaseInput(case_type=ct, app_sources=app_src, pas_sources=pas_src, ollama=ollama, out_root=out_root,
+                        case_id=ticket or None, manager_autoload=True)
+        job = jobs.submit(inp)
+        ws.job_id = job.id
+        ws.job_ids.append(job.id)
+        ws.logmsg(f"Проверка запущена: заявление — {len(app_src)} стр., паспорт — {len(pas_src)} стр.")
+        ws.save()
+        return job.id
+
+    wsm = workspace.WorkspaceManager(out_root, on_ready=_ws_check)
+    app.state.workspaces = wsm
+
+    def _ws(ws_id: str) -> workspace.Workspace:
+        ws = wsm.get(ws_id)
+        if ws is None:
+            raise HTTPException(404, "Нет такого дела рабочего места")
+        return ws
+
+    def _page_url(ws_id: str):
+        def f(pid: str, thumb: bool) -> str:
+            return f"/api/ws/{ws_id}/page/{pid}" + ("?thumb=1" if thumb else "")
+        return f
+
+    def _ws_job(ws: workspace.Workspace):
+        job = jobs.get(ws.job_id) if ws.job_id else None
+        return job
+
+    @app.get("/api/ws/meta")
+    def ws_meta():
+        cfg = wsconfig.load()
+        types = load_case_types()
+        ops = [{**o, "checked": bool(o.get("case_type") and o["case_type"] in types)} for o in cfg["table"]["operations"]]
+        return {"operations": ops, "receipt_methods": cfg["table"].get("receipt_methods") or [],
+                "status_default": cfg["table"].get("status_default") or "", "operators": cfg["table"].get("operators") or {},
+                "classes": workspace.CLASSES}
+
+    @app.get("/api/ws/recent")
+    def ws_recent():
+        return {"items": wsm.recent()}
+
+    @app.post("/api/ws")
+    async def ws_create(files: list[UploadFile] = File(...), state: str = Form("{}")):
+        tmp = Path(tempfile.mkdtemp(prefix="pysm_"))
+        uploads = []
+        for f in files:
+            if not f.filename:
+                continue
+            dst = tmp / f"{len(uploads)}_{Path(f.filename).name}"
+            with dst.open("wb") as out:
+                shutil.copyfileobj(f.file, out)
+            uploads.append((Path(f.filename).name, dst))
+        if not uploads:
+            raise HTTPException(400, "Перетащите архив из тикетницы или файлы заявления и паспорта")
+        try:
+            st = json.loads(state or "{}")
+        except ValueError:
+            st = {}
+        ws = wsm.create(uploads, st)
+        shutil.rmtree(tmp, ignore_errors=True)
+        return {"id": ws.id}
+
+    @app.get("/api/ws/{ws_id}")
+    def ws_get(ws_id: str, since: int = 0):
+        ws = _ws(ws_id)
+        data = ws.to_api(_page_url(ws_id))
+        data["log"], data["log_len"] = ws.log[since:], len(ws.log)
+        job = _ws_job(ws)
+        data["job"] = ({"id": job.id, "status": job.status, "error": job.error, "log": job.log[-6:]} if job else
+                       ({"id": ws.job_id, "status": "lost"} if ws.job_id else None))
+        return data
+
+    @app.get("/api/ws/{ws_id}/page/{pid}")
+    def ws_page(ws_id: str, pid: str, thumb: int = 0):
+        ws = _ws(ws_id)
+        if not re.fullmatch(r"p\d+", pid):
+            raise HTTPException(404)
+        p = ws.pages_dir / (f"{pid}_t.jpg" if thumb else f"{pid}.jpg")
+        if not p.exists():
+            raise HTTPException(404)
+        return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
+    @app.get("/api/ws/{ws_id}/docx/{pid}", response_class=HTMLResponse)
+    def ws_docx(ws_id: str, pid: str):
+        ws = _ws(ws_id)
+        try:
+            return ws.docx_html(pid)
+        except workspace.WsError as e:
+            raise HTTPException(404, str(e)) from e
+
+    @app.get("/api/ws/{ws_id}/file/{fid}")
+    def ws_file(ws_id: str, fid: str):
+        ws = _ws(ws_id)
+        try:
+            f = ws.file(fid)
+        except workspace.WsError as e:
+            raise HTTPException(404, str(e)) from e
+        p = Path(f.path).resolve()
+        if ws.dir.resolve() not in p.parents:
+            raise HTTPException(403)
+        return FileResponse(p, filename=Path(f.name).name)
+
+    @app.post("/api/ws/{ws_id}/pages")
+    def ws_pages(ws_id: str, body: dict = Body(...)):
+        """Действия со страницами: move (группа), rotate (поворот), crop (вырезка рамкой)."""
+        ws = _ws(ws_id)
+        act = body.get("action")
+        try:
+            if act == "move":
+                ws.move(body["pid"], body["cls"])
+            elif act == "rotate":
+                ws.set_rotation(body["pid"], int(body.get("rot") or 0))
+            elif act == "crop":
+                p = ws.add_crop(body["pid"], body["rect"], body.get("cls") or "passport")
+                return {"ok": True, "page": p.id, "ws": ws.to_api(_page_url(ws_id))}
+            else:
+                raise HTTPException(400, f"Неизвестное действие: {act}")
+        except (workspace.WsError, KeyError) as e:
+            raise HTTPException(400, str(e)) from e
+        return {"ok": True, "ws": ws.to_api(_page_url(ws_id))}
+
+    @app.post("/api/ws/{ws_id}/check")
+    def ws_check(ws_id: str):
+        ws = _ws(ws_id)
+        if ws.status not in ("ready", "error"):
+            raise HTTPException(409, "Страницы ещё разбираются — подождите")
+        job_id = _ws_check(ws)
+        return {"job_id": job_id}
+
+    @app.post("/api/ws/{ws_id}/state")
+    def ws_state(ws_id: str, body: dict = Body(...)):
+        ws = _ws(ws_id)
+        return {"state": ws.set_state(body)}
+
+    @app.get("/api/ws/{ws_id}/result")
+    def ws_result(ws_id: str, domain: str = ""):
+        """Результат проверки дела для рабочего места: строки, проверки, домены, сверка, места полей."""
+        ws = _ws(ws_id)
+        job = _ws_job(ws)
+        if job is None or job.result is None:
+            return {"ready": False, "status": job.status if job else "none"}
+        res = job.result
+        payload = result_payload(res, file_url(job.id))
+        payload["job_id"] = job.id
+        mx = workspace.matrix(payload["rows"], payload["domains"], domain or None)
+        adm = workspace.new_admin(res)
+        return {"ready": True, "result": payload, "matrix": mx, "boxes": workspace.field_boxes(ws, res),
+                "gos": workspace.gosuslugi_data(res), "new_admin": adm,
+                "login_to": workspace.contract_login(adm.get("contract", ""))}
+
+    @app.post("/api/ws/{ws_id}/gosuslugi")
+    def ws_gosuslugi(ws_id: str, body: dict = Body(default={})):
+        """Вписать серию, номер, фамилию и имя на странице «Проверка действительности паспорта» (Госуслуги).
+        «Продолжить» нажимает оператор."""
+        ws = _ws(ws_id)
+        job = _ws_job(ws)
+        data = workspace.gosuslugi_data(job.result if job else None)
+        data.update({k: str(v).strip() for k, v in body.items() if k in data and v})
+        if not data["series"] or not data["number"]:
+            raise HTTPException(400, "Нет серии и номера паспорта — впишите их в строке «Серия и номер паспорта»")
+        _need_extension()
+        reply = _ext("gosuslugi_fill", data, timeout=240)
+        if reply.get("ok"):
+            ws.set_state({"gos": {"status": "filled", "data": data}})
+        return {"ok": bool(reply.get("ok")), "data": reply.get("data"), "error": reply.get("error"), "sent": data}
+
+    @app.post("/api/ws/{ws_id}/manager/fill")
+    def ws_manager_fill(ws_id: str, body: dict = Body(...)):
+        """Шаг 1 «Перенос доменов между аккаунтами»: домены, смена администратора, перенос на аккаунт,
+        принимающий аккаунт, документы в «Загрузить документы». «Далее» нажимает оператор."""
+        ws = _ws(ws_id)
+        doms = split_domains(" ".join(body.get("domains") or []) if isinstance(body.get("domains"), list)
+                             else str(body.get("domains") or ""))
+        if not doms:
+            raise HTTPException(400, "Нет доменов для смены")
+        files = []
+        total = 0
+        for fid in body.get("files") or []:
+            try:
+                f = ws.file(fid)
+            except workspace.WsError:
+                continue
+            data = Path(f.path).read_bytes()
+            total += len(data)
+            if total > 40 * 1024 * 1024:
+                raise HTTPException(400, "Документов больше 40 МБ — прикрепите их в manager вручную")
+            files.append({"name": Path(f.name).name, "type": _mime(f.path), "b64": base64.b64encode(data).decode("ascii")})
+        params = {"domains": doms, "change_admin": bool(body.get("change_admin", True)),
+                  "change_account": bool(body.get("change_account")), "login_to": str(body.get("login_to") or ""),
+                  "files": files}
+        _need_extension()
+        reply = _ext("domain_move_fill", params, timeout=300)
+        if reply.get("ok"):
+            ws.set_state({"mgr": {"step": 1, "domains": doms, "change_account": params["change_account"],
+                                  "login_to": params["login_to"], "files": [f["name"] for f in files]}})
+        return {"ok": bool(reply.get("ok")), "data": reply.get("data"), "error": reply.get("error")}
+
+    @app.post("/api/ws/{ws_id}/manager/read")
+    def ws_manager_read(ws_id: str, body: dict = Body(default={})):
+        """Шаг 2: прочитать «данные нового администратора» на странице manager, сверить с заявлением и
+        подсветить на странице (зелёный — совпадает, красный — нет)."""
+        ws = _ws(ws_id)
+        job = _ws_job(ws)
+        adm = {**workspace.new_admin(job.result if job else None), **{k: v for k, v in (body.get("admin") or {}).items() if v}}
+        _need_extension()
+        reply = _ext("domain_move_read", {}, timeout=120)
+        if not reply.get("ok"):
+            return {"ok": False, "error": reply.get("error")}
+        page = reply.get("data") or {}
+        rows = workspace.compare_new_admin(adm, page)
+        _ext("domain_move_mark", {"marks": {r["key"]: r["status"] for r in rows}}, timeout=60)
+        ws.set_state({"mgr": {"step": 2, "rows": rows}})
+        return {"ok": True, "page": page, "rows": rows, "admin": adm}
+
+    @app.post("/api/ws/{ws_id}/manager/fill_contacts")
+    def ws_manager_fill_contacts(ws_id: str, body: dict = Body(...)):
+        """Шаг 2, «заполнить вручную»: ФИО, телефон, e-mail нового администратора из заявления."""
+        _ws(ws_id)
+        fields = {k: str(v) for k, v in (body.get("fields") or {}).items() if v}
+        if not fields:
+            raise HTTPException(400, "Нечего заполнять")
+        _need_extension()
+        reply = _ext("domain_move_fill_contacts", {"fields": fields}, timeout=120)
+        return {"ok": bool(reply.get("ok")), "data": reply.get("data"), "error": reply.get("error")}
+
+    @app.get("/api/manager/operator")
+    def manager_operator():
+        """Логин оператора в manager (шапка страниц: [логин]) и фамилия из config/workspace.yaml (operators)."""
+        if not bridge.connected():
+            return {"ok": False, "login": "", "surname": ""}
+        reply = _ext("check_manager", {}, timeout=60)
+        login = ((reply.get("data") or {}).get("login") or "").strip()
+        ops = wsconfig.load()["table"].get("operators") or {}
+        return {"ok": bool(reply.get("ok")), "login": login, "surname": ops.get(login.lower(), "")}
+
     return app
+
+
+def _mime(path: str) -> str:
+    import mimetypes
+    return mimetypes.guess_type(path)[0] or "application/octet-stream"
 
 
 def already_running(host: str, port: int) -> str | None:

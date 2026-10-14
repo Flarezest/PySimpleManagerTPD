@@ -334,6 +334,7 @@ def test_web_manual_entry_owner_kinds_and_domains_width(tmp_path, browser):
             pg = browser.new_page(viewport={"width": 1366, "height": 900})
             pg.on("pageerror", lambda e: errors.append(str(e)))
             pg.goto(url)
+            pg.click("nav.tabs button[data-tab=tabCheck]")      # (0.7.6) по умолчанию открыто рабочее место
             pg.wait_for_function("() => document.querySelector('#caseType').options.length > 0")
             # 1) ручной ввод → таблица для ввода → «Пересчитать» → домены уходят на поиск (расширения нет — сообщение)
             pg.click("#manual")

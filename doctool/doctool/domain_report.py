@@ -175,7 +175,9 @@ def _domain_row(d: dict, similar: dict[str, str]) -> str:
     if urls.get("s"):
         links.insert(1, _link(urls["s"], "S"))
     esia_btn = f' <button class="esia" data-d="{_e(dom)}">ESIA</button>' if d.get("esia") or d.get("esia_status") else ""
-    head = f'<td data-k="{_e(dom)}"><b>{_e(dom)}</b><br><span class=src>{" ".join(links)}</span>{esia_btn}</td>'
+    kb = (f' <button class="kb" data-c="{_e(d["admin_comment"])}" title="Комментарий администратора в S — показать">К</button>'
+          if d.get("admin_comment") else "")
+    head = f'<td data-k="{_e(dom)}"><b>{_e(dom)}</b>{kb}<br><span class=src>{" ".join(links)}</span>{esia_btn}</td>'
     if d.get("status") == NOT_FOUND:
         w = d.get("whois") or {}
         if w.get("status") == "free":
@@ -219,15 +221,23 @@ def _domain_row(d: dict, similar: dict[str, str]) -> str:
             for r in cmp_rows))
     else:
         cmp_ = "<span class=src>не выполнялась — нет заявления и паспорта</span>"
-    extra = (f"аккаунт: {_e(d.get('account') or '—')}<br>"
+    flags = d.get("flags") or []
+    if flags:
+        cmp_ += "".join(f'<br><span class="tag {_FLAG_CLS.get(f["level"], "info")}">{_FLAG_RU.get(f["level"], f["level"])}</span> '
+                        f'{_e(f["text"])}' for f in flags)
+    extra = (f"аккаунт: {_e(d.get('account') or '—')}" + (f" <span class=src>({_e(d['login'])})</span>" if d.get("login") else "")
+             + "<br>"
              f"смена админа: {_e(d.get('last_admin_change') or '—')}<br>"
              f"страна: {_e(sd.get('country') or sd.get('o_country_code') or '—')}")
     cls = d.get("verdict") or ""
-    q += f" {d.get('esia_ru', '')} {d.get('provider', '')}"
+    q += f" {d.get('esia_ru', '')} {d.get('provider', '')} {d.get('login', '')} {d.get('admin_comment', '')}"
     return (f'<tr class="{cls}" data-q="{_e(q)}">{head}<td>найден<br><span{"" if sst.startswith("Активна") else " class=bad"}>'
             f"{_e(sst)}</span></td><td>{data}</td><td>{cmp_}</td><td>{_esia_cell(d)}</td>"
             f"<td>{_e(d.get('provider') or '—')}</td><td>{extra}</td></tr>")
 
+
+_FLAG_RU = {"stop": "стоп", "warn": "внимание", "info": "к сведению"}
+_FLAG_CLS = {"stop": "fail", "warn": "warn", "info": "info"}
 
 _ESIA_CLS = {"match": "ok", "warn": "warn", "mismatch": "fail", "none": "info", "no_data": "review", "no_link": "info",
              "error": "review"}
@@ -266,6 +276,18 @@ def _esia_data(items: list[dict]) -> str:
 
 
 _JS = """
+(function(){
+  // (0.7.6) «К» — комментарий администратора в S: окошко с текстом
+  var pop=null;
+  document.addEventListener('click', function(e){
+    var b=e.target.closest && e.target.closest('button.kb');
+    if(pop && (!b || pop.dataset.for!==b.dataset.c)){ pop.remove(); pop=null; }
+    if(!b || pop) return;
+    pop=document.createElement('div'); pop.className='kpop'; pop.dataset.for=b.dataset.c; pop.textContent=b.dataset.c;
+    var r=b.getBoundingClientRect(); pop.style.left=(window.scrollX+r.left)+'px'; pop.style.top=(window.scrollY+r.bottom+6)+'px';
+    document.body.appendChild(pop);
+  });
+})();
 (function(){
   var q=document.getElementById('q'), shown=document.getElementById('shown'), tb=document.querySelector('#dom tbody');
   var rows=[].slice.call(tb.rows), sorted=null;
@@ -363,6 +385,8 @@ tr.grp td{background:#f3f3f6;font-weight:600;font-size:13px}
 .tools input{font:inherit;padding:6px 9px;border:1px solid #d0d0d5;border-radius:6px;min-width:280px}
 details summary{cursor:pointer;color:#2b6cb0} a{color:#2b6cb0}
 #dom thead th{cursor:pointer;user-select:none} #dom thead th:hover{background:#e8e8ee}
+button.kb{font:inherit;font-size:12px;font-weight:700;padding:0 6px;margin-left:4px;border:0;border-radius:5px;background:#c2410c;color:#fff;cursor:pointer}
+.kpop{position:absolute;z-index:5;background:#fff;border:1px solid #d0d0d5;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:8px 10px;max-width:360px;white-space:pre-wrap;font-size:13px}
 button.esia{font:inherit;font-size:12px;padding:0 7px;margin-left:4px;border:1px solid #2b6cb0;color:#2b6cb0;background:#fff;border-radius:5px;cursor:pointer}
 .tag{display:inline-block;padding:1px 7px;border-radius:9px;font-size:12.5px}
 dialog{border:1px solid #d0d0d5;border-radius:10px;max-width:900px;width:94vw;padding:0 16px 14px}

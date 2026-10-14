@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "PySimpleManager",
-  "version": "0.7.3",
-  "description": "Читает данные доменов и аккаунтов из manager.reg.ru для программы PySimpleManager. По кнопке в программе заполняет поля базовой анкеты, но не сохраняет её.",
+  "version": "0.7.6",
+  "description": "Данные доменов и аккаунтов из manager.reg.ru для PySimpleManager. По кнопке в программе заполняет формы, но не отправляет их.",
   "minimum_chrome_version": "116",
   "permissions": ["tabs", "scripting", "storage", "alarms", "webRequest"],
-  "host_permissions": ["https://manager.reg.ru/*", "https://identity.reg.ru/*"],
+  "host_permissions": ["https://manager.reg.ru/*", "https://identity.reg.ru/*", "https://www.gosuslugi.ru/*"],
   "background": {"service_worker": "background.js"},
   "action": {
     "default_title": "PySimpleManager",

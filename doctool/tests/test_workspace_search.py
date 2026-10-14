@@ -94,6 +94,10 @@ def test_site_api_commands(app_ext):
     ws.dir.mkdir(parents=True)
     ws.status = "ready"
     ws.save()
+    # (0.8.1) паспорт не прочитан (дело без файлов) — подсказка про строку «Поиск», расширение не вызывается
+    n = len(calls)
+    r = c.post("/api/ws/abcdef1234/gosuslugi", json={"site": {}})
+    assert r.status_code == 400 and "строку «Поиск»" in r.json()["detail"] and len(calls) == n
     r = c.post("/api/ws/abcdef1234/gosuslugi", json={"series": "4012", "number": "654321", "surname": "Тестова",
                                                       "name": "Анна", "site": {"open_in": "split"}})
     assert r.status_code == 200 and r.json()["ok"], r.text

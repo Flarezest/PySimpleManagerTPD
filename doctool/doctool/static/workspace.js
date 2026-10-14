@@ -1238,7 +1238,7 @@ function renderSbar(){
   box.innerHTML = `<div class="ws-srow"><div class="ws-qbox">${SEARCH_ICON}<input type="text" id="wsQ" autocomplete="off" placeholder="Запрос: ФИО, серия и номер, ИНН, ОГРН, домен…" value="${esc(SR.q || '')}">
       <button type="button" class="wb" data-sa="clear" title="Очистить">${ICON.close}</button></div>
     <div class="ws-svc">${cfg.services.map((s, i) => `<button type="button" data-svc="${i}" title="${esc(svcTip(s))}">${esc(s.title)}</button>`).join('')}
-      <span class="sep"></span><button type="button" data-sa="gos" title="Откроет «Проверка действительности паспорта» и впишет серию, номер, фамилию и имя из паспорта; «Продолжить» нажимаете вы">Госуслуги · паспорт</button>
+      <span class="sep"></span><button type="button" data-sa="gos" title="Откроет «Проверка действительности паспорта» и впишет серию, номер, фамилию и имя: из строки запроса («4012 654321 Иванова Анна»), иначе из паспорта дела, иначе из Sd домена; «Продолжить» нажимаете вы">Госуслуги · паспорт</button>
       ${cfg.links.length ? '<span class="sep"></span>' + cfg.links.map((l, i) => `<button type="button" class="lnk" data-link="${i}" title="${esc(l.url)}">${esc(l.title)}</button>`).join('') : ''}</div>
     <span class="ws-sright"><select id="wsOpenIn" title="Где открывать сайт (запоминается в этом браузере)">${Object.entries(OPEN_IN_RU).map(([k, v]) => `<option value="${k}" ${k === openIn() ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <button type="button" class="sm" data-sa="help" title="Как это устроено">?</button>
@@ -1350,13 +1350,40 @@ function openLink(i){
   const l = searchCfg().links[i]; if (!l) return;
   openSite({kind: 'link', title: l.title, url: l.url});
 }
+// серия и номер (и фамилия, имя) из строки запроса: «4012 654321 Иванова Анна», «4012654321»
+function gosFromQuery(s){
+  s = String(s || '');
+  const m = /(?:^|\D)(\d{2}\s?\d{2})\s?№?\s?(\d{6})(?!\d)/.exec(s);
+  if (!m) return null;
+  const words = s.replace(m[0], ' ').match(/[А-ЯЁа-яё][А-ЯЁа-яё-]+/g) || [];
+  const cap = w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '';
+  return {series: m[1].replace(/\s/g, ''), number: m[2], surname: cap(words[0]), name: cap(words[1])};
+}
+// без прочитанного паспорта (дело без файлов, скан не прочитан) — паспорт администратора из Sd найденного домена
+function gosFromSd(){
+  const d = resDomains().find(x => x.status === 'found' && x.kind === 'person' && /^\d{4}\s?\d{6}$/.test(String(x.passport || '').trim()));
+  if (!d) return null;
+  const pp = d.passport.replace(/\s/g, ''), fio = String(d.fio || '').split(/\s+/);
+  return {series: pp.slice(0, 4), number: pp.slice(4), surname: fio[0] || '', name: fio[1] || ''};
+}
 async function gosFill(btn){
-  // «Госуслуги · паспорт» (строка поиска): расширение вписывает серию, номер, фамилию и имя; «Продолжить» — оператор
+  // «Госуслуги · паспорт» (строка поиска): расширение вписывает серию, номер, фамилию и имя; «Продолжить» — оператор.
+  // Откуда: серия и номер в строке запроса → паспорт (заявление) дела → Sd найденного домена.
+  const fromQ = gosFromQuery(q('#wsQ') ? q('#wsQ').value : SR.q);
+  const g = (W.res && W.res.gos) || {};
+  const extra = fromQ || (g.series && g.number ? {} : gosFromSd());
+  if (!extra){
+    toast('Серия и номер паспорта не прочитаны — впишите их в строку «Поиск» (например, «4012 654321 Иванова Анна») и нажмите «Госуслуги · паспорт» ещё раз', 9000);
+    if (!SR.on) showSearch(); else { const i = q('#wsQ'); if (i) i.focus(); }
+    return;
+  }
   if (btn) btn.disabled = true;
   SR.last = {kind: 'gos', title: 'Госуслуги', where: '', notes: [], pending: true};
   renderSst();
   try {
-    const r = await api(`/api/ws/${W.id}/gosuslugi`, {site: siteOpts()});
+    const body = {site: siteOpts()};
+    Object.entries(extra).forEach(([k, v]) => { if (v) body[k] = v; });
+    const r = await api(`/api/ws/${W.id}/gosuslugi`, body);
     if (!r.ok){ SR.last.error = (r.error || {}).message || 'ошибка'; toast('Госуслуги: ' + esc(SR.last.error), 7000); }
     else {
       const pr = (r.data || {}).problems || [];
@@ -1395,7 +1422,7 @@ function sbarClick(e){
   const h = e.target.closest('[data-hist]');
   if (h){
     const x = ((st().search || {}).hist || [])[+h.dataset.hist]; if (!x) return;
-    if (x.kind === 'gos'){ gosFill(null); return; }
+    if (x.kind === 'gos'){ if (x.q){ q('#wsQ').value = x.q; SR.q = x.q; } gosFill(null); return; }
     if (x.q){ q('#wsQ').value = x.q; SR.q = x.q; }
     const svc = searchCfg().services.find(s => s.title === x.title);
     openSite({kind: x.kind, title: x.title, url: x.url, q: x.q, fill: svc ? svc.fill : null});

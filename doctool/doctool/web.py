@@ -627,7 +627,8 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         data = workspace.gosuslugi_data(job.result if job else None)
         data.update({k: str(v).strip() for k, v in body.items() if k in data and v})
         if not data["series"] or not data["number"]:
-            raise HTTPException(400, "Нет серии и номера паспорта — впишите их в строке «Серия и номер паспорта»")
+            raise HTTPException(400, "Серия и номер паспорта не прочитаны — впишите их в строку «Поиск» "
+                                     "(например, «4012 654321 Иванова Анна») и нажмите «Госуслуги · паспорт» ещё раз")
         _need_extension()
         # (0.8.0) страница открывается там же, где сайты строки «Поиск» (рядом с рабочим местом)
         reply = _ext("gosuslugi_fill", {**data, "site": _site_opts(body.get("site") or {})}, timeout=240)

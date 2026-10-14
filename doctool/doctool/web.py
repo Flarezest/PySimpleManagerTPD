@@ -8,6 +8,10 @@
 С 0.7.6 — «Рабочее место» (API /api/ws/*, doctool/workspace.py): дело из архива тикетницы, страницы по
 документам, сверка Sd / ЕСИА / заявление / паспорт, заполнение «Проверки действительности паспорта» на Госуслугах
 и страницы смены администратора в manager (через расширение), строка таблицы.
+
+С 0.8.0 — строка «Поиск» рабочего места (API /api/site/*): сайт (Google, Яндекс, ЕГРЮЛ, Госуслуги, быстрые ссылки)
+открывается рядом с рабочим местом через расширение — во второй половине окна Chrome (разделённый экран) или отдельным
+окном; удаление дел из «Недавних дел» (DELETE /api/ws/{id}, POST /api/ws/recent/clear).
 """
 from __future__ import annotations
 
@@ -203,6 +207,40 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
     @app.get("/api/manager/status")
     def manager_status():
         return bridge.status()
+
+    # ---------------------------------------------------------------- (0.8.0) сайт рядом с рабочим местом
+    def _site_opts(body: dict) -> dict:
+        """Где открыть сайт: open_in (auto / split / window / tab), экран браузера (для окна справа), доля окна."""
+        cfg = wsconfig.load()["search"]
+        mode = body.get("open_in") if body.get("open_in") in wsconfig.OPEN_IN else cfg["open_in"]
+        scr = body.get("screen") if isinstance(body.get("screen"), dict) else {}
+        screen = {k: int(scr[k]) for k in ("left", "top", "width", "height")
+                  if isinstance(scr.get(k), (int, float)) and abs(scr[k]) < 100000}
+        return {"open_in": mode, "screen": screen if len(screen) == 4 else None, "share": cfg["window_share"]}
+
+    @app.post("/api/site/open")
+    def site_open(body: dict = Body(...)):
+        """Открыть сайт рядом с рабочим местом (расширение). fill: egrul — вписать запрос q в поле поиска сайта
+        (кнопку «Найти» нажимает оператор)."""
+        url = str(body.get("url") or "").strip()
+        if not url.startswith(("https://", "http://")) or len(url) > 4000:
+            raise HTTPException(400, "Адрес сайта должен начинаться с https:// или http://")
+        fill = body.get("fill") if body.get("fill") in wsconfig.FILLERS else None
+        params = {"url": url, **_site_opts(body), "keep": bool(body.get("keep"))}
+        if fill:
+            params["fill"] = {"kind": fill, "q": str(body.get("q") or "")[:500]}
+        _need_extension()
+        reply = _ext("site_open", params, timeout=90)
+        return {"ok": bool(reply.get("ok")), "data": reply.get("data"), "error": reply.get("error")}
+
+    @app.post("/api/site/hide")
+    def site_hide(body: dict = Body(default={})):
+        """Убрать сайт: вторую половину разделённого экрана (вкладка остаётся) или окно рядом (сворачивается);
+        close — закрыть вкладку / окно сайта."""
+        if not bridge.connected():
+            return {"ok": True, "data": {"mode": "none"}}
+        reply = _ext("site_hide", {"close": bool(body.get("close"))}, timeout=30)
+        return {"ok": bool(reply.get("ok")), "data": reply.get("data"), "error": reply.get("error")}
 
     @app.post("/api/manager/lookup")
     def manager_lookup(body: dict = Body(...)):
@@ -405,25 +443,49 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         ops = [{**o, "checked": bool(o.get("case_type") and o["case_type"] in types)} for o in cfg["table"]["operations"]]
         return {"operations": ops, "receipt_methods": cfg["table"].get("receipt_methods") or [],
                 "status_default": cfg["table"].get("status_default") or "", "operators": cfg["table"].get("operators") or {},
-                "classes": workspace.CLASSES}
+                "classes": workspace.CLASSES, "search": cfg["search"]}
 
     @app.get("/api/ws/recent")
     def ws_recent():
-        return {"items": wsm.recent()}
+        return {"items": wsm.recent(), "total": len(wsm.all_ids())}
 
-    @app.post("/api/ws")
-    async def ws_create(files: list[UploadFile] = File(...), state: str = Form("{}")):
-        tmp = Path(tempfile.mkdtemp(prefix="pysm_"))
+    def _ws_delete(ws_id: str) -> dict:
+        ws = wsm.get(ws_id)
+        extra = []
+        for jid in (ws.job_ids if ws else []):
+            job = jobs.get(jid)
+            if job is not None and job.result is not None and getattr(job.result, "case_dir", ""):
+                extra.append(str(job.result.case_dir))
+        return wsm.delete(ws_id, extra)
+
+    @app.post("/api/ws/recent/clear")
+    def ws_recent_clear():
+        """(0.8.0) Удалить все дела рабочего места (папки дел и результаты их проверок). Дела, которые ещё
+        разбираются, остаются."""
+        done, skipped = [], []
+        for ws_id in wsm.all_ids():
+            try:
+                done.append(_ws_delete(ws_id)["id"])
+            except workspace.WsError as e:
+                skipped.append({"id": ws_id, "reason": str(e)})
+        return {"ok": True, "deleted": done, "skipped": skipped}
+
+    def _ws_uploads(files: list[UploadFile] | None, tmp: Path) -> list[tuple[str, Path]]:
         uploads = []
-        for f in files:
+        for f in files or []:
             if not f.filename:
                 continue
             dst = tmp / f"{len(uploads)}_{Path(f.filename).name}"
             with dst.open("wb") as out:
                 shutil.copyfileobj(f.file, out)
             uploads.append((Path(f.filename).name, dst))
-        if not uploads:
-            raise HTTPException(400, "Перетащите архив из тикетницы или файлы заявления и паспорта")
+        return uploads
+
+    @app.post("/api/ws")
+    async def ws_create(files: list[UploadFile] | None = File(None), state: str = Form("{}")):
+        """Новое дело: архив или файлы; без файлов (0.8.1) — пустое дело, файлы добавляются потом."""
+        tmp = Path(tempfile.mkdtemp(prefix="pysm_"))
+        uploads = _ws_uploads(files, tmp)
         try:
             st = json.loads(state or "{}")
         except ValueError:
@@ -431,6 +493,32 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         ws = wsm.create(uploads, st)
         shutil.rmtree(tmp, ignore_errors=True)
         return {"id": ws.id}
+
+    @app.post("/api/ws/{ws_id}/files")
+    async def ws_add_files(ws_id: str, files: list[UploadFile] = File(...)):
+        """(0.8.1) Добавить файлы или архив в открытое дело: новые страницы разбираются, проверка — заново."""
+        ws = _ws(ws_id)
+        tmp = Path(tempfile.mkdtemp(prefix="pysm_"))
+        try:
+            uploads = _ws_uploads(files, tmp)
+            if not uploads:
+                raise HTTPException(400, "Нет файлов")
+            try:
+                wsm.add(ws, uploads)
+            except workspace.WsError as e:
+                raise HTTPException(409, str(e)) from e
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        return {"ok": True, "id": ws.id, "files": [n for n, _ in uploads]}
+
+    @app.delete("/api/ws/{ws_id}")
+    def ws_delete(ws_id: str):
+        """(0.8.0) Удалить дело из «Недавних дел»: папка дела и результаты его проверок стираются с диска."""
+        _ws(ws_id)
+        try:
+            return {"ok": True, **_ws_delete(ws_id)}
+        except workspace.WsError as e:
+            raise HTTPException(409, str(e)) from e
 
     @app.get("/api/ws/{ws_id}")
     def ws_get(ws_id: str, since: int = 0):
@@ -451,6 +539,15 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         if not p.exists():
             raise HTTPException(404)
         return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
+    @app.get("/api/ws/{ws_id}/text/{pid}")
+    def ws_text(ws_id: str, pid: str):
+        """(0.8.1) Текстовый слой страницы PDF — для выделения и копирования текста в просмотре."""
+        ws = _ws(ws_id)
+        try:
+            return ws.text_layer(pid)
+        except workspace.WsError as e:
+            raise HTTPException(404, str(e)) from e
 
     @app.get("/api/ws/{ws_id}/docx/{pid}", response_class=HTMLResponse)
     def ws_docx(ws_id: str, pid: str):
@@ -512,6 +609,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         if job is None or job.result is None:
             return {"ready": False, "status": job.status if job else "none"}
         res = job.result
+        wsm.note_result_dir(ws, getattr(res, "case_dir", "") or "")
         payload = result_payload(res, file_url(job.id))
         payload["job_id"] = job.id
         mx = workspace.matrix(payload["rows"], payload["domains"], domain or None)
@@ -531,7 +629,8 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         if not data["series"] or not data["number"]:
             raise HTTPException(400, "Нет серии и номера паспорта — впишите их в строке «Серия и номер паспорта»")
         _need_extension()
-        reply = _ext("gosuslugi_fill", data, timeout=240)
+        # (0.8.0) страница открывается там же, где сайты строки «Поиск» (рядом с рабочим местом)
+        reply = _ext("gosuslugi_fill", {**data, "site": _site_opts(body.get("site") or {})}, timeout=240)
         if reply.get("ok"):
             ws.set_state({"gos": {"status": "filled", "data": data}})
         return {"ok": bool(reply.get("ok")), "data": reply.get("data"), "error": reply.get("error"), "sent": data}

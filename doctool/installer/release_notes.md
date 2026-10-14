@@ -24,6 +24,7 @@
 `chrome_extension` в папке программы (Windows: Пуск → PySimpleManager → «Расширение Chrome (папка)»;
 Linux: `/opt/pysimplemanager/chrome_extension`). После обновления программы — кнопка «Обновить» на карточке
 расширения. С 0.7.6 расширение заполняет страницу проверки паспорта на Госуслугах — Chrome попросит разрешение на
-сайт gosuslugi.ru.
+сайт gosuslugi.ru. С 0.8.0 — ещё egrul.nalog.ru, e-trust.gosuslugi.ru, crypto.kontur.ru, Nextcloud и программа на
+127.0.0.1 (строка «Поиск» рабочего места: сайт рядом, перетаскивание файлов дела на сайт).
 
 Что изменилось — CHANGELOG.md.

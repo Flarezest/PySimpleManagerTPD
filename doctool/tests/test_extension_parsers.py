@@ -92,6 +92,8 @@ def test_esia_list(page):
 def test_user_details(page):
     r = json.loads(run(page, "user_details_pp.html", "M.parseUserDetails(document)"))
     assert r["user_id"] == "1000" and r["login"] == "person@example.com"
+    # (0.8.1) e-mail аккаунта — поле «E-mail» (input name=email), не логин
+    assert r["email"] == "owner.mail@example.org"
     assert "Идентификация через Госуслуги пройдена" in r["statuses"]
     assert r["servicing_org"] == 'ООО "РДХ"' and r["servicing_org_id"] == "3"
     assert r["contypes"] == "RUSURF: ru_pp" and r["is_entrepreneur"] is False
@@ -252,3 +254,33 @@ def test_gosuslugi_fill(page):
     assert r["ok"] and r["data"]["problems"] == [] and r["data"]["button_enabled"], r
     assert r["data"]["filled"]["series"] == "45 10" and r["data"]["filled"]["surname"] == "Тестова"
     assert page.evaluate("() => document.querySelector('button').disabled") is False    # «Продолжить» не нажимается
+
+
+def test_lookup_account_email(page):
+    """(0.8.1) Загрузка домена: e-mail аккаунта — поле «E-mail» «Данных пользователя» владельца услуги (не логин);
+    страница аккаунта читается один раз на несколько доменов."""
+    pages = {"/bill/bills": "bills_pp.html", "/tech/srv_details": "sd_pp.html", "/tech/service_details": "s_pp.html",
+             "/manager/user_details": "user_details_pp.html"}
+    hits = []
+
+    def handle(route):
+        from urllib.parse import urlparse
+        path = urlparse(route.request.url).path
+        hits.append(path)
+        name = pages.get(path, "home.html")
+        route.fulfill(status=200, content_type="text/html; charset=utf-8", body=(FIX / name).read_text(encoding="utf-8"))
+
+    page.route("https://manager.reg.ru/**", handle)
+    try:
+        page.goto("https://manager.reg.ru/")
+        page.add_script_tag(content=JS)
+        r = page.evaluate("""async () => { const M = window.__doctoolManager;
+            const a = await M.lookup('t1', 'testdomain-pp.ru', 'testdomain-pp.ru', {esia: false});
+            const b = await M.lookup('t2', 'testdomain-pp.ru', 'testdomain-pp.ru', {esia: false});
+            return [a, b]; }""")
+    finally:
+        page.unroute("https://manager.reg.ru/**")
+    a, b = r
+    assert a["ok"] and a["data"]["login"] == "person@example.com", a
+    assert a["data"]["account"] == "1000" and a["data"]["account_email"] == "owner.mail@example.org"
+    assert b["data"]["account_email"] == "owner.mail@example.org" and hits.count("/manager/user_details") == 1

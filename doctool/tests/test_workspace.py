@@ -272,3 +272,10 @@ def test_workspace_api(tmp_path):
     c2 = TestClient(create_app(str(tmp_path / "res")))
     d2 = c2.get(f"/api/ws/{ws_id}").json()
     assert d2["state"]["via"] == "почта" and d2["pages"][1]["cls"] == "other"
+    # (0.8.0) удаление дела: папка дела и результат проверки (запомнен при выдаче результата) стираются с диска
+    saved = json.loads((Path(d2["dir"]) / "ws.json").read_text(encoding="utf-8"))
+    assert saved["result_dirs"] and Path(saved["result_dirs"][0]).is_dir()
+    r = c2.delete(f"/api/ws/{ws_id}")
+    assert r.status_code == 200 and len(r.json()["removed"]) == 2, r.text
+    assert not Path(d2["dir"]).exists() and not Path(saved["result_dirs"][0]).exists()
+    assert c2.get(f"/api/ws/{ws_id}").status_code == 404 and c2.get("/api/ws/recent").json()["total"] == 0

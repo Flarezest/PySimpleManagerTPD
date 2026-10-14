@@ -166,13 +166,14 @@ def parse_query(text: str) -> dict:
             return {"kind": "id", "value": m.group(1), "label": f"номер аккаунта {m.group(1)}"}
     if "@" in s:
         v = s.strip("<> \t\"'").split()[0] if s.split() else s
-        return {"kind": "login", "value": v, "label": f"логин / e-mail {v}"}
+        # (0.8.1) ищется по логину: e-mail аккаунта (поле «E-mail») с логином может не совпадать
+        return {"kind": "login", "value": v, "label": f"логин {v}"}
     doms = split_domains(s)
     if len(doms) == 1 and " " not in s.strip() and re.search(r"\.(?:[a-zа-яё]{2,}|xn--[a-z0-9\-]+)$", doms[0]):
         return {"kind": "domain", "value": doms[0], "label": f"домен {unicode_name(doms[0])} → аккаунт владельца услуги"}
     if _LOGIN_RE.match(s):
         return {"kind": "login", "value": s, "label": f"логин {s}"}
-    return {"kind": "", "value": s, "label": "не распознано — введите номер аккаунта, логин, e-mail или домен"}
+    return {"kind": "", "value": s, "label": "не распознано — введите номер аккаунта, логин или домен"}
 
 
 def _ba_group(ba_all: dict) -> tuple[str, dict]:
@@ -200,6 +201,7 @@ def account_from_extension(data: dict) -> dict:
              "org": runic.get("values_org") or (runic.get("values") or {} if typ == "org" else {})}
     return {
         "user_id": str(data.get("user_id") or ""), "login": data.get("login") or "", "statuses": statuses,
+        "email": data.get("email") or "",          # (0.8.1) поле «E-mail» «Данных пользователя» (с логином может не совпадать)
         "esia_account": esia_acc, "servicing_org": data.get("servicing_org") or "",
         "servicing_org_id": data.get("servicing_org_id") or "", "contypes": data.get("contypes") or "",
         "type": typ, "type_ru": TYPE_RU.get(typ, typ or "?"), "ba_group": group, "ba": ba,
@@ -213,7 +215,7 @@ def resolve_account(request, text: str, log=print, timeout: float = 240) -> dict
     (manager_bridge.ExtensionBridge.request_sync). Ошибки — AccountError."""
     q = parse_query(text)
     if not q["kind"]:
-        raise AccountError("Не понял, какой аккаунт: введите номер аккаунта, логин, e-mail или домен.", "bad_request")
+        raise AccountError("Не понял, какой аккаунт: введите номер аккаунта, логин или домен.", "bad_request")
     progress = lambda m: log(f"manager: {m.get('message') or m.get('step')}")  # noqa: E731
     via = None
     params = {"user_id": q["value"]} if q["kind"] == "id" else {"login": q["value"]}

@@ -96,6 +96,7 @@ class DomainInfo:
     service_id: str = ""
     account: str = ""                # user_id владельца услуги (страница S)
     login: str = ""                  # (0.7.6) логин этого аккаунта (страница S, кнопка «Клиент обращается через»)
+    account_email: str = ""          # (0.8.1) e-mail аккаунта: поле «E-mail» «Данных пользователя» (≠ логин)
     bill_owner: str = ""             # логин владельца счёта (колонка «Владелец» в счетах)
     group: str = ""                  # группа контактов Sd: ru_pp, ru_org, …
     kind: str = ""                   # person | org
@@ -215,6 +216,7 @@ def from_extension(domain: str, reply: dict) -> DomainInfo:
     info.account = str(data.get("account") or info.s.get("user_id", ""))
     info.bill_owner = data.get("bill_owner") or ""
     info.login = str(data.get("login") or info.s.get("login") or "")
+    info.account_email = str(data.get("account_email") or "")
     info.esia = data.get("esia") or {}
     info.provider = info.s.get("provider", "")
     info.group = sd.get("group", "") or info.s.get("contype", "")

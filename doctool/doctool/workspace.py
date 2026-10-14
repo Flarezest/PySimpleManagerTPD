@@ -16,7 +16,11 @@
    с подсветкой совпадений, и места полей на страницах (boxes) для подсветки в просмотре.
 
 Состояние дела (номер тикета, тип операции, способ получения, отметки оператора, строка таблицы, результат
-проверки на Госуслугах) хранится в ws.json в папке дела рабочего места: results/_workspace/<время>_<id>/.
+проверки на Госуслугах, с 0.8.0 — запросы строки «Поиск») хранится в ws.json в папке дела рабочего места:
+results/_workspace/<время>_<id>/. С 0.8.0 дело можно удалить из «Недавних дел» (WorkspaceManager.delete): папка дела
+и папки результатов его проверок (result_dirs) стираются с диска. С 0.8.1 дело можно начать без файлов и добавлять
+файлы в открытое дело (WorkspaceManager.add — разбираются только новые страницы); у страниц PDF с текстовым слоем —
+слова с координатами для выделения текста в просмотре (Workspace.text_layer).
 """
 from __future__ import annotations
 
@@ -232,9 +236,12 @@ class Workspace:
         self.notes: list[str] = []
         self.job_id = ""
         self.job_ids: list[str] = []
+        self.result_dirs: list[str] = []   # (0.8.0) папки результатов проверок дела (results/<время>_<дело>) — для удаления
         self.created = _now()
-        self.state: dict = {"ticket": "", "operation": "", "via": "", "marks": {}, "gos": {}, "row": {}, "mgr": {}}
+        self.state: dict = {"ticket": "", "operation": "", "via": "", "marks": {}, "gos": {}, "row": {}, "mgr": {},
+                            "search": {}}
         self.lock = threading.RLock()
+        self._text: dict[str, dict] = {}   # (0.8.1) текстовый слой страниц PDF (text_layer)
         self.version = 0               # растёт при каждом изменении — интерфейс перечитывает состояние
 
     # ---- хранение
@@ -249,7 +256,8 @@ class Workspace:
     def to_json(self) -> dict:
         return {"id": self.id, "created": self.created, "status": self.status, "error": self.error,
                 "files": [asdict(f) for f in self.files], "pages": [asdict(p) for p in self.pages],
-                "notes": self.notes, "job_id": self.job_id, "job_ids": self.job_ids, "state": self.state}
+                "notes": self.notes, "job_id": self.job_id, "job_ids": self.job_ids, "result_dirs": self.result_dirs,
+                "state": self.state}
 
     def save(self) -> None:
         with self.lock:
@@ -274,6 +282,7 @@ class Workspace:
         ws.notes = data.get("notes", [])
         ws.job_id = data.get("job_id", "")
         ws.job_ids = data.get("job_ids", [])
+        ws.result_dirs = data.get("result_dirs", [])
         ws.state = {**ws.state, **(data.get("state") or {})}
         return ws
 
@@ -333,10 +342,11 @@ class Workspace:
         self.pages.append(p)
         return p
 
-    def build_pages(self) -> None:
+    def build_pages(self, files: list[WsFile] | None = None) -> None:
+        """Превью страниц файлов (по умолчанию — всех; при добавлении файлов в дело — только новых)."""
         import pymupdf
         self.pages_dir.mkdir(parents=True, exist_ok=True)
-        for f in list(self.files):
+        for f in list(self.files if files is None else files):
             try:
                 if f.kind == "pdf":
                     with pymupdf.open(f.path) as doc:
@@ -441,12 +451,48 @@ class Workspace:
                 out.append(f"<p>{h.escape(line)}</p>")
         return "\n".join(out)
 
+    # ---- текст страницы PDF для выделения в просмотре (0.8.1)
+    def text_layer(self, pid: str) -> dict:
+        """Слова текстового слоя страницы PDF по строкам в px превью: {"rot": поворот страницы (/Rotate),
+        "lines": [[[x, y, w, h, "слово"], …], …]} — (x, y) — левый верхний угол слова на превью, w×h — размер вдоль
+        строки и поперёк; при rot ≠ 0 строка на превью идёт под этим углом. У сканов и не-PDF — пусто."""
+        p = self.page(pid)
+        if p.kind != "pdf" or not p.text or not (p.pv and p.pv[0]):
+            return {"rot": 0, "lines": []}
+        cached = self._text.get(pid)
+        if cached is not None:
+            return cached
+        import pymupdf
+        f = self.file(p.file)
+        lines: dict[tuple, list] = {}
+        with pymupdf.open(f.path) as doc:
+            pg = doc[p.index]
+            sx, sy = p.pv[0] / pg.rect.width, p.pv[1] / pg.rect.height
+            s = (sx + sy) / 2
+            m = pg.rotation_matrix                       # слова — в координатах страницы без поворота
+            rot = pg.rotation % 360
+            for x0, y0, x1, y1, word, b, ln, _ in pg.get_text("words", sort=False):
+                pt = pymupdf.Point(x0, y0) * m
+                lines.setdefault((b, ln), []).append([round(pt.x * sx, 1), round(pt.y * sy, 1),
+                                                      round((x1 - x0) * s, 1), round((y1 - y0) * s, 1), word])
+        res = {"rot": rot, "lines": list(lines.values())}
+        self._text[pid] = res
+        return res
+
     # ---- разбор страниц
-    def classify(self) -> None:
+    def classify(self, start: int = 0) -> None:
+        """Группы страниц. start — с какой страницы разбирать (при добавлении файлов — только новые; повторы
+        ищутся и среди прежних страниц)."""
         forms = load_forms()
         hashes: list[tuple[str, int]] = []
         total = len(self.pages)
         for n, p in enumerate(self.pages, 1):
+            if n <= start:
+                if p.kind not in ("docx", "crop") and p.cls != "hidden":
+                    img = _imread(self.pages_dir / f"{p.id}.jpg")
+                    if img is not None:
+                        hashes.append((p.id, _dhash(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))))
+                continue
             if p.manual or p.kind == "crop":
                 continue
             f = self.file(p.file)
@@ -577,7 +623,7 @@ class Workspace:
             for k in ("ticket", "operation", "via"):
                 if k in data:
                     self.state[k] = str(data[k] or "")
-            for k in ("marks", "gos", "row", "mgr"):
+            for k in ("marks", "gos", "row", "mgr", "search"):
                 if isinstance(data.get(k), dict):
                     self.state[k] = {**(self.state.get(k) or {}), **data[k]}
         self.save()
@@ -891,11 +937,32 @@ class WorkspaceManager:
         self.lock = threading.Lock()
 
     def create(self, uploads: list[tuple[str, Path]], state: dict | None = None) -> Workspace:
+        """Новое дело. uploads может быть пустым (0.8.1): окна рабочего места — сразу, файлы — потом (add)."""
         ws_id = uuid.uuid4().hex[:10]
         folder = self.root / f"{datetime.now():%Y%m%d_%H%M%S}_{ws_id}"
         (folder / "files").mkdir(parents=True, exist_ok=True)
         ws = Workspace(ws_id, folder)
         ws.state.update({k: v for k, v in (state or {}).items() if k in ("ticket", "operation", "via")})
+        moved = self._move_in(ws, uploads)
+        ws.status = "unpacking"
+        ws.save()
+        with self.lock:
+            self.items[ws_id] = ws
+        self.pool.submit(self._intake, ws, moved)
+        return ws
+
+    def add(self, ws: Workspace, uploads: list[tuple[str, Path]]) -> Workspace:
+        """(0.8.1) Файлы в открытое дело: разбираются только новые страницы, затем проверка запускается заново."""
+        if self.busy(ws):
+            raise WsError("дело ещё разбирается — добавьте файлы, когда разбор закончится")
+        moved = self._move_in(ws, uploads)
+        ws.status, ws.error = "unpacking", ""
+        ws.save()
+        self.pool.submit(self._intake, ws, moved)
+        return ws
+
+    @staticmethod
+    def _move_in(ws: Workspace, uploads: list[tuple[str, Path]]) -> list[tuple[str, Path]]:
         moved = []
         for name, tmp in uploads:
             dst = ws.files_dir / Path(name).name
@@ -905,26 +972,24 @@ class WorkspaceManager:
                 n += 1
             shutil.move(str(tmp), dst)
             moved.append((Path(name).name, dst))
-        ws.status = "unpacking"
-        ws.save()
-        with self.lock:
-            self.items[ws_id] = ws
-        self.pool.submit(self._intake, ws, moved)
-        return ws
+        return moved
 
     def _intake(self, ws: Workspace, uploads: list) -> None:
         try:
+            nf, npg = len(ws.files), len(ws.pages)          # при добавлении в дело разбираются только новые
             for name, path in uploads:
                 ws.add_upload(name, path)
             ws.status = "pages"
-            ws.logmsg("Готовлю страницы для просмотра…")
-            ws.build_pages()
+            if uploads:
+                ws.logmsg("Готовлю страницы для просмотра…")
+            ws.build_pages(ws.files[nf:])
             ws.save()
             ws.status = "classifying"
-            ws.classify()
+            ws.classify(start=npg)
             ws.status = "ready"
             n = {c: sum(1 for p in ws.pages if p.cls == c) for c in CLASSES}
-            ws.logmsg("Страницы разобраны: " + ", ".join(f"{CLASSES[c].lower()} — {k}" for c, k in n.items() if k))
+            ws.logmsg("Страницы разобраны: " + ", ".join(f"{CLASSES[c].lower()} — {k}" for c, k in n.items() if k)
+                      if ws.pages else "Дело без файлов: архив или файлы можно перетащить в рабочее место позже")
             ws.save()
             if self.on_ready:
                 self.on_ready(ws)
@@ -948,6 +1013,53 @@ class WorkspaceManager:
         with self.lock:
             self.items[ws_id] = ws
         return ws
+
+    def note_result_dir(self, ws: Workspace, case_dir) -> None:
+        """(0.8.0) Запомнить папку результата проверки дела — она удаляется вместе с делом."""
+        case_dir = str(Path(case_dir).resolve()) if case_dir else ""
+        if case_dir and case_dir not in ws.result_dirs:
+            with ws.lock:
+                ws.result_dirs.append(case_dir)
+            ws.save()
+
+    def busy(self, ws: Workspace) -> bool:
+        return ws.status in ("new", "unpacking", "pages", "classifying")
+
+    def delete(self, ws_id: str, extra_dirs: list[str] | None = None) -> dict:
+        """(0.8.0) Удалить дело: папку results/_workspace/<время>_<id> и папки результатов его проверок.
+        Удаляется только то, что лежит внутри папки результатов программы. Дело, которое ещё разбирается, не удаляется."""
+        ws = self.get(ws_id)
+        if ws is None:
+            raise WsError("нет такого дела")
+        if self.busy(ws):
+            raise WsError("дело ещё разбирается — удалите его, когда разбор закончится")
+        out_root = self.root.parent.resolve()
+        removed = []
+        targets = [ws.dir] + [Path(d) for d in (ws.result_dirs + list(extra_dirs or []))]
+        for d in targets:
+            try:
+                rp = Path(d).resolve()
+            except OSError:
+                continue
+            if rp == out_root or out_root not in rp.parents or not rp.is_dir():
+                continue
+            if rp != ws.dir.resolve() and rp.parent == self.root.resolve():
+                continue            # папку другого дела рабочего места не трогаем
+            shutil.rmtree(rp, ignore_errors=True)
+            removed.append(str(rp))
+        with self.lock:
+            self.items.pop(ws.id, None)
+        return {"id": ws.id, "removed": removed}
+
+    def all_ids(self) -> list[str]:
+        if not self.root.exists():
+            return []
+        ids = []
+        for f in sorted(self.root.glob("*/ws.json")):
+            m = re.search(r"_([0-9a-f]{6,32})$", f.parent.name)
+            if m:
+                ids.append(m.group(1))
+        return ids
 
     def recent(self, limit: int = 15) -> list[dict]:
         out = []

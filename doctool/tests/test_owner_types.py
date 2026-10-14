@@ -335,35 +335,31 @@ def test_web_manual_entry_owner_kinds_and_domains_width(tmp_path, browser):
             pg.on("pageerror", lambda e: errors.append(str(e)))
             pg.goto(url)
             pg.click("nav.tabs button[data-tab=tabCheck]")      # (0.7.6) по умолчанию открыто рабочее место
-            pg.wait_for_function("() => document.querySelector('#caseType').options.length > 0")
-            # 1) ручной ввод → таблица для ввода → «Пересчитать» → домены уходят на поиск (расширения нет — сообщение)
-            pg.click("#manual")
-            pg.wait_for_selector("#resultCard:not(.hidden)")
-            assert pg.is_visible("#manualHint")
-            pg.fill("#rows tr[data-id=fio] input[data-k=app]", "Тестов Пётр Сергеевич")
-            pg.fill("#rows tr[data-id=domains] input[data-k=app]", "testdomain-pp.ru")
-            assert pg.locator("#rows input[data-k=passport]").count() == 0           # паспорта нет — не правится
-            pg.click("#recompute")
-            pg.wait_for_function("() => document.querySelector('#domHint').textContent.includes('не отправлены')")
-            assert "не подключено" in pg.text_content("#domHint")
-            assert pg.input_value("#domList") == "testdomain-pp.ru"
-            # 2) окно «Домены в manager» шире карточек и без прокрутки вбок при длинных значениях
+            # 1) (0.8.1) вкладка — только «Домены в manager»: «Новой проверки» заявления нет
+            assert pg.text_content("nav.tabs button[data-tab=tabCheck]").strip() == "Домены в manager"
+            assert pg.locator("#formCard, #resultCard, #progressCard, #caseType").count() == 0
+            pg.fill("#domList", "testdomain-pp.ru")
+            pg.click("#domLoad")                                  # расширения нет — сообщение
+            pg.wait_for_function("() => document.querySelector('#domHint').textContent.includes('не подключено')")
+            # 2) окно «Домены в manager» без прокрутки вбок при длинных значениях; логин и e-mail аккаунта — раздельно
             long = {"domain": "ochen-dlinnoe-imya-domena-dlya-proverki-shiriny.ru", "status": "found", "kind": "person",
                     "fio": "Константинопольский Константин Константинович", "passport": "4509 123456",
                     "sd": {"birth_date": "15.03.1990", "passport_date": "20.04.2010",
                            "passport_place": "ГУ МВД РОССИИ ПО Г. МОСКВЕ И МОСКОВСКОЙ ОБЛАСТИ (ОТДЕЛ ПО ВОПРОСАМ МИГРАЦИИ)"},
                     "emails": ["very.long.administrator.email.address@example-company-domain.ru"],
-                    "provider": "cctldru", "account": "1000", "verdict": "review", "esia_status": "match",
+                    "provider": "cctldru", "account": "1000", "login": "person-login", "account_email": "owner.mail@example.org",
+                    "verdict": "review", "esia_status": "match",
                     "esia_state": "approved", "esia_ru": "approved · Sd = ЕСИА (9 из 9)",
-                    "compare": [{"title": "Кем выдан", "status": "warn", "detail": "сходство 80%", "sd": "", "doc": ""}],
+                    "flags": [{"level": "warn", "text": "Смена администратора меньше 30 дней назад"}],
                     "last_admin_change": "2025-11-20 10:00:00", "service_status": "Активна (A)", "problem": "review",
                     "problem_ru": "Нужна ручная проверка", "problem_rank": 4, "urls": {"sd": "https://manager.reg.ru/x"}}
             pg.evaluate("items => renderDomains(items)", [long, {**long, "domain": "vtoroy-domen.рф"}])
             w = pg.evaluate("() => { const w = document.querySelector('#domCard .wrap'); return [w.scrollWidth, w.clientWidth,"
-                            " document.querySelector('#domCard').clientWidth, document.querySelector('#formCard').clientWidth,"
                             " document.documentElement.scrollWidth, window.innerWidth]; }")
-            assert w[0] <= w[1] + 1, w                                                  # нет прокрутки вбок
-            assert w[2] > w[3] and w[4] <= w[5], w                                       # шире формы, страница не шире окна
+            assert w[0] <= w[1] + 1 and w[2] <= w[3], w                                  # нет прокрутки вбок
+            cell = pg.text_content("#domTable tbody tr:nth-child(2) td:nth-child(9)")
+            assert "логин: person-login" in cell and "e-mail: owner.mail@example.org" in cell, cell
+            assert "Смена администратора меньше 30 дней" in pg.text_content("#domTable tbody tr:nth-child(2) td:nth-child(10)")
             # 3) смена владельца: поля по типу нового владельца, сверка юрлица — поля ru_org
             pg.click("nav.tabs button[data-tab=tabOwner]")
             pg.check("input[name=ownKind][value=org]")

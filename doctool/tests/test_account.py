@@ -25,7 +25,7 @@ def test_parse_query():
               "https://manager.reg.ru/manager/user_details?user_id=15904265",
               "https://manager.reg.ru/user/15904265/runic_details", "договор № 15904265 от 23.10.2023 г."):
         assert p(s)["kind"] == "id" and p(s)["value"] == "15904265", s
-    assert p("wakeup@example.com") == {"kind": "login", "value": "wakeup@example.com", "label": "логин / e-mail wakeup@example.com"}
+    assert p("wakeup@example.com") == {"kind": "login", "value": "wakeup@example.com", "label": "логин wakeup@example.com"}
     assert p("ivanov_77")["kind"] == "login"
     assert p("Example.RU")["kind"] == "domain" and p("Example.RU")["value"] == "example.ru"
     assert p("пример.рф")["kind"] == "domain"

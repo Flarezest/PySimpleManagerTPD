@@ -8,9 +8,13 @@
   lookup     — данные домена: счета, Sd, S, идентификация через Госуслуги (0.6.0);
   account    — данные аккаунта и базовая анкета (0.6.0);
   fill_runic — вписать значения в форму базовой анкеты во вкладке оператора (0.6.0). «Сохранить» нажимает оператор.
+  (0.7.6) gosuslugi_fill, domain_move_fill / _read / _mark / _fill_contacts — рабочее место (web.py).
+  (0.8.0) site_open / site_hide — сайт строки «Поиск» рядом с рабочим местом: вторая половина окна Chrome
+           (разделённый экран) или отдельное окно; site_open с fill — вписать запрос в поле поиска сайта.
+           Эти команды и gosuslugi_fill расширение выполняет сразу, не дожидаясь загрузки доменов из manager.
 
 Протокол (JSON):
-  расширение → doctool: {"type": "hello", "version": "0.6.0"}, {"type": "ping"},
+  расширение → doctool: {"type": "hello", "version": "0.8.0", "chrome": 155, "split_api": true}, {"type": "ping"},
                         {"type": "progress", "id": …, "step": …, "message": …},
                         {"type": "result", "id": …, "ok": true, "data": {…}} | {"ok": false, "error": {code, message}}
   doctool → расширение: {"type": "request", "id": …, "cmd": "lookup", "params": {"domain": …, "ascii": …, "task": …}},
@@ -50,6 +54,7 @@ class ExtensionBridge:
 
     def status(self) -> dict:
         return {"connected": self.connected(), "version": self.info.get("version", ""),
+                "chrome": self.info.get("chrome") or 0, "split_api": bool(self.info.get("split_api")),
                 "connected_at": self.connected_at.isoformat(timespec="seconds") if self.connected_at else None,
                 "last_seen": self.last_seen.isoformat(timespec="seconds") if self.last_seen else None,
                 "pending": len(self._pending)}

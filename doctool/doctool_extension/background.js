@@ -13,13 +13,21 @@
  *                       документы в «Загрузить документы»;
  *    domain_move_read / domain_move_mark / domain_move_fill_contacts — шаг 2 («данные нового администратора»):
  *                       прочитать, подсветить итог сверки, вписать ФИО и контакты при «заполнить вручную».
+ *    (0.8.0, строка «Поиск» рабочего места)
+ *    site_open / site_hide — сайт рядом с рабочим местом: вторая половина окна Chrome (разделённый экран), окно
+ *                       справа или вкладка; site_open с fill — вписать запрос в поле поиска (ЕГРЮЛ). Страница
+ *                       «Проверка действительности паспорта» (gosuslugi_fill) открывается там же.
+ *    site_open, site_hide и gosuslugi_fill выполняются сразу, не дожидаясь очереди запросов к manager.
+ *    content/drop.js — файлы дела, перетащенные из рабочего места на страницы проверки ЭП (Госуслуги),
+ *                       Контур.Крипто и Nextcloud: расширение берёт файл у программы и кладёт его на страницу.
  *    lookup и account читают страницы в отдельной фоновой вкладке manager.
  * 3) Если manager просит вход (окно «Войти»), показывает вкладку и сообщает doctool.
  *
  * Расширение читает страницы manager. Меняет оно только значения полей форм во вкладках, которые видит оператор,
  * и только по кнопке в программе: базовая анкета (с 0.7.3 — и переключатель «Физик / ИП / Юрик»), с 0.7.6 —
- * страницы смены администратора и форма проверки паспорта на Госуслугах. Кнопки («Сохранить», «Далее»,
- * «Продолжить», «Изменить», «Удалить» и т. п.) оно не нажимает и формы не отправляет.
+ * страницы смены администратора и форма проверки паспорта на Госуслугах, с 0.8.0 — поле поиска ЕГРЮЛ и файлы,
+ * перетащенные оператором на страницы проверки ЭП, Контур.Крипто и Nextcloud. Кнопки («Сохранить», «Далее»,
+ * «Продолжить», «Найти», «Изменить», «Удалить» и т. п.) оно не нажимает и формы не отправляет.
  */
 const VERSION = chrome.runtime.getManifest().version;
 const MANAGER = 'https://manager.reg.ru/';
@@ -81,7 +89,7 @@ async function connect() {
     backoff = 2000;
     state.connected = true;
     state.lastError = '';
-    send({ type: 'hello', version: VERSION });
+    send({ type: 'hello', version: VERSION, chrome: chromeMajor(), split_api: splitApi() });
     note(`Подключено к PySimpleManager (порт ${port})`);
     clearInterval(keepalive);
     keepalive = setInterval(() => send({ type: 'ping' }), 20000);   // не даёт service worker уснуть
@@ -90,7 +98,10 @@ async function connect() {
   sock.onmessage = e => {
     let m;
     try { m = JSON.parse(e.data); } catch { return; }
-    if (m.type === 'request') enqueue(m);
+    if (m.type === 'request') {
+      if (FAST.has(m.cmd)) handleFast(m);      // (0.8.0) сайт рядом — не ждёт загрузки доменов из manager
+      else enqueue(m);
+    }
   };
   sock.onclose = () => {
     if (ws === sock) ws = null;
@@ -126,7 +137,6 @@ async function handle(m) {
     else if (m.cmd === 'account') reply = await readAccount(m.id, m.params || {});
     else if (m.cmd === 'fill_runic') reply = await fillRunic(m.id, m.params || {});
     else if (m.cmd === 'check_manager') reply = await checkManager();
-    else if (m.cmd === 'gosuslugi_fill') reply = await gosuslugiFill(m.id, m.params || {});
     else if (m.cmd === 'domain_move_fill') reply = await domainMoveFill(m.id, m.params || {});
     else if (m.cmd === 'domain_move_read') reply = await domainMoveStep2(m.id, 'domainMoveRead', []);
     else if (m.cmd === 'domain_move_mark') reply = await domainMoveStep2(m.id, 'domainMoveMark', [(m.params || {}).marks || {}]);
@@ -140,6 +150,21 @@ async function handle(m) {
   state.busy = false;
   badge();
   scheduleTabClose();
+}
+
+// (0.8.0) команды, которые не трогают вкладку manager и выполняются сразу
+const FAST = new Set(['site_open', 'site_hide', 'gosuslugi_fill']);
+
+async function handleFast(m) {
+  let reply;
+  try {
+    if (m.cmd === 'site_open') reply = await siteOpen(m.id, m.params || {});
+    else if (m.cmd === 'site_hide') reply = await siteHide(m.params || {});
+    else if (m.cmd === 'gosuslugi_fill') reply = await gosuslugiFill(m.id, m.params || {});
+  } catch (e) {
+    reply = { ok: false, error: { code: e.code || 'error', message: e.message || String(e) } };
+  }
+  send({ type: 'result', id: m.id, ...reply });
 }
 
 function fail(code, message) {
@@ -423,10 +448,18 @@ async function gosuslugiFill(reqId, p) {
   if (!p.series || !p.number) throw fail('bad_request', 'Нет серии и номера паспорта');
   note(`Госуслуги: проверка паспорта ${p.series} ${p.number}`);
   progressTo(reqId, 'gosuslugi', 'открываю «Проверка действительности паспорта» на Госуслугах');
-  const tabs = await chrome.tabs.query({ url: `${GOSUSLUGI}621102/*` });
-  let tab = tabs[0];
-  if (!tab) tab = await chrome.tabs.create({ url: GOSUSLUGI_FORM, active: true });
-  await focusTab(tab.id);
+  let tab = null;
+  if (p.site && p.site.open_in !== 'tab') {
+    // (0.8.0) там же, где сайты строки «Поиск»: рядом с рабочим местом; открытую форму не перезагружаем
+    const r = await siteOpenTab(GOSUSLUGI_FORM, p.site, `${GOSUSLUGI}621102/`);
+    tab = r.tabId !== null ? await getTab(r.tabId) : null;
+  }
+  if (!tab) {
+    const tabs = await chrome.tabs.query({ url: `${GOSUSLUGI}621102/*` });
+    tab = tabs[0];
+    if (!tab) tab = await chrome.tabs.create({ url: GOSUSLUGI_FORM, active: true });
+    await focusTab(tab.id);
+  }
   await waitLoaded(tab.id, 60000, 60000);
   // страница — приложение Angular: форма появляется после загрузки скриптов; без входа Госуслуги покажут вход
   const has = () => !!document.querySelector('#series') && !!document.querySelector('#number');
@@ -456,6 +489,328 @@ async function checkManager() {
   });
   return { ok: true, data: { manager: 'ok', login: (res && res.result && res.result.login) || '' } };
 }
+
+// ------------------------------------------------------------------ (0.8.0) сайт рядом с рабочим местом
+//
+// Строка «Поиск» рабочего места открывает сайт (Google, Яндекс, ЕГРЮЛ, быстрые ссылки, Госуслуги):
+//   split  — во второй половине окна Chrome рядом со вкладкой программы (разделённый экран). Chrome 155+:
+//            tabs.create({splitWithTabId}); в Chrome 145–154 — если пару вкладок один раз собрали вручную, сайт
+//            открывается во второй вкладке пары. Не получилось — окном (window).
+//   window — отдельное окно Chrome (тип popup) на правой части экрана, окно программы сдвигается влево.
+//   tab    — обычная вкладка рядом с вкладкой программы.
+//   auto   — split, иначе window.
+// Следующий запрос открывается там же — одна вкладка (или одно окно) сайта. «Убрать» (site_hide): вкладка выходит из
+// разделённого экрана и остаётся обычной вкладкой (Chrome 155+; в старых версиях — закрывается), окно сворачивается,
+// окно программы возвращается на прежнее место. Кнопок на сайтах расширение не нажимает и формы не отправляет.
+const SITE_DEFAULT = { tabId: null, windowId: null, mode: '', manual: false, progWindowId: null, prevBounds: null };
+const DROP_HOSTS = ['e-trust.gosuslugi.ru', 'crypto.kontur.ru', 'nextcloud-ms.runity.ru'];   // content/drop.js
+const FILLERS = { egrul: ['#query', 'input[name="query"]'] };   // формы поиска: где искать поле запроса
+let site = null;
+
+const chromeMajor = () => { const m = /Chrome\/(\d+)/.exec(navigator.userAgent || ''); return m ? Number(m[1]) : 0; };
+const splitApi = () => !!(chrome.tabs && typeof chrome.tabs.createSplit === 'function' && typeof chrome.tabs.unsplit === 'function');
+const inSplit = t => !!t && typeof t.splitViewId === 'number' && t.splitViewId >= 0;
+
+async function siteLoad() {
+  if (!site) {
+    const s = await chrome.storage.session.get('site');
+    site = { ...SITE_DEFAULT, ...(s.site || {}) };
+  }
+  return site;
+}
+
+async function siteSave(patch, reset = false) {
+  site = { ...(reset ? SITE_DEFAULT : await siteLoad()), ...patch };
+  await chrome.storage.session.set({ site });
+}
+
+async function getTab(id) {
+  if (id === null || id === undefined) return null;
+  try { return await chrome.tabs.get(id); } catch { return null; }
+}
+
+async function getWin(id) {
+  if (id === null || id === undefined) return null;
+  try { return await chrome.windows.get(id, { populate: true }); } catch { return null; }
+}
+
+// Вкладка программы (рабочее место): http://127.0.0.1:<порт>/ или http://localhost:<порт>/;
+// активная в последнем окне — в первую очередь.
+async function programTab() {
+  const { port } = await settings();
+  const tabs = (await chrome.tabs.query({ url: ['http://127.0.0.1/*', 'http://localhost/*'] }))
+    .filter(t => { try { return new URL(t.url).port === String(port); } catch { return false; } });
+  if (!tabs.length) return null;
+  let win = null;
+  try { win = await chrome.windows.getLastFocused(); } catch { /* нет окон */ }
+  return tabs.find(t => t.active && win && t.windowId === win.id) || tabs.find(t => t.active) || tabs[0];
+}
+
+// Ждать окончания загрузки вкладки (status complete) — не дольше ms.
+function waitComplete(tabId, ms) {
+  return new Promise(resolve => {
+    let timer = null;
+    const done = v => { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(onUpd); resolve(v); };
+    const onUpd = (id, info) => { if (id === tabId && info.status === 'complete') done(true); };
+    chrome.tabs.onUpdated.addListener(onUpd);
+    timer = setTimeout(() => done(false), ms);
+    chrome.tabs.get(tabId).then(t => { if (t.status === 'complete' && !t.pendingUrl) done(true); }).catch(() => done(false));
+  });
+}
+
+// Где оператор видит экран: область, которую передала страница программы (screen.avail*), иначе окно программы.
+async function screenArea(opts, prog) {
+  const sc = opts && opts.screen;
+  if (sc && sc.width > 300 && sc.height > 200) return sc;
+  const w = prog ? await getWin(prog.windowId) : null;
+  if (w && w.width) return { left: w.left || 0, top: w.top || 0, width: w.width, height: w.height };
+  return { left: 0, top: 0, width: 1600, height: 900 };
+}
+
+async function shrinkProgram(prog, area, siteWidth) {
+  if (!prog) return;
+  const w = await getWin(prog.windowId);
+  if (!w) return;
+  const st = await siteLoad();
+  if (st.progWindowId !== w.id || !st.prevBounds) {
+    await siteSave({ progWindowId: w.id, prevBounds: { state: w.state, left: w.left, top: w.top, width: w.width, height: w.height } });
+  }
+  try {
+    if (w.state !== 'normal') await chrome.windows.update(w.id, { state: 'normal' });
+    await chrome.windows.update(w.id, { left: area.left, top: area.top, width: Math.max(400, area.width - siteWidth), height: area.height });
+  } catch { /* окно нельзя двигать (полный экран и т. п.) */ }
+}
+
+async function restoreProgram() {
+  const st = await siteLoad();
+  if (!st.progWindowId || !st.prevBounds) return;
+  const b = st.prevBounds;
+  try {
+    if (b.state === 'maximized' || b.state === 'fullscreen') await chrome.windows.update(st.progWindowId, { state: b.state });
+    else await chrome.windows.update(st.progWindowId, { state: 'normal', left: b.left, top: b.top, width: b.width, height: b.height });
+  } catch { /* окно закрыто */ }
+  await siteSave({ prevBounds: null });
+}
+
+// Убрать сайт, открытый прежним способом (когда оператор выбрал другой).
+async function siteDrop(st) {
+  if (st.mode === 'window' && st.windowId !== null) {
+    await chrome.windows.remove(st.windowId).catch(() => {});
+    await restoreProgram();
+  } else if (st.tabId !== null && !st.manual) {
+    await chrome.tabs.remove(st.tabId).catch(() => {});
+  }
+  await siteSave({}, true);
+}
+
+async function goTo(tabId, url, keepPrefix) {
+  const t = await getTab(tabId);
+  if (!t) return null;
+  if (url && !(keepPrefix && (t.url || '').startsWith(keepPrefix))) await chrome.tabs.update(tabId, { url });
+  return t;
+}
+
+// Открыть адрес рядом с рабочим местом. opts: {open_in, screen, share, keep}. keep — не перезагружать сайт, если он
+// уже открыт (показать снова после «убрать»); keepPrefix — не уходить со страницы, адрес которой так начинается.
+async function siteOpenTab(url, opts = {}, keepPrefix = '') {
+  const want = ['split', 'window', 'tab'].includes(opts.open_in) ? opts.open_in : 'auto';
+  const prog = await programTab();
+  let st = await siteLoad();
+  const notes = [];
+  const nav = opts.keep ? '' : url;
+  // сайт закрыли руками — забываем его (окно программы — на прежнее место)
+  const alive = st.mode === 'window' ? !!(await getWin(st.windowId)) : !!(st.mode && await getTab(st.tabId));
+  if (st.mode && !alive) {
+    if (st.mode === 'window') await restoreProgram();
+    await siteSave({}, true);
+    st = await siteLoad();
+  }
+  // auto — разделённый экран; если сайт уже открыт окном (разделённый экран не получился) — то же окно
+  let mode = want === 'auto' ? (st.mode === 'window' ? 'window' : 'split') : want;
+  if (st.mode && st.mode !== mode) { await siteDrop(st); st = await siteLoad(); }
+
+  if (mode === 'split') {
+    const t = await getTab(st.tabId);
+    if (t && st.mode === 'split' && prog) {
+      if (inSplit(t) && t.splitViewId === prog.splitViewId) {
+        await goTo(t.id, nav || '', keepPrefix);
+        await chrome.tabs.update(t.id, { active: true }).catch(() => {});
+        return { tabId: t.id, mode: 'split', notes };
+      }
+      if (!inSplit(t) && !inSplit(prog) && splitApi()) {
+        try {
+          // вкладка сайта вышла из пары («убрать») — ставим рядом и собираем пару снова
+          if (t.windowId !== prog.windowId || t.index !== prog.index + 1) {
+            await chrome.tabs.move(t.id, { windowId: prog.windowId, index: prog.index + 1 });
+          }
+          await chrome.tabs.createSplit([prog.id, t.id]);
+          await goTo(t.id, nav, keepPrefix);
+          await chrome.tabs.update(t.id, { active: true }).catch(() => {});
+          return { tabId: t.id, mode: 'split', notes };
+        } catch (e) { notes.push(`пара вкладок не собралась (${e.message || e}) — открываю заново`); }
+      }
+      if (!st.manual) await chrome.tabs.remove(t.id).catch(() => {});
+      await siteSave({}, true);
+    }
+    if (prog && inSplit(prog)) {
+      // вкладка программы уже в разделённом экране (пару собрали вручную) — сайт открывается во второй вкладке пары
+      const pair = (await chrome.tabs.query({ windowId: prog.windowId })).find(x => x.id !== prog.id && x.splitViewId === prog.splitViewId);
+      if (pair) {
+        await goTo(pair.id, nav, keepPrefix);
+        await chrome.tabs.update(pair.id, { active: true }).catch(() => {});
+        await siteSave({ tabId: pair.id, windowId: pair.windowId, mode: 'split', manual: true });
+        return { tabId: pair.id, mode: 'split', notes };
+      }
+    }
+    if (prog && splitApi()) {
+      try {
+        const t2 = await chrome.tabs.create({ splitWithTabId: prog.id, url });
+        await siteSave({ tabId: t2.id, windowId: t2.windowId, mode: 'split', manual: false });
+        return { tabId: t2.id, mode: 'split', notes };
+      } catch (e) { notes.push(`разделённый экран не открылся: ${e.message || e}`); }
+    } else {
+      notes.push(prog ? `разделённый экран Chrome доступен расширению с версии 155 (у вас ${chromeMajor() || '?'}); `
+        + 'в Chrome 145–154 соберите пару вкладок вручную: правый щелчок по вкладке программы → разделённый экран'
+        : 'не найдена вкладка программы');
+    }
+  }
+
+  if (mode === 'window' || mode === 'split') {
+    const area = await screenArea(opts, prog);
+    const share = Math.min(70, Math.max(20, Number(opts.share) || 40));
+    const width = Math.round(area.width * share / 100);
+    const w = st.mode === 'window' ? await getWin(st.windowId) : null;
+    if (w) {
+      const t = (w.tabs || [])[0];
+      if (t) await goTo(t.id, nav, keepPrefix);
+      await chrome.windows.update(w.id, { state: 'normal', focused: true }).catch(() => {});
+      await shrinkProgram(prog, area, w.width || width);
+      return { tabId: t ? t.id : null, mode: 'window', notes };
+    }
+    const win = await chrome.windows.create({ url, type: 'popup', focused: true, left: area.left + area.width - width, top: area.top, width, height: area.height });
+    const t = (win.tabs || [])[0];
+    await siteSave({ tabId: t ? t.id : null, windowId: win.id, mode: 'window', manual: false });
+    await shrinkProgram(prog, area, width);
+    return { tabId: t ? t.id : null, mode: 'window', notes };
+  }
+
+  // mode === 'tab'
+  const t = st.mode === 'tab' ? await getTab(st.tabId) : null;
+  if (t) {
+    await goTo(t.id, nav, keepPrefix);
+    await chrome.tabs.update(t.id, { active: true }).catch(() => {});
+    return { tabId: t.id, mode: 'tab', notes };
+  }
+  const t3 = await chrome.tabs.create({ url, active: true, ...(prog ? { windowId: prog.windowId, index: prog.index + 1 } : {}) });
+  await siteSave({ tabId: t3.id, windowId: t3.windowId, mode: 'tab', manual: false });
+  return { tabId: t3.id, mode: 'tab', notes };
+}
+
+// Выполняется на странице сайта: вписать запрос в поле поиска (кнопку «Найти» нажимает оператор).
+function fillSearchField(q, selectors) {
+  const vis = el => !!el && !el.disabled && !el.readOnly && el.offsetParent !== null;
+  let el = null;
+  for (const s of selectors || []) { const x = document.querySelector(s); if (vis(x)) { el = x; break; } }
+  if (!el) el = [...document.querySelectorAll('input[type="text"], input[type="search"], input:not([type])')].find(vis) || null;
+  if (!el) return { ok: false, error: { code: 'no_field', message: 'На странице не найдено поле поиска — вставьте запрос вручную' } };
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  el.focus();
+  setter.call(el, q);
+  el.dispatchEvent(new InputEvent('input', { bubbles: true, data: q, inputType: 'insertText' }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  el.style.outline = '2px solid #f0ad4e';
+  return { ok: true, data: { field: el.id || el.name || el.placeholder || 'поле поиска', value: el.value } };
+}
+
+async function injectDrop(tabId, url) {
+  let host = '';
+  try { host = new URL(url).hostname; } catch { return; }
+  if (!DROP_HOSTS.includes(host)) return;
+  await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['content/drop.js'] }).catch(() => {});
+}
+
+async function siteOpen(reqId, p) {
+  const url = String(p.url || '');
+  if (!/^https?:\/\//.test(url)) throw fail('bad_request', 'Адрес сайта должен начинаться с https:// или http://');
+  progressTo(reqId, 'site', `открываю ${url}`);
+  const r = await siteOpenTab(url, p);
+  const data = { mode: r.mode, notes: r.notes, chrome: chromeMajor(), split_api: splitApi() };
+  note(`Сайт (${r.mode}): ${url}${r.notes.length ? ' — ' + r.notes.join('; ') : ''}`);
+  if (r.tabId === null) return { ok: true, data };
+  const fill = p.fill && FILLERS[p.fill.kind];
+  if (!fill) {
+    waitComplete(r.tabId, 30000).then(() => injectDrop(r.tabId, url));
+    return { ok: true, data };
+  }
+  await waitComplete(r.tabId, 30000);
+  let out = null;
+  for (let i = 0; i < 15; i++) {
+    try {
+      const [res] = await chrome.scripting.executeScript({ target: { tabId: r.tabId }, func: fillSearchField, args: [String(p.fill.q || ''), fill] });
+      out = res && res.result;
+    } catch (e) { out = { ok: false, error: { code: 'error', message: e.message || String(e) } }; }
+    if (out && out.ok) break;
+    await sleep(1000);
+  }
+  data.fill = out || { ok: false, error: { code: 'error', message: 'страница не ответила' } };
+  note(`Сайт: ${data.fill.ok ? `запрос вписан (${data.fill.data.field})` : data.fill.error.message}`);
+  return { ok: true, data };
+}
+
+async function siteHide(p) {
+  const st = await siteLoad();
+  const prog = await programTab();
+  const t = await getTab(st.tabId);
+  if (!st.mode || (!t && st.mode !== 'window')) {
+    await restoreProgram();
+    await siteSave({}, true);
+    return { ok: true, data: { mode: 'none' } };
+  }
+  if (p && p.close) {
+    await siteDrop(st);
+    return { ok: true, data: { mode: st.mode, closed: true } };
+  }
+  if (st.mode === 'split') {
+    if (inSplit(t) && splitApi()) await chrome.tabs.unsplit(t.splitViewId).catch(() => {});
+    else if (inSplit(t)) { await chrome.tabs.remove(t.id).catch(() => {}); await siteSave({}, true); }   // до Chrome 155 убрать половину можно только закрыв вкладку
+  } else if (st.mode === 'window') {
+    await chrome.windows.update(st.windowId, { state: 'minimized' }).catch(() => {});
+    await restoreProgram();
+  }
+  if (prog) await focusTab(prog.id);
+  return { ok: true, data: { mode: st.mode } };
+}
+
+// content/drop.js просит файл дела, перетащенный из рабочего места: берём его у программы на этом компьютере.
+async function siteFile(msg, sender) {
+  const { port } = await settings();
+  let u;
+  try { u = new URL(String(msg.url || '')); } catch { throw fail('bad_url', 'Неверная ссылка на файл'); }
+  if (!['127.0.0.1', 'localhost'].includes(u.hostname) || u.port !== String(port) || u.protocol !== 'http:'
+      || !/^\/api\/ws\/[0-9a-f]{6,32}\/file\/f\d+$/.test(u.pathname)) {
+    throw fail('bad_url', 'Перетащен не файл дела PySimpleManager');
+  }
+  let host = '';
+  try { host = new URL(sender.url || (sender.tab && sender.tab.url) || '').hostname; } catch { /* ignore */ }
+  if (!DROP_HOSTS.includes(host)) throw fail('bad_host', `Сайт ${host || '?'} не из списка расширения`);
+  const r = await fetch(u.href, { cache: 'no-store' });
+  if (!r.ok) throw fail('http', `программа ответила HTTP ${r.status}`);
+  const buf = new Uint8Array(await r.arrayBuffer());
+  if (buf.length > 40 * 1024 * 1024) throw fail('too_big', 'Файл больше 40 МБ — выберите его на сайте вручную');
+  let bin = '';
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  note(`Файл дела → ${host}: ${msg.name || u.pathname.split('/').pop()}`);
+  return { ok: true, b64: btoa(bin), type: r.headers.get('content-type') || '' };
+}
+
+chrome.tabs.onRemoved.addListener(async id => {
+  const st = await siteLoad();
+  if (st.tabId === id && st.mode !== 'window') await siteSave({}, true);
+});
+chrome.windows.onRemoved.addListener(async id => {
+  const st = await siteLoad();
+  if (st.windowId === id && st.mode === 'window') { await restoreProgram(); await siteSave({}, true); }
+});
 
 // ------------------------------------------------------------------ вкладка manager
 
@@ -592,6 +947,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     ws = null;
     backoff = 2000;
     connect().then(() => reply({ ok: true }));
+    return true;
+  }
+  if (msg && msg.type === 'site_file') {
+    siteFile(msg, sender).then(reply).catch(e => reply({ ok: false, message: e.message || String(e) }));
     return true;
   }
   if (msg && msg.type === 'check_manager') {

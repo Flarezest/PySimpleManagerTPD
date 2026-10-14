@@ -1,4 +1,4 @@
-/* PySimpleManager — рабочее место оператора (0.7.6). Цвета — переменные index.html (светлая и тёмная тема). */
+/* PySimpleManager — рабочее место оператора (0.7.6; 0.8.0 — строка «Поиск», меню «Окна»; 0.8.1 — текст PDF, дело без файлов). Цвета — переменные index.html (светлая и тёмная тема). */
 body.ws-mode{height:100vh;display:flex;flex-direction:column;overflow:hidden}
 body.ws-mode main{display:none}
 .wsx{--desk:#e3e7ec;--viewer:#8a9099;--wshadow:0 8px 28px rgba(16,24,40,.18);flex:1;min-height:0;display:flex;flex-direction:column}
@@ -90,7 +90,11 @@ body.ws-dragging,body.ws-dragging *{user-select:none!important}
 .ws-vp.selmode{cursor:crosshair}
 .ws-stage{position:relative;margin:8px auto}
 .ws-stage img.pg{position:absolute;left:0;top:0;transform-origin:0 0;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.35);user-select:none;-webkit-user-drag:none}
-.ws-hl{position:absolute;border:3px solid #f2b600;background:rgba(255,213,74,.28);border-radius:3px;pointer-events:none;z-index:4}
+/* (0.8.1) текстовый слой PDF: прозрачные слова поверх превью — выделяются мышью и копируются */
+.ws-tl{position:absolute;left:0;top:0;transform-origin:0 0;line-height:1;z-index:2}
+.ws-tl span{position:absolute;white-space:pre;color:transparent;transform-origin:0 0;cursor:text;font-family:sans-serif}
+.ws-tl ::selection{background:rgba(0,90,255,.3);color:transparent}
+.ws-vp.selmode .ws-tl,.ws-vp.panning .ws-tl{pointer-events:none;user-select:none}
 .ws-sel{position:absolute;border:2px solid #ffd54a;background:rgba(255,213,74,.18);pointer-events:none;z-index:5}
 .ws-pinfo{font-size:11.5px;padding:2px 8px;background:var(--bg);color:var(--muted);border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ws-empty{padding:24px;color:#fff;font-size:13px;text-align:center;line-height:1.5}
@@ -98,37 +102,10 @@ body.ws-dragging,body.ws-dragging *{user-select:none!important}
 .ws-docx p{margin:4px 0}
 .ws-docx table.dx{border-collapse:collapse;width:100%;margin:2px 0}
 .ws-docx table.dx td{border:1px solid #999;padding:3px 6px;font-size:14px}
-.ws-docx mark{background:rgba(255,213,74,.6);outline:2px solid #f2b600}
-
-/* ---------- сверка ---------- */
-.ws-cmp{display:flex;flex-direction:column;height:100%}
-.ws-gos{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--line);font-size:12.5px}
-.ws-verdict{padding:5px 10px;font-size:12.5px;border-bottom:1px solid var(--line)}
-.ws-verdict b{font-size:13px}
-.ws-cmpt{flex:1;min-height:0;overflow:auto;outline:none}
-.ws-cmpt table{border-collapse:collapse;width:100%;font-size:12.5px}
-.ws-cmpt th{position:sticky;top:0;background:var(--card);z-index:1;font-size:11.5px;color:var(--muted);font-weight:600;text-align:left;padding:5px 6px;border-bottom:1px solid var(--line)}
-.ws-cmpt td{padding:5px 6px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:break-word}
-.ws-cmpt th select{max-width:150px;font-size:12px;padding:1px 4px}
-.ws-cmpt td.k{width:20%}
-.ws-cmpt tr{cursor:pointer}
-.ws-cmpt tr.sel td{box-shadow:inset 0 2px 0 var(--accent),inset 0 -2px 0 var(--accent)}
-.ws-cmpt tr.sel td:first-child{box-shadow:inset 3px 2px 0 var(--accent),inset 0 -2px 0 var(--accent)}
-.ws-cmpt td.k{font-weight:600;min-width:110px}
-.ws-cmpt td.c-ok{background:var(--ok)}.ws-cmpt td.c-warn{background:var(--warn)}.ws-cmpt td.c-fail{background:var(--fail)}
-.ws-cmpt td.c-ref{background:color-mix(in srgb,var(--ok) 45%,transparent)}
-.ws-cmpt .src{display:block;font-size:10.5px;color:var(--muted)}
-.ws-cmpt td.look{background:var(--review);color:var(--review-t)}
-.ws-cmpt td.look .v{font-style:italic}
-.ws-cmpt td.fin{white-space:nowrap;width:1%}
-.ws-cmpt td.fin button{padding:1px 7px!important;font-size:12px}
-.ws-cmpt td.fin input{width:150px;font-size:12px;padding:2px 5px;margin-top:3px}
-.ws-cmpt img.crop{display:block;max-width:220px;max-height:46px;margin-top:3px;border:1px solid var(--line);border-radius:3px;background:#fff;cursor:zoom-in}
-.ws-cmpt .ed{border:0;background:none;color:var(--accent);cursor:pointer;padding:0 3px;font-size:12px}
-.ws-cmpt input.edit{width:100%;font-size:12.5px;padding:2px 5px}
-.ws-cfoot{padding:4px 10px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.ws-prog{flex:0 0 120px;height:6px;background:var(--line);border-radius:3px;overflow:hidden}
-.ws-prog i{display:block;height:100%;background:#2e9d57;width:0}
+/* (0.8.1) дело без файлов; файлы с компьютера над рабочим местом */
+.ws-nofiles{align-self:center;font-size:12.5px;color:var(--muted);padding:6px 4px}
+.ws-desk.addover{outline:3px dashed var(--accent);outline-offset:-3px}
+.ws-desk.addover::after{content:"Отпустите — файлы добавятся в дело";position:absolute;left:50%;top:40%;transform:translateX(-50%);z-index:200001;background:var(--card);color:var(--text);border:1px solid var(--accent);border-radius:8px;padding:10px 16px;font-size:14px;box-shadow:var(--wshadow);pointer-events:none}
 
 /* ---------- домены ---------- */
 .ws-dlist{padding:6px 8px;display:flex;flex-direction:column;gap:6px}
@@ -174,3 +151,47 @@ body.ws-dragging,body.ws-dragging *{user-select:none!important}
 .ws-pop ul{margin:4px 0 8px 18px;padding:0}
 #wsToast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);background:#1d1f23;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;z-index:300000;opacity:0;transition:opacity .2s;pointer-events:none;max-width:70vw;text-align:center}
 #wsToast.on{opacity:.95}
+
+/* ---------- (0.8.0) строка «Поиск» ---------- */
+.ws-si{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;flex:0 0 auto;vertical-align:-2px}
+.ws-kbd{font:11px Consolas,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;color:var(--muted);margin-left:5px}
+.ws-sbar{display:flex;flex-direction:column;gap:4px;padding:5px 10px;margin:0 8px 6px;background:var(--card);border:1px solid var(--line);border-radius:8px;position:relative;flex:0 0 auto;font-size:12.5px}
+.ws-srow{display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap;min-width:0}
+.ws-srow2{min-height:22px}
+.ws-sright{display:flex;align-items:center;gap:6px;margin-left:auto}
+.ws-qbox{flex:0 1 420px;min-width:220px;display:flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:18px;padding:0 4px 0 10px;background:var(--input,var(--card));color:var(--muted)}
+.ws-qbox:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent)}
+.wsx .ws-qbox input[type=text]{border:0;flex:1;min-width:0;background:none;outline:none;padding:5px 4px;font-size:14px;color:var(--text)}
+.ws-svc{display:flex;gap:4px;flex-wrap:wrap;align-items:stretch}
+.wsx .ws-svc button{padding:3px 10px;font-size:12.5px}
+.wsx .ws-svc button.lnk{color:var(--accent)}
+.ws-svc .sep{width:1px;background:var(--line);margin:2px 3px}
+.ws-sfiles{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.ws-fchip{border:1px dashed var(--accent);border-radius:12px;padding:1px 8px;font-size:12px;cursor:grab;background:color-mix(in srgb,var(--accent) 7%,var(--card));max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ws-sst{flex:1 1 260px;min-width:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.wsx .ws-sbar select{font-size:12px;padding:2px 4px}
+.ws-sdrop{position:absolute;z-index:150000;top:calc(100% + 2px);left:10px;width:min(620px,calc(100% - 20px));background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:var(--wshadow);padding:8px 10px}
+.ws-chips{display:flex;gap:5px;flex-wrap:wrap;padding:4px 0 2px}
+.wsx .ws-chip{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:1px 9px;font-size:12px}
+.ws-chip small{color:var(--muted)}
+.wsx .ws-chip:hover{border-color:var(--accent)}
+.wsx .ws-hrow{display:block;width:100%;text-align:left;border:0;background:none;padding:2px 4px;font-size:12px;color:var(--text);border-radius:4px}
+.wsx .ws-hrow:hover{background:var(--bg)}
+.ws-tbar #wsSearchBtn{display:inline-flex;align-items:center;gap:4px}
+.ws-file[draggable=true]{cursor:grab}
+.ws-sub{display:block;color:var(--muted);font-size:11.5px}
+
+/* ---------- (0.8.0) меню «Окна» ---------- */
+.ws-winpop{max-width:340px}
+.ws-wlist{display:flex;flex-direction:column;gap:2px;max-height:50vh;overflow:auto}
+.ws-wlist button{display:flex;gap:8px;align-items:center;justify-content:space-between;text-align:left;border:1px solid transparent;background:none;padding:3px 6px;border-radius:5px;color:var(--text);font-size:12.5px;cursor:pointer}
+.ws-wlist button:hover{background:var(--bg);border-color:var(--line)}
+.ws-ws{color:var(--muted);white-space:nowrap}
+.ws-ws.on{color:var(--ok-t)}
+
+/* ---------- (0.8.0) удаление недавних дел ---------- */
+.ws-rhead{display:flex;align-items:center;gap:10px;margin:0 0 6px}
+.ws-rhead button{margin-left:auto}
+.ws-ract{white-space:nowrap}
+.ws-delq{font-size:12px;color:var(--fail-t)}
+.wsx button.danger,.ws-pop button.danger{background:var(--fail);color:var(--fail-t);border-color:color-mix(in srgb,var(--fail-t) 40%,var(--line))}

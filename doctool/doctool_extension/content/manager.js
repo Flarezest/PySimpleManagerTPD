@@ -30,7 +30,7 @@
  * Кнопки «Далее», «Использовать» и остальные флажки страницы скрипт не трогает.
  */
 (() => {
-  const VERSION = '0.7.6';
+  const VERSION = '0.8.1';
   if (window.__doctoolManager && window.__doctoolManager.version === VERSION) return;
 
   // Поля Sd, которые передаются в doctool. authinfo, телефоны, адреса и служебные поля не передаются.
@@ -243,6 +243,10 @@
     };
     const first = det && det.querySelector('tr td');
     const login = first ? text(first.querySelector('b')) : '';
+    // (0.8.1) e-mail аккаунта — поле «E-mail» (input name=email); с логином может не совпадать
+    const em = det && det.querySelector('input[name="email"]');
+    const emRow = row('E-mail');
+    const email = em ? (em.value || '').trim() : emRow ? text(emRow.querySelector('td')).split(/\s/)[0] : '';
     const statuses = first ? [...first.querySelectorAll('span')].map(s => text(s)).filter(Boolean) : [];
     const org = row('Обслуживающая организация');
     const orgText = org ? text(org.querySelector('td')) : '';
@@ -257,7 +261,7 @@
       if (a) links[k] = absUrl(a.getAttribute('href'));
     }
     return {
-      user_id: m ? m[1] : '', login, statuses, ba,
+      user_id: m ? m[1] : '', login, email, statuses, ba,
       servicing_org: orgCur ? orgCur[1].trim() : orgText, servicing_org_id: companyId,
       contypes: contypes ? text(contypes.querySelector('td')) : '',
       is_entrepreneur: !!(ent && ent.checked), links,
@@ -442,6 +446,23 @@
     }
   }
 
+  // (0.8.1) e-mail аккаунта владельца услуги — поле «E-mail» страницы «Данные пользователя»; аккаунт у доменов
+  // обычно общий, страница читается один раз за 10 минут.
+  const emailCache = new Map();   // user_id → {t, value}
+  async function accountEmailFor(uid) {
+    const hit = emailCache.get(uid);
+    if (hit && Date.now() - hit.t < 10 * 60 * 1000) return hit.value;
+    let value = '';
+    try {
+      value = parseUserDetails(await getDoc(`/manager/user_details?user_id=${encodeURIComponent(uid)}`)).email || '';
+    } catch (e) {
+      return '';                    // страница не открылась — домен всё равно показываем, без e-mail аккаунта
+    }
+    if (emailCache.size > 500) emailCache.clear();
+    emailCache.set(uid, { t: Date.now(), value });
+    return value;
+  }
+
   // Страница идентификации общая у доменов одной персоны — в пределах одной загрузки читается один раз.
   const esiaCache = new Map();   // url → {t, value}
   async function esiaFor(url, task) {
@@ -515,6 +536,12 @@
         throw new LookupError('mismatch', `Страница S относится к другому домену: ${s.dname}`);
       }
       // ЕСИА — у физлиц (ru_pp) и юрлиц (ru_org, с 0.7.2): по ссылке со страницы Sd этого домена
+      const accId = s.user_id || found.user_id;
+      let accountEmail = '';
+      if (accId && opts.account_email !== false) {
+        progress('user_details', `${domain}: e-mail аккаунта #${accId}`);
+        accountEmail = await accountEmailFor(accId);
+      }
       let esia = null;
       if (opts.esia !== false && (sd.group === 'ru_pp' || sd.group === 'ru_org') && sd.links && sd.links.esia) {
         progress('esia', `${domain}: идентификация через Госуслуги`);
@@ -523,8 +550,8 @@
       return {
         ok: true,
         data: {
-          domain, service_id: found.service_id, account: s.user_id || found.user_id, bill_owner: found.bill_owner,
-          login: s.login || '',
+          domain, service_id: found.service_id, account: accId, bill_owner: found.bill_owner,
+          login: s.login || '', account_email: accountEmail,
           bill_state: found.state, sd, s, esia,
           urls: {
             bills: `${location.origin}/bill/bills?searchstring=${encodeURIComponent(found.query)}`,

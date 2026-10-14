@@ -225,12 +225,13 @@ def _domain_row(d: dict, similar: dict[str, str]) -> str:
     if flags:
         cmp_ += "".join(f'<br><span class="tag {_FLAG_CLS.get(f["level"], "info")}">{_FLAG_RU.get(f["level"], f["level"])}</span> '
                         f'{_e(f["text"])}' for f in flags)
-    extra = (f"аккаунт: {_e(d.get('account') or '—')}" + (f" <span class=src>({_e(d['login'])})</span>" if d.get("login") else "")
+    extra = (f"аккаунт: {_e(d.get('account') or '—')}" + (f" <span class=src>(логин {_e(d['login'])})</span>" if d.get("login") else "")
+             + (f"<br>e-mail аккаунта: {_e(d['account_email'])}" if d.get("account_email") else "")
              + "<br>"
              f"смена админа: {_e(d.get('last_admin_change') or '—')}<br>"
              f"страна: {_e(sd.get('country') or sd.get('o_country_code') or '—')}")
     cls = d.get("verdict") or ""
-    q += f" {d.get('esia_ru', '')} {d.get('provider', '')} {d.get('login', '')} {d.get('admin_comment', '')}"
+    q += f" {d.get('esia_ru', '')} {d.get('provider', '')} {d.get('login', '')} {d.get('account_email', '')} {d.get('admin_comment', '')}"
     return (f'<tr class="{cls}" data-q="{_e(q)}">{head}<td>найден<br><span{"" if sst.startswith("Активна") else " class=bad"}>'
             f"{_e(sst)}</span></td><td>{data}</td><td>{cmp_}</td><td>{_esia_cell(d)}</td>"
             f"<td>{_e(d.get('provider') or '—')}</td><td>{extra}</td></tr>")

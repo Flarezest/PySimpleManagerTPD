@@ -1,10 +1,11 @@
-/* PySimpleManager — рабочее место оператора (0.7.6).
+/* PySimpleManager — рабочее место оператора (0.7.6; 0.8.0 — строка «Поиск», меню «Окна», удаление дел; 0.8.1 — дело
+ * без файлов и добавление файлов в открытое дело, выделение текста PDF, без окна «Сверка»).
  *
- * Дело из архива тикетницы: страницы по документам (лента), плавающие окна (заявление, паспорт, сверка, домены,
- * строка таблицы, Sd, manager), сверка Sd / ЕСИА / заявление / паспорт, проверка паспорта на Госуслугах и смена
- * администратора в manager через расширение, строка для таблицы xlsx.
+ * Дело из архива тикетницы (или пустое): страницы по документам (лента), плавающие окна (заявление, паспорт, домены,
+ * строка таблицы, Sd, manager), смена администратора в manager через расширение, строка для таблицы xlsx, строка
+ * «Поиск» (Ctrl+K) — сайт открывается рядом с рабочим местом через расширение, файлы дела перетаскиваются на сайт.
  * Сервер — /api/ws/* (doctool/workspace.py, web.py). Общие функции страницы ($, esc, api, copyText, showKPop,
- * showEsia, FLAG_RU, FLAG_CLS) — из index.html.
+ * showEsia, FLAG_RU, FLAG_CLS, ST) — из index.html.
  */
 (() => {
 'use strict';
@@ -83,6 +84,9 @@ async function init(){
   drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files.length) createCase([...e.dataTransfer.files]); });
   drop.addEventListener('click', e => { if (e.target.id !== 'wsFiles') q('#wsFiles').click(); });
   q('#wsFiles').addEventListener('change', e => { if (e.target.files.length) createCase([...e.target.files]); e.target.value = ''; });
+  // (0.8.1) дело без файлов — сразу к окнам; файлы можно добавить потом (перетащить или «Добавить файлы»)
+  q('#wsEmpty').addEventListener('click', () => createCase([]));
+  q('#wsAddInput').addEventListener('change', e => { if (e.target.files.length) addFiles([...e.target.files]); e.target.value = ''; });
   document.addEventListener('click', async e => {
     const b = e.target.closest && e.target.closest('[data-wspaste]');
     if (!b) return;
@@ -109,6 +113,24 @@ async function init(){
   qq('[data-wspreset]').forEach(b => b.addEventListener('click', () => applyPreset(b.dataset.wspreset)));
   q('#wsSaveLayout').addEventListener('click', saveLayout);
   q('#wsJoin').addEventListener('click', joinPages);
+  // (0.8.0) строка «Поиск» и меню «Окна»
+  q('#wsSearchBtn').addEventListener('click', toggleSearch);
+  q('#wsWinBtn').addEventListener('click', e => openWinMenu(e.currentTarget));
+  const sb = q('#wsSbar');
+  sb.addEventListener('click', sbarClick);
+  sb.addEventListener('mousedown', e => { if (e.target.closest('#wsSdrop')) e.preventDefault(); });   // щелчок по списку не уводит фокус
+  sb.addEventListener('input', e => { if (e.target.id === 'wsQ') SR.q = e.target.value; });
+  sb.addEventListener('change', e => { if (e.target.id === 'wsOpenIn'){ store.set('pysm.ws.openin', e.target.value); toast('Сайт будет открываться: ' + OPEN_IN_RU[e.target.value]); } });
+  sb.addEventListener('focusin', e => { if (e.target.id === 'wsQ') renderDrop(); });
+  sb.addEventListener('focusout', e => { if (e.target.id === 'wsQ') setTimeout(() => { if (document.activeElement !== q('#wsQ')) hideDrop(); }, 150); });
+  sb.addEventListener('keydown', e => {
+    if (e.target.id !== 'wsQ') return;
+    if (e.key === 'Enter'){ e.preventDefault(); runSvc(0, e.shiftKey); }
+    if (e.key === 'Escape'){ e.preventDefault(); const d = q('#wsSdrop'); if (d && !d.classList.contains('hidden')) hideDrop(); else hideSearch(); }
+  });
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyK' && W.id && !q('#tabWork').classList.contains('hidden')){ e.preventDefault(); toggleSearch(); }
+  });
   stripMode(innerHeight < 820);
   const m = /ws=([0-9a-f]{6,32})/.exec(location.hash);
   if (m) openCase(m[1]); else showIntake();
@@ -123,16 +145,22 @@ async function showIntake(){
   q('#wsSteps').innerHTML = '';
   try {
     const r = await getJSON('/api/ws/recent');
-    q('#wsRecent').innerHTML = r.items.length ? `<h3 style="font-size:14px;margin:0 0 6px">Недавние дела</h3><table><tr><th>Создано</th><th>Тикет</th><th>Операция</th><th>Файлы</th><th></th></tr>
+    const total = r.total || r.items.length;
+    q('#wsRecent').innerHTML = r.items.length ? `<div class="ws-rhead"><h3 style="font-size:14px;margin:0">Недавние дела${total > r.items.length ? ` <span class="hint">(последние ${r.items.length} из ${total})</span>` : ''}</h3>
+        <button class="sm" id="wsDelAll" title="Удалить все дела рабочего места: папки дел с файлами и результаты проверок">Удалить все (${total})</button></div>
+      <div id="wsDelBar"></div>
+      <table><tr><th>Создано</th><th>Тикет</th><th>Операция</th><th>Файлы</th><th></th></tr>
       ${r.items.map(i => `<tr><td>${esc((i.created || '').replace('T', ' '))}</td><td>${esc(i.ticket || '—')}</td><td>${esc(i.operation || '')}</td>
-        <td><small>${esc((i.files || []).join(', '))}</small></td><td><button class="sm" data-wsopen="${esc(i.id)}">Открыть</button></td></tr>`).join('')}</table>` : '';
+        <td><small>${(i.files || []).length ? esc(i.files.join(', ')) : '<span class="hint">без файлов</span>'}</small></td><td class="ws-ract"><button class="sm" data-wsopen="${esc(i.id)}">Открыть</button>
+        <button class="sm" data-wsdel="${esc(i.id)}" title="Удалить дело: папка дела с файлами и результаты проверки стираются с диска">Удалить</button></td></tr>`).join('')}</table>` : '';
+    bindRecent(total);
   } catch (e) { q('#wsRecent').innerHTML = ''; }
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-wsopen]'); if (b) openCase(b.dataset.wsopen); });
 
 async function createCase(files){
   const msgEl = q('#wsIntakeMsg');
-  msgEl.className = 'msg'; msgEl.textContent = `Загружаю файлы: ${files.map(f => f.name).join(', ')}…`;
+  msgEl.className = 'msg'; msgEl.textContent = files.length ? `Загружаю файлы: ${files.map(f => f.name).join(', ')}…` : 'Открываю рабочее место без файлов…';
   const fd = new FormData();
   files.forEach(f => fd.append('files', f, f.name));
   fd.append('state', JSON.stringify({ticket: q('#wsTicketNew').value.trim(), operation: q('#wsOpNew').value, via: q('#wsViaNew').value}));
@@ -147,8 +175,33 @@ async function createCase(files){
   } catch (e) { msgEl.className = 'msg fail'; msgEl.textContent = 'Не получилось: ' + e.message; }
 }
 
+// (0.8.1) файлы в открытое дело: разбираются только новые страницы, затем проверка запускается заново
+async function addFiles(files){
+  if (!W.id || !files.length) return;
+  if (W.ws && !['ready', 'error'].includes(W.ws.status)){ toast('Дело ещё разбирается — добавьте файлы, когда разбор закончится'); return; }
+  const fd = new FormData();
+  files.forEach(f => fd.append('files', f, f.name));
+  toast(`Добавляю в дело: ${esc(files.map(f => f.name).join(', '))}…`);
+  try {
+    const r = await fetch(`/api/ws/${W.id}/files`, {method: 'POST', body: fd});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+    setRecheck(false);
+    poll(true);
+  } catch (e) { toast('Не добавилось: ' + esc(e.message), 6000); }
+}
+// файлы с компьютера (не миниатюры и не файлы дела) над рабочим местом — добавить в дело
+const osFiles = e => { const t = [...((e.dataTransfer && e.dataTransfer.types) || [])]; return t.includes('Files') && !t.includes('text/plain') && !t.includes(FILE_MARK); };
+let addOverT = 0;
+function addOver(on){
+  const d = q('#wsDesk'); if (!d) return;
+  clearTimeout(addOverT);
+  if (on){ d.classList.add('addover'); addOverT = setTimeout(() => d.classList.remove('addover'), 200); }
+  else d.classList.remove('addover');
+}
+
 function openCase(id){
-  if (W.id !== id){ WM.closeAll(); W.res = null; W.ws = null; W.logLen = 0; W.sel = null; W.docx = {}; W.domain = ''; W.lastJob = ''; setRecheck(false); }
+  if (W.id !== id){ WM.closeAll(); W.res = null; W.ws = null; W.logLen = 0; W.docx = {}; W.text = {}; W.domain = ''; W.lastJob = ''; setRecheck(false); SR.last = null; SR.q = ''; }
   W.id = id;
   if (location.hash !== '#ws=' + id) history.replaceState(null, '', '#ws=' + id);
   q('#wsIntake').classList.add('hidden'); q('#wsMain').classList.remove('hidden');
@@ -180,11 +233,11 @@ async function poll(force){
     if (d.state.operation) q('#wsOp').value = d.state.operation;
     if (d.state.via) q('#wsVia').value = d.state.via;
   }
-  if (first){ renderRow(); renderGos(); renderDomains(); }
+  if (first){ renderRow(); renderDomains(); }
   const st0 = W.lastWsStatus + '|' + (d.job ? d.job.status : '');
   W.lastWsStatus = d.status;
-  if (changed){ renderArch(); renderStrip(); refreshDocs(); }
-  if (!W.res && (changed || st0 !== d.status + '|' + (d.job ? d.job.status : ''))) renderCmp();
+  if (changed){ renderArch(); renderStrip(); refreshDocs(); if (SR.on){ if (first) renderSbar(); else renderSfiles(); } }
+  if (!W.res && (changed || st0 !== d.status + '|' + (d.job ? d.job.status : ''))) renderDomains();
   const job = d.job;
   const jst = job ? job.status : '';
   const sl = {unpacking: 'Распаковываю…', pages: 'Готовлю страницы…', classifying: 'Разбираю страницы…', ready: '', error: 'Ошибка: ' + (d.error || '')}[d.status] || '';
@@ -203,8 +256,7 @@ async function loadResult(){
     const r = await getJSON(`/api/ws/${W.id}/result${W.domain ? '?domain=' + encodeURIComponent(W.domain) : ''}`);
     if (!r.ready) return;
     W.res = r;
-    renderCmp(); renderDomains(); renderRow(); renderGate(); renderSteps(); renderMgr();
-    WM.all().filter(w => w.kind === 'doc' || w.kind === 'page').forEach(w => highlightIn(w));
+    renderDomains(); renderRow(); renderGate(); renderSteps(); renderMgr(); renderSst();
   } catch (e) { toast('Результат не получен: ' + esc(e.message)); }
 }
 
@@ -214,8 +266,10 @@ function renderArch(){
   const sig = fs.filter(f => f.kind === 'sig').length;
   q('#wsArch').innerHTML = `Файлов: <b>${fs.filter(f => f.kind !== 'archive').length}</b> · страниц: <b>${ps.filter(p => p.kind !== 'crop').length}</b>${sig ? ` · подписей: ${sig}` : ''}
     ${(W.ws.notes || []).length ? `<span class="badge s-warn" title="${esc(W.ws.notes.join('\n'))}">замечаний: ${W.ws.notes.length}</span>` : ''}
+    <button class="sm" id="wsAdd" type="button" title="Добавить в дело файлы или архив (можно просто перетащить их на рабочее место)">Добавить файлы</button>
     <button class="sm" id="wsNew" type="button">Новое дело</button>`;
   q('#wsNew').onclick = newCase;
+  q('#wsAdd').onclick = () => q('#wsAddInput').click();
 }
 function thumbHTML(p, cur){
   const cf = p.manual ? '<span class="cf man">вручную</span>' : `<span class="cf${p.conf < .8 ? ' low' : ''}">${Math.round(p.conf * 100)}%</span>`;
@@ -228,6 +282,10 @@ function thumbHTML(p, cur){
 }
 function renderStrip(){
   if (!W.ws) return;
+  if (!W.ws.files.length){
+    q('#wsStrip').innerHTML = `<div class="ws-nofiles">Файлов в деле нет — перетащите архив или файлы на рабочее место или нажмите «Добавить файлы». Окна, «Поиск» и домены работают и без них.</div>`;
+    return;
+  }
   const cur = new Set(WM.all().filter(w => w.kind === 'doc' || w.kind === 'page').map(w => (docPages(w)[w.idx] || {}).id));
   const grp = cls => {
     const ps = pages().filter(p => p.cls === cls);
@@ -237,7 +295,7 @@ function renderStrip(){
   };
   const extra = W.ws.files.filter(f => f.kind === 'sig' || f.kind === 'other' && !/TIFF/.test(f.note));
   const fileBox = extra.length ? `<div class="ws-grp"><h4>Подпись и другие файлы · ${extra.length}</h4><div class="items">${extra.map(f =>
-      `<div class="ws-file"><a href="/api/ws/${W.id}/file/${f.id}" target="_blank"><b>${esc(f.name.split('/').pop())}</b></a><br><span class="hint">${esc(f.note)}</span></div>`).join('')}</div></div>` : '';
+      `<div class="ws-file" draggable="true" data-dragfile="${esc(f.id)}" title="Перетащите на страницу сайта (строка «Поиск») — файл положит туда расширение"><a href="/api/ws/${W.id}/file/${f.id}" target="_blank" draggable="false"><b>${esc(f.name.split('/').pop())}</b></a><br><span class="hint">${esc(f.note)}</span></div>`).join('')}</div></div>` : '';
   q('#wsStrip').innerHTML = ['application', 'passport', 'other', 'unknown', 'hidden'].map(grp).join('') + fileBox;
 }
 async function pageAction(body, msgText){
@@ -268,7 +326,20 @@ async function recheck(){
 }
 document.addEventListener('dragstart', e => {
   const t = e.target.closest && e.target.closest('.ws-th');
-  if (t){ e.dataTransfer.setData('text/plain', 'wspid:' + t.dataset.pid); e.dataTransfer.effectAllowed = 'move'; }
+  if (t){
+    e.dataTransfer.setData('text/plain', 'wspid:' + t.dataset.pid);
+    // (0.8.0) миниатюру можно перетащить и на страницу сайта — туда уйдёт файл этой страницы
+    const p = pageById(t.dataset.pid);
+    if (p && p.kind !== 'crop' && W.ws){ setFileDrag(e.dataTransfer, W.ws.files.find(f => f.id === p.file)); e.dataTransfer.effectAllowed = 'copyMove'; }
+    else e.dataTransfer.effectAllowed = 'move';
+    return;
+  }
+  const fd = e.target.closest && e.target.closest('[data-dragfile]');
+  if (fd && W.ws){
+    const info = setFileDrag(e.dataTransfer, W.ws.files.find(f => f.id === fd.dataset.dragfile));
+    if (info) e.dataTransfer.setData('text/plain', 'pysm-file:' + JSON.stringify(info));
+    e.dataTransfer.effectAllowed = 'copy';
+  }
 });
 function dropTarget(e){
   const g = e.target.closest && e.target.closest('.ws-grp[data-cls]');
@@ -279,11 +350,17 @@ function dropTarget(e){
 }
 document.addEventListener('dragover', e => {
   if (!W.id || q('#tabWork').classList.contains('hidden')) return;
+  if (osFiles(e)){ if (e.target.closest && e.target.closest('#wsMain')){ e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; addOver(true); } return; }
   const t = dropTarget(e);
   qq('.ws-grp.over,.ws-win.dropok').forEach(x => x.classList.remove('over', 'dropok'));
   if (t && (e.dataTransfer.types || []).includes('text/plain')){ e.preventDefault(); t.el.classList.add(t.win ? 'dropok' : 'over'); }
 });
 document.addEventListener('drop', async e => {
+  if (W.id && !q('#tabWork').classList.contains('hidden') && osFiles(e) && e.target.closest && e.target.closest('#wsMain')){
+    e.preventDefault(); addOver(false);
+    if (e.dataTransfer.files.length) addFiles([...e.dataTransfer.files]);
+    return;
+  }
   const t = dropTarget(e);
   qq('.ws-grp.over,.ws-win.dropok').forEach(x => x.classList.remove('over', 'dropok'));
   const data = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || '';
@@ -494,11 +571,11 @@ const WM = (() => {
 })();
 
 // ---------------------------------------------------------------- раскладки
-const CORE = ['app', 'pas', 'cmp', 'dom', 'row'];
+const CORE = ['app', 'pas', 'dom', 'row'];
 const PRESETS = {
-  cols3: {app: [0, 0, .35, .6], pas: [0, .6, .35, .4], cmp: [.35, 0, .38, 1], dom: [.73, 0, .27, .62], row: [.73, .62, .27, .38]},
-  docs: {app: [0, 0, .5, 1], pas: [.5, 0, .5, .55], cmp: [.5, .55, .5, .45], dom: null, row: null},
-  grid: {app: [0, 0, .5, .5], pas: [.5, 0, .5, .5], cmp: [0, .5, .5, .5], dom: [.5, .5, .5, .5], row: null},
+  cols3: {app: [0, 0, .4, 1], pas: [.4, 0, .32, 1], dom: [.72, 0, .28, .62], row: [.72, .62, .28, .38]},
+  docs: {app: [0, 0, .5, 1], pas: [.5, 0, .5, 1], dom: null, row: null},
+  grid: {app: [0, 0, .5, .5], pas: [.5, 0, .5, .5], dom: [0, .5, .5, .5], row: [.5, .5, .5, .5]},
 };
 const layoutKey = () => 'pysm.ws.layout.' + (q('#wsOp').value || '');
 function presetOff(){ qq('[data-wspreset]').forEach(b => b.classList.remove('on')); }
@@ -532,14 +609,13 @@ function saveLayout(){
 }
 function buildWindows(){
   if (WM.get('app')) return;
-  openDoc('app', 'application', {x: 0, y: 0, w: .35, h: .6});
-  openDoc('pas', 'passport', {x: 0, y: .6, w: .35, h: .4});
-  openCmp({x: .35, y: 0, w: .38, h: 1});
-  openDom({x: .73, y: 0, w: .27, h: .62});
-  openRow({x: .73, y: .62, w: .27, h: .38});
+  openDoc('app', 'application', {x: 0, y: 0, w: .4, h: 1});
+  openDoc('pas', 'passport', {x: .4, y: 0, w: .32, h: 1});
+  openDom({x: .72, y: 0, w: .28, h: .62});
+  openRow({x: .72, y: .62, w: .28, h: .38});
   const pre = store.get('pysm.ws.preset', 'cols3');
   applyPreset(store.get(layoutKey(), null) && pre === 'mine' ? 'mine' : (PRESETS[pre] || pre === 'cascade' ? pre : 'cols3'));
-  WM.focus('cmp');
+  WM.focus('app');
 }
 
 // ================================================================ окна документов
@@ -566,7 +642,8 @@ function renderDoc(w, keepScroll){
   const name = w.kind === 'page' ? 'Страница' : CLS[w.cls] || 'Документ';
   WM.setTitle(w, `${name}${p ? ` <small>· ${esc(p.sub || '')}</small>` : ''}`);
   if (!p){
-    const hint = W.ws.status !== 'ready' ? 'Страницы разбираются…'
+    const hint = !['ready', 'error'].includes(W.ws.status) ? 'Страницы разбираются…'
+      : !W.ws.files.length ? 'Файлов в деле нет.<br>Перетащите сюда архив или файлы с компьютера — они добавятся в дело.'
       : w.cls === 'passport' ? 'Страниц паспорта нет.<br>Перетащите сюда миниатюру из ленты или выделите паспорт рамкой на странице заявления (⬚).'
       : 'Нет страниц.<br>Перетащите сюда миниатюру из ленты сверху.';
     body.innerHTML = `<div class="ws-doc"><div class="ws-vp" style="cursor:default"><div class="ws-empty">${hint}</div></div></div>`;
@@ -583,11 +660,11 @@ function renderDoc(w, keepScroll){
       ${p.kind !== 'docx' && p.kind !== 'crop' ? `<span class="sep"></span><button data-d="crop" title="Обвести рамкой паспорт (или другую часть страницы) — вырезка уйдёт в окно «Паспорт»">${w.selmode ? 'Отмена рамки' : '⬚ Рамкой → паспорт'}</button>` : ''}
     </div>
     <div class="ws-vp${w.selmode ? ' selmode' : ''}">${p.kind === 'docx' ? '<div class="ws-docx">загрузка…</div>' : '<div class="ws-stage"></div>'}</div>
-    <div class="ws-pinfo">${esc(p.label)} · ${esc(p.sub || '')} · ${p.manual ? 'группа выбрана вручную' : 'уверенность ' + Math.round(p.conf * 100) + ' %'}${p.auto_rot ? ' · повёрнута автоматически' : ''}${p.why ? ' · ' + esc(p.why) : ''}</div></div>`;
+    <div class="ws-pinfo">${p.kind === 'pdf' && p.text ? '<span title="Текст страницы можно выделить мышью и скопировать (Ctrl+C), как в браузере">текст выделяется</span> · ' : ''}${esc(p.label)} · ${esc(p.sub || '')} · ${p.manual ? 'группа выбрана вручную' : 'уверенность ' + Math.round(p.conf * 100) + ' %'}${p.auto_rot ? ' · повёрнута автоматически' : ''}${p.why ? ' · ' + esc(p.why) : ''}</div></div>`;
   bindTools(w, p);
   const vp = q('.ws-vp', body);
   if (p.kind === 'docx'){
-    loadDocx(p).then(html => { const box = q('.ws-docx', body); if (box){ box.innerHTML = html; highlightIn(w); } });
+    loadDocx(p).then(html => { const box = q('.ws-docx', body); if (box) box.innerHTML = html; });
     return;
   }
   const z = w.fit ? Math.max(.05, (vp.clientWidth - 18) / rw) : w.zoom;
@@ -596,11 +673,41 @@ function renderDoc(w, keepScroll){
   const stage = q('.ws-stage', body);
   stage.style.width = rw * z + 'px'; stage.style.height = rh * z + 'px';
   const tr = {0: [0, 0], 90: [H0 * z, 0], 180: [W0 * z, H0 * z], 270: [0, W0 * z]}[rot];
-  stage.innerHTML = `<img class="pg" src="${p.url}" alt="" draggable="false" style="width:${W0}px;height:${H0}px;transform:translate(${tr[0]}px,${tr[1]}px) rotate(${rot}deg) scale(${z})">`;
+  const tf = `width:${W0}px;height:${H0}px;transform:translate(${tr[0]}px,${tr[1]}px) rotate(${rot}deg) scale(${z})`;
+  stage.innerHTML = `<img class="pg" src="${p.url}" alt="" draggable="false" style="${tf}">`
+    + (p.kind === 'pdf' && p.text ? `<div class="ws-tl" data-pid="${p.id}" style="${tf}"></div>` : '');
+  if (p.kind === 'pdf' && p.text) textLayer(p).then(h => { const tl = q('.ws-tl', stage); if (tl && tl.dataset.pid === p.id) tl.innerHTML = h; });
   if (keepScroll){ vp.scrollLeft = st0[0]; vp.scrollTop = st0[1]; }
   bindViewer(w, vp, stage, p, z);
-  highlightIn(w, !keepScroll);
   if (w.pop && !w.pop.closed) renderPopup(w);
+}
+// (0.8.1) текстовый слой PDF: прозрачные слова поверх превью — выделение мышью и Ctrl+C, как в просмотрщике PDF
+// браузера. Слова и их места (px превью, без поворота) — /api/ws/<id>/text/<pid>; у сканов текстового слоя нет.
+let measureCtx = null;
+function textWidth(t){
+  if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+  measureCtx.font = '100px sans-serif';
+  return measureCtx.measureText(t).width / 100;      // ширина при размере шрифта 1px
+}
+function textLayerHTML(data){
+  const out = [], rot = data.rot ? `rotate(${data.rot}deg) ` : '';     // страница PDF с /Rotate — строки под углом
+  (data.lines || []).forEach(words => {
+    words.forEach(([x, y, w, h0, t], i) => {
+      const h = Math.max(4, h0), w1 = textWidth(t) * h;
+      const k = w1 > 0 ? w / w1 : 1;
+      out.push(`<span style="left:${x}px;top:${y}px;font-size:${h.toFixed(1)}px;transform:${rot}scaleX(${k.toFixed(3)})">${esc(t)}${i < words.length - 1 ? ' ' : ''}</span>`);
+    });
+    out.push('<br>');
+  });
+  return out.join('');
+}
+async function textLayer(p){
+  W.text = W.text || {};
+  if (W.text[p.id] === undefined){
+    try { W.text[p.id] = textLayerHTML(await getJSON(`/api/ws/${W.id}/text/${p.id}`)); }
+    catch (e) { W.text[p.id] = ''; }
+  }
+  return W.text[p.id];
 }
 async function loadDocx(p){
   if (!W.docx[p.id]){
@@ -659,6 +766,7 @@ function bindViewer(w, vp, stage, p, z){
       vp.addEventListener('pointermove', mv); vp.addEventListener('pointerup', upf);
       return;
     }
+    if (e.target.closest('.ws-tl span')) return;      // по тексту — выделение (страница не двигается)
     const sx = e.clientX, sy = e.clientY, sl = vp.scrollLeft, stp = vp.scrollTop;
     vp.setPointerCapture(e.pointerId); vp.classList.add('panning');
     const mv = ev => { vp.scrollLeft = sl - (ev.clientX - sx); vp.scrollTop = stp - (ev.clientY - sy); };
@@ -679,51 +787,6 @@ function splitPages(w){
 }
 function joinPages(){ WM.all().filter(w => w.kind === 'page').forEach(w => WM.close(w.id)); WM.restore('app'); renderStrip(); }
 
-// ---------------------------------------------------------------- подсветка мест полей
-function rowHits(){ return (W.sel && W.res && (W.res.boxes || {})[W.sel]) || []; }
-function highlightIn(w, scroll = true){
-  const ps = docPages(w), p = ps[w.idx];
-  if (!p) return;
-  let hits = rowHits();
-  if (w.kind === 'doc' && hits.length && !hits.some(h => h.page === p.id)){
-    const i = ps.findIndex(x => hits.some(h => h.page === x.id));
-    if (i >= 0 && i !== w.idx){ w.idx = i; renderDoc(w); renderStrip(); return; }
-  }
-  hits = hits.filter(h => h.page === p.id);
-  if (p.kind === 'docx'){
-    const box = q('.ws-docx', w.el); if (!box || !W.docx[p.id]) return;
-    box.innerHTML = W.docx[p.id];
-    const t = (hits[0] || {}).text;
-    if (t){
-      const re = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'), 'i');
-      for (const el of qq('p, td', box)){
-        if (re.test(el.textContent)){ el.innerHTML = esc(el.textContent).replace(re, m => `<mark>${m}</mark>`); if (scroll) el.scrollIntoView({block: 'center'}); break; }
-      }
-    }
-    return;
-  }
-  const stage = q('.ws-stage', w.el); if (!stage) return;
-  qq('.ws-hl', stage).forEach(x => x.remove());
-  const z = w.zoom;
-  hits.forEach((h, n) => {
-    if (!h.box) return;
-    const [x0, y0, x1, y1] = h.box;
-    const d = document.createElement('div'); d.className = 'ws-hl';
-    Object.assign(d.style, {left: x0 * z - 2 + 'px', top: y0 * z - 2 + 'px', width: (x1 - x0) * z + 4 + 'px', height: (y1 - y0) * z + 4 + 'px'});
-    stage.appendChild(d);
-    if (n === 0 && scroll){
-      const vp = q('.ws-vp', w.el), vr = vp.getBoundingClientRect(), er = d.getBoundingClientRect();
-      vp.scrollTop += (er.top - vr.top) - vr.height / 2 + er.height / 2;
-      vp.scrollLeft += (er.left - vr.left) - vr.width / 2 + er.width / 2;
-    }
-  });
-}
-function selectRow(id, scroll = true){
-  W.sel = id;
-  WM.all().filter(w => w.kind === 'doc' || w.kind === 'page').forEach(w => { highlightIn(w, scroll); if (w.pop && !w.pop.closed) renderPopup(w); });
-  renderStrip(); renderCmp();
-}
-
 // ---------------------------------------------------------------- открепление в отдельное окно браузера
 function detach(w){
   if (w.kind !== 'doc' && w.kind !== 'page') return;
@@ -734,213 +797,30 @@ function detach(w){
   pop.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>PySimpleManager — ${w.title.replace(/<[^>]+>/g, '')}</title>
     <style>body{margin:0;background:#8a9099;font:13px "Segoe UI",system-ui,sans-serif}.bar{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;padding:6px 10px;background:#fff;border-bottom:1px solid #ddd}
     .pst{position:relative;margin:10px auto;box-shadow:0 2px 12px rgba(0,0,0,.35);background:#fff;overflow:hidden}.pst img{position:absolute;left:0;top:0;transform-origin:0 0}
-    .hl{position:absolute;border:3px solid #f2b600;background:rgba(255,213,74,.28);border-radius:3px}.hint{color:#667085;font-size:12px}
+    .tl{position:absolute;left:0;top:0;transform-origin:0 0;line-height:1}.tl span{position:absolute;white-space:pre;color:transparent;transform-origin:0 0;cursor:text;font-family:sans-serif}
+    .tl ::selection{background:rgba(0,90,255,.3)}.hint{color:#667085;font-size:12px}
     .docx{background:#fff;margin:10px auto;padding:30px 40px;max-width:820px;font:15px/1.5 "Times New Roman",serif}</style></head>
-    <body><div class="bar"><b id="pt"></b><span class="hint">Окно открыто отдельно — его можно унести на второй монитор. Выбор строки сверки подсвечивает места и здесь.</span>
+    <body><div class="bar"><b id="pt"></b><span class="hint">Окно открыто отдельно — его можно унести на второй монитор. Текст PDF выделяется и копируется.</span>
     <button id="back" style="margin-left:auto">Вернуть в рабочее место</button></div><div id="pp"></div></body></html>`);
   pop.document.close();
   pop.document.getElementById('back').onclick = () => pop.close();
   WM.minimize(w.id); WM.dock();
   renderPopup(w);
+  Promise.all(docPages(w).filter(p => p.kind === 'pdf' && p.text).map(textLayer)).then(() => { if (w.pop && !w.pop.closed) renderPopup(w); });
   const t = setInterval(() => { if (pop.closed){ clearInterval(t); w.pop = null; WM.restore(w.id); renderDoc(w); } }, 700);
 }
 function renderPopup(w){
   const pop = w.pop, doc = pop.document, box = doc.getElementById('pp'); if (!box) return;
   doc.getElementById('pt').innerHTML = w.title;
-  const Wd = Math.max(300, pop.innerWidth - 40), hits = rowHits();
+  const Wd = Math.max(300, pop.innerWidth - 40), T = W.text || {};
   box.innerHTML = docPages(w).map(p => {
     if (p.kind === 'docx') return `<div class="docx">${W.docx[p.id] || ''}</div>`;
     const rot = p.rot || 0, W0 = p.pv[0], H0 = p.pv[1], rw = rot % 180 ? H0 : W0, rh = rot % 180 ? W0 : H0, z = Wd / rw;
     const tr = {0: [0, 0], 90: [H0 * z, 0], 180: [W0 * z, H0 * z], 270: [0, W0 * z]}[rot];
-    return `<div class="pst" style="width:${rw * z}px;height:${rh * z}px"><img src="${location.origin}${p.url}" style="width:${W0}px;height:${H0}px;transform:translate(${tr[0]}px,${tr[1]}px) rotate(${rot}deg) scale(${z})">
-      ${hits.filter(h => h.page === p.id && h.box).map(h => `<div class="hl" style="left:${h.box[0] * z}px;top:${h.box[1] * z}px;width:${(h.box[2] - h.box[0]) * z}px;height:${(h.box[3] - h.box[1]) * z}px"></div>`).join('')}</div>`;
+    const tf = `width:${W0}px;height:${H0}px;transform:translate(${tr[0]}px,${tr[1]}px) rotate(${rot}deg) scale(${z})`;
+    return `<div class="pst" style="width:${rw * z}px;height:${rh * z}px"><img src="${location.origin}${p.url}" style="${tf}">
+      ${T[p.id] ? `<div class="tl" style="${tf}">${T[p.id]}</div>` : ''}</div>`;
   }).join('');
-  const first = box.querySelector('.hl'); if (first) first.scrollIntoView({block: 'center'});
-}
-
-// ================================================================ сверка
-const ST_RU = {ok: 'совпадает', warn: 'похоже', fail: 'расходится', ref: 'эталон'};
-function rowState(r){
-  const marks = st().marks || {};
-  if (r.confirmed) return 'ok';
-  if ((marks[r.id] || {}).mark === 'bad') return 'bad';
-  const cells = Object.values(r.cells);
-  const anyBad = cells.some(c => c.status === 'fail' || c.status === 'warn');
-  const anyOk = cells.some(c => c.status === 'ok');
-  if (!r.look && !anyBad && anyOk && (!r.status || r.status === 'ok' || r.status === 'info')) return 'auto';
-  if (!r.look && !anyBad && !r.editable && !anyOk) return 'auto';
-  return 'todo';
-}
-function cmpRows(){ return (W.res && W.res.matrix && W.res.matrix.rows) || []; }
-function openCmp(fr){
-  const w = WM.open('cmp', 'Сверка <small>· Sd, ЕСИА, заявление, паспорт</small>', {kind: 'panel', fr});
-  q('.body', w.el).innerHTML = `<div class="ws-cmp"><div class="ws-gos" id="wsGos"></div><div class="ws-verdict" id="wsVerdict"></div>
-    <div class="ws-cmpt" tabindex="0" id="wsCmpt"><div class="ws-empty" style="color:var(--muted)">Сверка появится после проверки документов.</div></div>
-    <div class="ws-cfoot"><div class="ws-prog"><i id="wsProgI"></i></div><span id="wsProgT"></span>
-      <span>↑↓ — строка · Enter — совпадает · Пробел — расхождение · ✎ — исправить значение заявления</span></div></div>`;
-  const t = q('#wsCmpt');
-  t.addEventListener('click', e => {
-    const img = e.target.closest('img.crop');
-    if (img){ e.stopPropagation(); const z = q('#zoom'); if (z){ q('img', z).src = img.src; z.style.display = 'flex'; } return; }
-    const tr = e.target.closest('tr[data-r]'); if (!tr) return;
-    const b = e.target.closest('button[data-c]');
-    if (b){ setMark(tr.dataset.r, b.dataset.c); return; }
-    const ed = e.target.closest('button[data-ed]');
-    if (ed){ editCell(tr.dataset.r); return; }
-    if (e.target.closest('input,select')) return;
-    selectRow(tr.dataset.r);
-  });
-  t.addEventListener('change', e => {
-    const s = e.target.closest('select[data-dom]');
-    if (s){ W.domain = s.value; loadResult(); }
-  });
-  t.addEventListener('input', e => {
-    const i = e.target.closest('input[data-note]');
-    if (i) saveState({marks: {[i.dataset.note]: {mark: 'bad', note: i.value}}});
-  });
-  t.addEventListener('keydown', e => {
-    if (e.target.closest('input,select')) return;
-    const rows = cmpRows(), i = rows.findIndex(r => r.id === W.sel);
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
-      e.preventDefault();
-      const n = Math.min(rows.length - 1, Math.max(0, (i < 0 ? -1 : i) + (e.key === 'ArrowDown' ? 1 : -1)));
-      if (rows[n]){ selectRow(rows[n].id); scrollSel(); }
-    } else if ((e.key === 'Enter' || e.key === ' ') && i >= 0){
-      e.preventDefault();
-      setMark(rows[i].id, e.key === 'Enter' ? 'ok' : 'bad');
-    }
-  });
-  renderGos(); renderCmp();
-  return w;
-}
-function scrollSel(){ const tr = q('#wsCmpt tr.sel'); if (tr) tr.scrollIntoView({block: 'nearest'}); }
-async function recompute(overrides, confirmedList){
-  if (!W.res) return;
-  const job = W.res.result.job_id;
-  const confirmed = confirmedList || cmpRows().filter(r => r.confirmed).map(r => r.id);
-  try {
-    await api(`/api/jobs/${job}/recompute`, {overrides: overrides || {}, confirmed});
-    await loadResult();
-  } catch (e) { toast('Не пересчиталось: ' + esc(e.message)); }
-}
-async function setMark(id, c){
-  const r = cmpRows().find(x => x.id === id); if (!r) return;
-  const marks = st().marks || {};
-  const state = rowState(r);
-  if (c === 'ok'){
-    if (state === 'bad') saveState({marks: {[id]: {mark: '', note: ''}}}, true);
-    const conf = new Set(cmpRows().filter(x => x.confirmed).map(x => x.id));
-    if (r.confirmed) conf.delete(id); else conf.add(id);
-    await recompute({}, [...conf]);
-    if (!r.confirmed){ const rows = cmpRows(), i = rows.findIndex(x => x.id === id); const nx = rows.slice(i + 1).find(x => rowState(x) === 'todo'); if (nx){ selectRow(nx.id, true); scrollSel(); } }
-  } else if (c === 'bad'){
-    const on = (marks[id] || {}).mark !== 'bad';
-    await saveState({marks: {[id]: {mark: on ? 'bad' : '', note: on ? ((marks[id] || {}).note || '') : ''}}}, true);
-    if (on && r.confirmed){ const conf = cmpRows().filter(x => x.confirmed && x.id !== id).map(x => x.id); await recompute({}, conf); }
-    renderCmp(); renderGate();
-    if (on){ const i = q(`#wsCmpt input[data-note="${id}"]`); if (i) i.focus(); }
-  }
-  q('#wsCmpt') && q('#wsCmpt').focus({preventScroll: true});
-}
-function editCell(id){
-  const r = cmpRows().find(x => x.id === id); if (!r) return;
-  const td = q(`#wsCmpt tr[data-r="${id}"] td.app`); if (!td) return;
-  td.innerHTML = `<input type="text" class="edit" value="${esc(r.cells.app.value)}" placeholder="как в заявлении"><span class="src">Enter — сохранить, Esc — отмена</span>`;
-  const i = q('input', td); i.focus(); i.select();
-  i.onkeydown = async e => {
-    if (e.key === 'Escape'){ renderCmp(); return; }
-    if (e.key === 'Enter'){ e.preventDefault(); await recompute({[id]: {app: i.value}}); toast('Значение заявления исправлено — проверки пересчитаны'); }
-  };
-}
-function cellTd(r, key, cls = ''){
-  const c = r.cells[key] || {value: ''};
-  if (key === 'app' && r.look && !c.value){
-    return `<td class="app look ${cls}"><span class="v">сверьте по документу</span>${r.crop_url ? `<img class="crop" src="${r.crop_url}" alt="" title="Фрагмент заявления — щёлкните, чтобы увеличить">` : ''}
-      ${r.editable ? '<button class="ed" data-ed="1" title="Вписать значение из заявления">✎</button>' : ''}</td>`;
-  }
-  const scls = c.status === 'ref' ? 'c-ref' : c.status ? 'c-' + c.status : '';
-  const src0 = key === 'app' ? r.app_source : key === 'pas' ? r.pas_source : '';
-  const src = src0 && typeof SRC === 'function' ? SRC(src0) : src0;
-  return `<td class="${key} ${scls}${key === 'app' && r.look ? ' look' : ''} ${cls}" title="${esc(c.detail || ST_RU[c.status] || '')}">${esc(c.value) || '<span class="hint">—</span>'}
-    ${src ? `<span class="src">${esc(src)}</span>` : ''}${key === 'app' && r.crop_url ? `<img class="crop" src="${r.crop_url}" alt="" title="Фрагмент заявления">` : ''}
-    ${key === 'app' && r.editable ? '<button class="ed" data-ed="1" title="Исправить значение заявления">✎</button>' : ''}</td>`;
-}
-function renderCmp(){
-  const t = q('#wsCmpt'); if (!t) return;
-  const v = q('#wsVerdict');
-  if (!W.res){
-    const job = W.ws && W.ws.job;
-    const msg = job && job.status === 'error' ? 'Проверка не выполнилась: ' + esc(job.error || 'ошибка') + '. Поправьте страницы и нажмите «Перепроверить».'
-      : job ? 'Документы проверяются…'
-      : W.ws && W.ws.status === 'ready' ? 'Для этого типа операции сверка с программой не настроена — сверяйте по документам; строка таблицы и manager работают.'
-      : W.ws && W.ws.status === 'error' ? 'Дело не разобрано: ' + esc(W.ws.error || '')
-      : 'Сверка появится после разбора страниц и проверки документов.';
-    t.innerHTML = `<div class="ws-empty" style="color:var(--muted)">${msg}</div>`;
-    if (v) v.innerHTML = '';
-    renderProg(); return;
-  }
-  const d = W.res.result.decision, mx = W.res.matrix;
-  if (v) v.innerHTML = `<span class="badge s-${d.code === 'accept' ? 'ok' : d.code === 'reject' ? 'fail' : 'warn'}">${esc(d.title)}</span>
-    <span class="hint">${esc((d.reasons || []).slice(0, 3).join(' · '))}${(d.reasons || []).length > 3 ? ' …' : ''}</span>`;
-  const doms = mx.domains || [];
-  const sdHead = doms.length > 1 ? `Sd <select data-dom="1" title="С каким доменом сверять">${doms.map(x => `<option ${x === mx.domain ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`
-    : `Sd${mx.domain ? ' · ' + esc(mx.domain) : ''}`;
-  const marks = st().marks || {};
-  // пустые колонки (нет данных ЕСИА, паспорт не загружен) не занимают место — о них строка под таблицей
-  const has = key => mx.rows.some(r => ((r.cells[key] || {}).value || '').trim());
-  const showE = has('esia'), showP = has('pas');
-  const missing = [showE ? '' : 'ЕСИА — нет данных', showP ? '' : 'паспорт — не прочитан (нет страниц паспорта или не распознан)'].filter(Boolean);
-  t.innerHTML = `<table><thead><tr><th>Поле</th><th>${sdHead}</th>${showE ? '<th>ЕСИА</th>' : ''}<th>Заявление</th>${showP ? '<th>Паспорт</th>' : ''}<th>Итог</th></tr></thead><tbody>
-    ${mx.rows.map(r => {
-      const s = rowState(r), note = (marks[r.id] || {}).note || '';
-      const fin = s === 'ok' ? '<span class="badge s-ok">подтверждено</span> <button data-c="ok" title="Отменить">↺</button>'
-        : s === 'bad' ? `<span class="badge s-fail">расхождение</span> <button data-c="bad" title="Отменить">↺</button><br><input type="text" data-note="${r.id}" placeholder="что не так" value="${esc(note)}">`
-        : s === 'auto' ? '<span class="badge s-ok" title="Значения совпали — программа сверила сама">совпадает</span> <button data-c="bad" title="Расхождение (Пробел)">✗</button>'
-        : '<button data-c="ok" title="Совпадает (Enter)">✓</button> <button data-c="bad" title="Расхождение (Пробел)">✗</button>';
-      return `<tr data-r="${r.id}" class="${W.sel === r.id ? 'sel' : ''}" title="${esc((r.details || []).join('\n'))}"><td class="k">${esc(r.title)}${r.status && r.status !== 'ok' ? `<br><span class="badge s-${r.status}">${esc((typeof ST !== 'undefined' && ST[r.status]) || r.status)}</span>` : ''}</td>
-        ${cellTd(r, 'sd')}${showE ? cellTd(r, 'esia') : ''}${cellTd(r, 'app')}${showP ? cellTd(r, 'pas') : ''}<td class="fin">${fin}</td></tr>`;
-    }).join('')}</tbody></table>${missing.length ? `<p class="hint" style="margin:6px">Скрыто: ${esc(missing.join('; '))}.</p>` : ''}`;
-  if (!W.sel && mx.rows.length){ W.sel = (mx.rows.find(r => rowState(r) === 'todo') || mx.rows[0]).id; qq(`#wsCmpt tr[data-r="${W.sel}"]`).forEach(x => x.classList.add('sel')); WM.all().filter(w => w.kind === 'doc').forEach(w => highlightIn(w)); }
-  renderProg();
-}
-function renderProg(){
-  const rows = cmpRows(), done = rows.filter(r => rowState(r) !== 'todo').length;
-  if (q('#wsProgI')) q('#wsProgI').style.width = rows.length ? done / rows.length * 100 + '%' : '0';
-  if (q('#wsProgT')) q('#wsProgT').textContent = rows.length ? `Сверено ${done} из ${rows.length}` : '';
-}
-function renderGos(){
-  const g = q('#wsGos'); if (!g) return;
-  const gs = st().gos || {}, data = (W.res && W.res.gos) || {};
-  const s = gs.status || '';
-  const lbl = {'': '<span class="badge s-info">не проверен</span>', filled: '<span class="badge s-review">вписано — нажмите «Продолжить» на Госуслугах</span>',
-    valid: '<span class="badge s-ok">действителен</span>', invalid: '<span class="badge s-fail">недействителен</span>'}[s] || '';
-  const v = [data.series && data.number ? `${data.series} ${data.number}` : '', data.surname, data.name].filter(Boolean);
-  g.innerHTML = `<b>Паспорт на Госуслугах</b> ${lbl}
-    ${s === '' || s === 'filled' ? `<button class="sm${s === '' ? ' primary' : ''}" data-g="fill" title="Расширение откроет «Проверка действительности паспорта» и впишет серию, номер, фамилию и имя. «Продолжить» нажимаете вы.">Вписать на Госуслугах</button>` : ''}
-    ${s === 'filled' || s === '' ? '<button class="sm" data-g="valid">Действителен</button> <button class="sm" data-g="invalid">Недействителен</button>' : '<button class="sm" data-g="reset" title="Сбросить">↺</button>'}
-    <span class="hint">${v.length ? esc(v.join(' · ')) : 'серия и номер — после проверки паспорта'}</span>
-    ${v.length ? '<button class="sm" data-g="copy" title="Скопировать серию и номер">копировать</button>' : ''}`;
-  g.onclick = async e => {
-    const b = e.target.closest('[data-g]'); if (!b) return;
-    const a = b.dataset.g;
-    if (a === 'copy'){ copyText(`${data.series} ${data.number}`).then(ok => toast(ok ? 'Серия и номер скопированы' : 'Не удалось скопировать')); return; }
-    if (a === 'fill'){
-      b.disabled = true;
-      try {
-        const r = await api(`/api/ws/${W.id}/gosuslugi`, {});
-        if (!r.ok) toast('Госуслуги: ' + esc((r.error || {}).message || 'ошибка'), 7000);
-        else {
-          const pr = (r.data || {}).problems || [];
-          toast(pr.length ? 'Вписано, но проверьте поля: ' + esc(pr.join('; ')) : 'Вписано на Госуслугах: ' + esc(`${r.sent.series} ${r.sent.number} · ${r.sent.surname} · ${r.sent.name}`) + '. «Продолжить» нажимаете вы', 7000);
-          saveState({gos: {status: 'filled'}});
-        }
-      } catch (x) { toast(esc(x.message), 7000); }
-      finally { b.disabled = false; renderGos(); renderGate(); renderSteps(); }
-      return;
-    }
-    saveState({gos: {status: a === 'reset' ? '' : a, at: new Date().toISOString()}}, true);
-    renderGos(); renderGate(); renderSteps();
-  };
 }
 
 // ================================================================ домены
@@ -957,6 +837,8 @@ function openDom(fr){
     const c = e.target.closest('input[data-inc]');
     if (c){ const ex = excluded(); if (c.checked) ex.delete(c.dataset.inc); else ex.add(c.dataset.inc); saveState({mgr: {excluded: [...ex]}}); renderDomains(); renderGate(); renderRow(); return; }
     const sd = e.target.closest('[data-sd]'); if (sd) openSd(sd.dataset.sd);
+    const wq = e.target.closest('[data-wsq]');
+    if (wq){ SR.q = wq.dataset.wsq; if (!SR.on) showSearch(); else { const i = q('#wsQ'); if (i){ i.value = SR.q; i.focus(); i.select(); } } return; }
     const es = e.target.closest('[data-wsesia]');
     if (es){ const d = resDomains().find(x => x.domain === es.dataset.wsesia); if (d && typeof showEsia === 'function') showEsia(d); }
   });
@@ -994,10 +876,12 @@ function renderDomains(){
         <b>${esc(d.domain)}</b>${kb} <button class="ws-lnk" data-sd="${esc(d.domain)}">Sd</button> ${link((d.urls || {}).s, 'S')} <button class="ws-lnk" data-wsesia="${esc(d.domain)}">ESIA</button>
         <span style="margin-left:auto">${WST[d.flags_level || ''] || ''}</span></div>
       <div class="g"><span>Администратор</span><span>${who} ${v}</span>
+        ${d.kind === 'person' ? `<span>Паспорт</span><span>${d.passport ? `${esc(d.passport)} <button class="ws-lnk" data-wsq="${esc(d.passport)}" title="Вписать в строку «Поиск»">в поиск</button>` : '—'}${sd.passport_date || sd.passport_place ? `<small class="ws-sub">выдан ${esc(sd.passport_date || '—')}${sd.passport_place ? ' · ' + esc(sd.passport_place) : ''}</small>` : ''}</span>`
+          : d.kind === 'org' ? `<span>ИНН</span><span>${sd.code ? `${esc(sd.code)} <button class="ws-lnk" data-wsq="${esc(sd.code)}" title="Вписать в строку «Поиск»">в поиск</button>` : '—'}</span>` : ''}
         <span>ЕСИА</span><span>${esc(d.esia_ru || '—')}</span>
         <span>Смена админа</span><span>${esc(d.last_admin_change || '—')}</span>
         <span>Provider</span><span>${esc(d.provider || '—')}</span>
-        <span>Аккаунт</span><span class="ws-acc">${esc(d.account || '—')}${d.account ? ` <button class="ws-lnk" data-acc="${esc(d.account)}" title="Вкладка «Смена владельца ЛК» с этим аккаунтом">→ ЛК</button>` : ''}<small>${esc(d.login || '')}</small></span></div>
+        <span>Аккаунт</span><span class="ws-acc">${esc(d.account || '—')}${d.account ? ` <button class="ws-lnk" data-acc="${esc(d.account)}" title="Вкладка «Смена владельца ЛК» с этим аккаунтом">→ ЛК</button>` : ''}${d.login ? `<small>логин: ${esc(d.login)}</small>` : ''}${d.account_email ? `<small>e-mail: ${esc(d.account_email)}</small>` : ''}</span></div>
       ${(d.flags || []).length ? '<ul>' + d.flags.map(f => `<li><span class="badge s-${FLAG_CLS[f.level] || 'info'}">${FLAG_RU[f.level] || f.level}</span> ${esc(f.text)}</li>`).join('') + '</ul>' : ''}</div>`;
   }).join('');
 }
@@ -1046,7 +930,7 @@ function openSd(dn){
         : row('Организация', esc(d.holder), '', 'org_r') + row('ИНН', esc(sd.code), C('code'), 'code')}
       ${row('E-mail', esc((d.emails || []).join(', ')), '', 'e_mail')}${row('Смена администратора', esc(d.last_admin_change), '', 'last_admin_change')}</table>
     <h5>Услуга (S)</h5><table>
-      ${row('Аккаунт', `${esc(d.account)}<br><small>${esc(d.login || '')}</small>`, '', 'user_id')}${row('Provider', esc(d.provider), '', 'provider')}
+      ${row('Аккаунт', `${esc(d.account)}${d.login ? `<br><small>логин: ${esc(d.login)}</small>` : ''}`, '', 'user_id')}${row('E-mail аккаунта', esc(d.account_email), '', 'user_details: email')}${row('Provider', esc(d.provider), '', 'provider')}
       ${row('Статус', esc(s.state || d.service_status), '', 'state')}${row('Оплачен до', esc(s.expiration_date), '', 'expiration_date')}
       <tr><td>Комментарий администратора<br><span class="mono">admin_comment</span></td><td class="${d.admin_comment ? 'c-warn' : ''}">${d.admin_comment ? esc(d.admin_comment) : '<span class="hint">пусто</span>'}</td></tr></table>
     ${(d.compare || []).length ? `<h5>Сверка с документами</h5><table>${d.compare.map(r => `<tr><td>${esc(r.title)}</td><td class="${r.status === 'ok' ? 'c-ok' : r.status === 'fail' ? 'c-fail' : r.status === 'warn' ? 'c-warn' : ''}">${esc(r.sd || '')}${r.doc ? `<br><small class="hint">документы: ${esc(r.doc)}</small>` : ''}${r.detail ? `<br><small>${esc(r.detail)}</small>` : ''}</td></tr>`).join('')}</table>` : ''}
@@ -1167,30 +1051,20 @@ async function loadOperator(){
 // ================================================================ смена администратора в manager
 function gateReasons(){
   const R = [];
-  const rows = cmpRows();
-  const todo = rows.filter(r => rowState(r) === 'todo'), bad = rows.filter(r => rowState(r) === 'bad');
-  if (W.res && W.res.result.job_id && !rows.length) R.push('нет результата сверки');
-  if (todo.length) R.push(`сверить строк: ${todo.length} (${todo.map(r => r.title).slice(0, 4).join(', ')}${todo.length > 4 ? '…' : ''})`);
-  const marks = st().marks || {};
-  if (bad.length) R.push('расхождение: ' + bad.map(r => r.title + ((marks[r.id] || {}).note ? ` (${marks[r.id].note})` : '')).join(', '));
-  const gs = (st().gos || {}).status;
-  if (gs !== 'valid') R.push(gs === 'invalid' ? 'паспорт недействителен по Госуслугам' : 'проверить паспорт на Госуслугах');
   const inc = resDomains().filter(d => d.status === 'found' && !excluded().has(d.domain));
   const stops = inc.filter(d => d.flags_level === 'stop');
   if (stops.length) R.push(`стоп по домену ${stops.map(d => d.domain).join(', ')} — снимите галку у домена или откройте с причиной`);
   if (!inc.length) R.push('нет найденных в manager доменов для смены');
-  if (W.res && W.res.result.decision.code === 'reject') R.push('вердикт программы: ' + W.res.result.decision.title);
+  const d = W.res && W.res.result.decision;
+  if (d && d.code === 'reject') R.push('вердикт программы: ' + d.title + ((d.reasons || []).length ? ' — ' + d.reasons.slice(0, 2).join('; ') : ''));
   return R;
 }
 function renderGate(){
   const g = q('#wsGate'); if (!g) return;
-  const rows = cmpRows(), done = rows.filter(r => rowState(r) !== 'todo').length, R = gateReasons();
+  const R = gateReasons();
   const inc = resDomains().filter(d => d.status === 'found' && !excluded().has(d.domain));
   const stops = inc.filter(d => d.flags_level === 'stop').length, warns = inc.filter(d => d.flags_level === 'warn').length;
-  const gs = (st().gos || {}).status || '';
-  g.innerHTML = `<span class="badge ${rows.length && done === rows.length ? 's-ok' : 's-info'}">Сверено ${done} из ${rows.length}</span>
-    <span class="badge ${gs === 'valid' ? 's-ok' : gs === 'invalid' ? 's-fail' : 's-info'}">Госуслуги: ${{'': 'не проверен', filled: 'ждёт результата', valid: 'действителен', invalid: 'недействителен'}[gs] || gs}</span>
-    <span class="badge ${stops ? 's-fail' : warns ? 's-warn' : inc.length ? 's-ok' : 's-info'}">Домены: ${inc.length} в смене${stops ? ` · стоп ${stops}` : ''}${warns ? ` · внимание ${warns}` : ''}</span>
+  g.innerHTML = `<span class="badge ${stops ? 's-fail' : warns ? 's-warn' : inc.length ? 's-ok' : 's-info'}">Домены: ${inc.length} в смене${stops ? ` · стоп ${stops}` : ''}${warns ? ` · внимание ${warns}` : ''}</span>
     ${R.length || !hasMgr() ? '' : '<span class="badge s-ok">можно открывать смену</span>'}`;
   q('#wsOpenMgr').classList.toggle('primary', !R.length);
   q('#wsOpenMgr').classList.toggle('hidden', !hasMgr());
@@ -1199,11 +1073,8 @@ function renderGate(){
 const hasMgr = () => op().manager_page === 'domain_move';
 function renderSteps(){
   const box = q('#wsSteps'); if (!box || !W.ws) { if (box) box.innerHTML = ''; return; }
-  const rows = cmpRows(), done = rows.filter(r => rowState(r) !== 'todo').length;
-  const gs = (st().gos || {}).status, mg = st().mgr || {}, rw = st().row || {};
-  const manual = !rows.length && W.ws.status === 'ready' && !W.ws.job_id;
-  const S = [['Приём', W.ws.status === 'ready' ? 'done' : 'cur', 'intake'], ['Паспорт · Госуслуги', gs === 'valid' ? 'done' : 'cur', 'gos'],
-    [manual ? 'Сверка по документам' : `Сверка ${done}/${rows.length}`, rows.length && done === rows.length ? 'done' : 'cur', 'cmp'],
+  const mg = st().mgr || {}, rw = st().row || {};
+  const S = [['Приём', W.ws.status === 'ready' ? 'done' : 'cur', 'intake'],
     ...(hasMgr() ? [['Смена в manager', mg.done ? 'done' : mg.step ? 'cur' : '', 'mgr']] : []),
     ['Строка таблицы', rw.copied ? 'done' : '', 'row']];
   box.innerHTML = S.map(([t, c, k], i) => `<span class="ws-step ${c}" data-step="${k}">${i + 1}. ${esc(t)}</span>`).join('');
@@ -1317,6 +1188,332 @@ function mgrRowsHTML(rows){
   const L = {ok: '<span class="badge s-ok">совпадает</span>', fail: '<span class="badge s-fail">расходится</span>', warn: '<span class="badge s-warn">похоже</span>', info: '<span class="badge s-info">к сведению</span>'};
   return `<table style="margin-top:8px"><tr><th>Поле</th><th>Заявление</th><th>manager: данные нового аккаунта</th><th></th></tr>
     ${rows.map(r => `<tr><td>${esc(r.title)}</td><td class="${C[r.status] || ''}">${esc(r.app) || '<span class="hint">в заявлении нет</span>'}</td><td class="${C[r.status] || ''}">${esc(r.mgr) || '<span class="hint">—</span>'}</td><td>${L[r.status] || ''}</td></tr>`).join('')}</table>`;
+}
+
+// ================================================================ (0.8.0) строка «Поиск» и сайт рядом
+// Кнопка «Поиск» или Ctrl+K: строка запроса над окнами. Сайт (Google, ЕГРЮЛ, Госуслуги, быстрые ссылки из
+// config/workspace.yaml) открывает расширение — во второй половине окна Chrome (разделённый экран), окном справа или
+// вкладкой (/api/site/open). Без расширения — обычным окном браузера. Файлы дела перетаскиваются на сайт: со страницы
+// уходит ссылка на файл (application/x-pysm-file), файл на страницу кладёт расширение (content/drop.js).
+const FILE_MARK = 'application/x-pysm-file';
+const SR = {on: false, drop: false, last: null};
+const OPEN_IN_RU = {auto: 'рядом (авто)', split: 'вторая половина Chrome', window: 'окном справа', tab: 'вкладкой'};
+const MODE_RU = {split: 'во второй половине окна Chrome', window: 'в окне справа', tab: 'в соседней вкладке', popup: 'в окне браузера'};
+const SEARCH_ICON = '<svg class="ws-si" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4L14 14"/></svg>';
+const searchCfg = () => (W.meta && W.meta.search) || {services: [], links: [], open_in: 'auto', window_share: 40};
+const openIn = () => { const v = store.get('pysm.ws.openin', ''); return OPEN_IN_RU[v] ? v : (searchCfg().open_in || 'auto'); };
+const screenArea = () => ({left: screen.availLeft || 0, top: screen.availTop || 0, width: screen.availWidth || screen.width, height: screen.availHeight || screen.height});
+const siteOpts = extra => ({open_in: openIn(), screen: screenArea(), ...(extra || {})});
+const nowHM = () => new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
+const MIME = {pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', tif: 'image/tiff', tiff: 'image/tiff',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sig: 'application/pkcs7-signature', p7s: 'application/pkcs7-signature'};
+const baseName = n => String(n || '').split('/').pop();
+const dragFiles = () => ((W.ws && W.ws.files) || []).filter(f => f.kind !== 'archive');
+
+function toggleSearch(){ if (SR.on) hideSearch(); else showSearch(); }
+function showSearch(){
+  if (!W.id) return;
+  SR.on = true;
+  q('#wsSbar').classList.remove('hidden'); q('#wsSearchBtn').classList.add('on');
+  renderSbar();
+  const last = (st().search || {}).last;
+  // сайт этого дела был открыт и его убрали — вернуть на место без перезагрузки страницы
+  if (last && last.url && SR.hidden) api('/api/site/open', {url: last.url, ...siteOpts({keep: true})}).catch(() => {});
+  SR.hidden = false;
+  setTimeout(() => { const i = q('#wsQ'); if (i){ i.focus(); i.select(); } }, 0);
+}
+function hideSearch(){
+  SR.on = false;
+  q('#wsSbar').classList.add('hidden'); q('#wsSearchBtn').classList.remove('on');
+  SR.drop = false;
+  if ((st().search || {}).last){ SR.hidden = true; api('/api/site/hide', {}).catch(() => {}); }
+}
+function svcTip(s){
+  return s.fill === 'egrul' ? `Откроет ${s.url.replace(/^https?:\/\//, '').split('/')[0]} и впишет запрос в поле поиска; «Найти» нажимаете вы`
+    : `Поиск: ${s.title}` + ((searchCfg().services[0] || {}).id === s.id ? ' (Enter)' : '');
+}
+function renderSbar(){
+  const box = q('#wsSbar'); if (!box || !W.ws) return;
+  const cfg = searchCfg();
+  box.innerHTML = `<div class="ws-srow"><div class="ws-qbox">${SEARCH_ICON}<input type="text" id="wsQ" autocomplete="off" placeholder="Запрос: ФИО, серия и номер, ИНН, ОГРН, домен…" value="${esc(SR.q || '')}">
+      <button type="button" class="wb" data-sa="clear" title="Очистить">${ICON.close}</button></div>
+    <div class="ws-svc">${cfg.services.map((s, i) => `<button type="button" data-svc="${i}" title="${esc(svcTip(s))}">${esc(s.title)}</button>`).join('')}
+      <span class="sep"></span><button type="button" data-sa="gos" title="Откроет «Проверка действительности паспорта» и впишет серию, номер, фамилию и имя из паспорта; «Продолжить» нажимаете вы">Госуслуги · паспорт</button>
+      ${cfg.links.length ? '<span class="sep"></span>' + cfg.links.map((l, i) => `<button type="button" class="lnk" data-link="${i}" title="${esc(l.url)}">${esc(l.title)}</button>`).join('') : ''}</div>
+    <span class="ws-sright"><select id="wsOpenIn" title="Где открывать сайт (запоминается в этом браузере)">${Object.entries(OPEN_IN_RU).map(([k, v]) => `<option value="${k}" ${k === openIn() ? 'selected' : ''}>${v}</option>`).join('')}</select>
+      <button type="button" class="sm" data-sa="help" title="Как это устроено">?</button>
+      <button type="button" class="wb" data-sa="hide" title="Убрать строку поиска и сайт рядом (Ctrl+K)">${ICON.close}</button></span></div>
+    <div class="ws-srow ws-srow2"><div class="ws-sfiles" id="wsSfiles" title="Перетащите файл на страницу сайта (проверка ЭП, Контур.Крипто, Nextcloud) — его положит туда расширение"></div>
+      <div class="ws-sst" id="wsSst"></div></div>
+    <div class="ws-sdrop hidden" id="wsSdrop"></div>`;
+  renderSfiles(); renderSst();
+}
+function renderSfiles(){
+  const box = q('#wsSfiles'); if (!box) return;
+  const files = dragFiles();
+  box.innerHTML = files.length ? '<span class="hint">Файлы:</span>' + files.map(f =>
+    `<span class="ws-fchip" draggable="true" data-dragfile="${esc(f.id)}" title="${esc(baseName(f.name))} — перетащите на страницу сайта">${esc(baseName(f.name))}</span>`).join('') : '';
+  box.classList.toggle('hidden', !files.length);
+}
+function renderSst(){
+  const box = q('#wsSst'); if (!box) return;
+  const s = SR.last;
+  let h = '';
+  if (!s) h = `<span class="hint">Enter — ${esc((searchCfg().services[0] || {}).title || 'поиск')}; значения дела и прошлые запросы — под строкой</span>`;
+  else if (s.error) h = `<span class="badge s-fail">${esc(s.title)}</span> ${esc(s.error)}`;
+  else if (s.pending) h = `<span class="badge s-info">${esc(s.title)}</span> <span class="hint">открываю…</span>`;
+  else if (s.kind === 'gos') h = `<span class="badge s-review">Госуслуги</span> вписано — <b>«Продолжить» нажимаете вы</b>${s.where ? ' ' + esc(s.where) : ''}`;
+  else if (s.fill){
+    h = s.fillOk ? `<span class="badge s-review">${esc(s.title)}</span> вписано «${esc(s.q)}» — <b>«Найти» нажимаете вы</b>${s.where ? ' ' + esc(s.where) : ''}`
+      : `<span class="badge s-warn">${esc(s.title)}</span> ${esc(s.fillErr || 'запрос не вписан')} <button type="button" class="sm" data-sa="copyq">Копировать запрос</button>`;
+  } else h = `<span class="hint">Открыто ${esc(s.where || '')}: ${esc(s.title)}${s.q ? ' — «' + esc(s.q) + '»' : ''}</span>`;
+  if (s && s.notes && s.notes.length) h += ` <span class="hint" title="${esc(s.notes.join('\n'))}">· ${esc(s.notes[0].slice(0, 90))}${s.notes[0].length > 90 ? '…' : ''}</span>`;
+  box.innerHTML = h;
+}
+// значения дела для запроса: Sd, паспорт, заявление (без повторов)
+function caseChips(){
+  const out = [], seen = new Set();
+  const add = (v, label) => { v = String(v || '').trim(); if (!v || seen.has(v.toLowerCase())) return; seen.add(v.toLowerCase()); out.push([v, label]); };
+  const rows = (W.res && W.res.matrix && W.res.matrix.rows) || [];
+  const cell = (id, k) => (((rows.find(r => r.id === id) || {}).cells || {})[k] || {}).value || '';
+  ['pas', 'sd', 'app'].forEach(k => add(cell('fio', k), 'ФИО · ' + {pas: 'паспорт', sd: 'Sd', app: 'заявление'}[k]));
+  const g = (W.res && W.res.gos) || {};
+  if (g.series && g.number) add(`${g.series} ${g.number}`, 'паспорт');
+  ['pas', 'sd'].forEach(k => add(cell('passport', k), 'паспорт · ' + (k === 'pas' ? 'документ' : 'Sd')));
+  add(cell('birth_date', 'sd') || cell('birth_date', 'pas'), 'д. р.');
+  add(cell('inn', 'sd') || cell('inn', 'app'), 'ИНН');
+  resDomains().filter(d => d.status === 'found').slice(0, 6).forEach(d => {
+    add(d.domain, 'домен');
+    if (d.kind === 'org'){ add(d.holder, 'организация · Sd'); add((d.sd || {}).code, 'ИНН · Sd'); }
+    else { add(d.fio, 'ФИО · Sd'); add(d.passport, 'паспорт · Sd'); }
+  });
+  if (!resDomains().length) ((W.res && W.res.result.domains_from_app) || []).slice(0, 6).forEach(d => add(d, 'домен'));
+  const a = (W.res && W.res.new_admin) || {};
+  add(a.fio || a.org, 'новый администратор');
+  add(a.contract, 'договор');
+  return out;
+}
+function renderDrop(){
+  const d = q('#wsSdrop'); if (!d) return;
+  const chips = caseChips(), hist = (st().search || {}).hist || [];
+  if (!chips.length && !hist.length){ d.classList.add('hidden'); return; }
+  d.innerHTML = (chips.length ? `<div class="hint">Из дела — щелчок: вставить, Shift+щелчок: добавить к запросу</div>
+    <div class="ws-chips">${chips.map(([v, l]) => `<button type="button" class="ws-chip" data-chip="${esc(v)}">${esc(v)} <small>${esc(l)}</small></button>`).join('')}</div>` : '')
+    + (hist.length ? `<div class="hint" style="margin-top:6px">Запросы по делу — щелчок: открыть снова</div>`
+      + hist.slice(0, 8).map((h, i) => `<button type="button" class="ws-hrow" data-hist="${i}">${esc(h.t)} · ${esc(h.title)}${h.q ? ' · ' + esc(h.q) : ''}</button>`).join('') : '');
+  d.classList.remove('hidden');
+}
+function hideDrop(){ const d = q('#wsSdrop'); if (d) d.classList.add('hidden'); }
+function remember(entry){
+  const hist = [{t: nowHM(), ...entry}, ...(((st().search || {}).hist) || [])].slice(0, 20);
+  saveState({search: {hist, last: {url: entry.url, title: entry.title, kind: entry.kind}}});
+}
+async function openSite(entry, extra){
+  // entry: {kind: svc|link, title, url, q, fill}
+  SR.last = {...entry, where: '', notes: [], pending: true};
+  remember({kind: entry.kind, title: entry.title, url: entry.url, q: entry.q || ''});
+  renderSst(); hideDrop();
+  try {
+    const r = await api('/api/site/open', {url: entry.url, fill: entry.fill || null, q: entry.q || '', ...siteOpts(extra)});
+    if (!r.ok) throw new Error((r.error || {}).message || 'расширение не открыло сайт');
+    const d = r.data || {};
+    SR.last.where = MODE_RU[d.mode] || '';
+    SR.last.notes = d.notes || [];
+    if (entry.fill){ SR.last.fillOk = !!(d.fill && d.fill.ok); SR.last.fillErr = d.fill && d.fill.error ? d.fill.error.message : ''; }
+  } catch (e) {
+    const oldExt = /Неизвестная команда/.test(e.message);
+    if (/не подключено|409/.test(e.message) || oldExt){
+      // без расширения (или со старым, до 0.8.0) — обычное окно браузера справа; запрос для формы — в буфер обмена
+      const a = screenArea(), w = Math.round(a.width * (searchCfg().window_share || 40) / 100);
+      const pop = window.open(entry.url, 'pysm_site', `popup,left=${a.left + a.width - w},top=${a.top},width=${w},height=${a.height}`);
+      SR.last.where = MODE_RU.popup;
+      SR.last.notes = [oldExt ? 'расширение старой версии — обновите его (chrome://extensions → «Обновить»); пока сайт открыт обычным окном'
+        : 'расширение не подключено: сайт открыт обычным окном, файлы на него не перетаскиваются'];
+      if (entry.fill){ SR.last.fillOk = false; SR.last.fillErr = 'расширение не подключено — запрос скопирован, вставьте его (Ctrl+V)'; copyText(entry.q); }
+      if (!pop) SR.last.error = 'браузер не дал открыть окно — разрешите всплывающие окна для этой страницы';
+    } else SR.last.error = e.message;
+  }
+  SR.last.pending = false;
+  renderSst();
+}
+function runSvc(i, shift){
+  const svcs = searchCfg().services;
+  const s = svcs[shift ? (svcs.length > 1 ? 1 : 0) : i];
+  const inp = q('#wsQ');
+  const query = ((inp && inp.value) || '').trim();
+  SR.q = query;
+  if (!s) return;
+  if (!query){ toast('Впишите запрос или выберите значение из дела под строкой'); if (inp){ inp.focus(); renderDrop(); } return; }
+  openSite({kind: 'svc', title: s.title, url: s.url.includes('{q}') ? s.url.split('{q}').join(encodeURIComponent(query)) : s.url, q: query, fill: s.fill || null});
+}
+function openLink(i){
+  const l = searchCfg().links[i]; if (!l) return;
+  openSite({kind: 'link', title: l.title, url: l.url});
+}
+async function gosFill(btn){
+  // «Госуслуги · паспорт» (строка поиска): расширение вписывает серию, номер, фамилию и имя; «Продолжить» — оператор
+  if (btn) btn.disabled = true;
+  SR.last = {kind: 'gos', title: 'Госуслуги', where: '', notes: [], pending: true};
+  renderSst();
+  try {
+    const r = await api(`/api/ws/${W.id}/gosuslugi`, {site: siteOpts()});
+    if (!r.ok){ SR.last.error = (r.error || {}).message || 'ошибка'; toast('Госуслуги: ' + esc(SR.last.error), 7000); }
+    else {
+      const pr = (r.data || {}).problems || [];
+      toast(pr.length ? 'Вписано, но проверьте поля: ' + esc(pr.join('; ')) : 'Вписано на Госуслугах: ' + esc(`${r.sent.series} ${r.sent.number} · ${r.sent.surname} · ${r.sent.name}`) + '. «Продолжить» нажимаете вы', 7000);
+      remember({kind: 'gos', title: 'Госуслуги · паспорт', url: 'https://www.gosuslugi.ru/621102/1/form', q: `${r.sent.series} ${r.sent.number}`});
+    }
+  } catch (x) { SR.last.error = x.message; toast(esc(x.message), 7000); }
+  finally { if (btn) btn.disabled = false; SR.last.pending = false; renderSst(); }
+}
+function searchHelp(anchor){
+  closeWinPop();
+  fetch('/api/manager/status').then(r => r.json()).catch(() => ({})).then(s => {
+    const ch = s.chrome ? `Chrome ${s.chrome}` : 'версия Chrome неизвестна';
+    const pop = winPopAt(anchor, `<h5>Где открывается сайт</h5>
+      <p style="margin:0 0 6px"><b>Рядом (авто)</b> — во второй половине окна Chrome рядом с программой (разделённый экран). Расширение делает это само
+        в Chrome 155+; в Chrome 145–154 соберите пару один раз вручную (правый щелчок по вкладке программы → разделённый экран) —
+        дальше сайты открываются во второй вкладке пары. Иначе — окном справа.</p>
+      <p style="margin:0 0 6px"><b>Окном справа</b> — отдельное окно Chrome, окно программы сдвигается влево; «убрать» возвращает его на место.</p>
+      <p style="margin:0 0 6px">Следующий запрос открывается там же. На страницы проверки ЭП, Контур.Крипто и Nextcloud можно перетащить файлы дела
+        («Файлы:» в строке, лента страниц, список файлов) — их положит туда расширение. Кнопки на сайтах («Найти», «Продолжить»,
+        «Проверить») нажимаете вы.</p>
+      <p class="hint" style="margin:0">Сейчас: ${s.connected ? `расширение подключено, ${esc(ch)}, разделённый экран для расширения — ${s.split_api ? 'есть' : 'нет (нужен Chrome 155+)'}` : 'расширение не подключено — сайты открываются обычным окном браузера'}.
+        Сервисы и ссылки — config/workspace.yaml, раздел search.</p>`);
+    pop.style.maxWidth = '460px';
+  });
+}
+function sbarClick(e){
+  const chip = e.target.closest('[data-chip]');
+  if (chip){
+    const i = q('#wsQ'), v = chip.dataset.chip;
+    i.value = e.shiftKey && i.value.trim() ? i.value.trim() + ' ' + v : v;
+    SR.q = i.value; i.focus(); return;
+  }
+  const sv = e.target.closest('[data-svc]'); if (sv){ runSvc(+sv.dataset.svc, false); return; }
+  const lk = e.target.closest('[data-link]'); if (lk){ openLink(+lk.dataset.link); return; }
+  const h = e.target.closest('[data-hist]');
+  if (h){
+    const x = ((st().search || {}).hist || [])[+h.dataset.hist]; if (!x) return;
+    if (x.kind === 'gos'){ gosFill(null); return; }
+    if (x.q){ q('#wsQ').value = x.q; SR.q = x.q; }
+    const svc = searchCfg().services.find(s => s.title === x.title);
+    openSite({kind: x.kind, title: x.title, url: x.url, q: x.q, fill: svc ? svc.fill : null});
+    return;
+  }
+  const a = e.target.closest('[data-sa]'); if (!a) return;
+  const k = a.dataset.sa;
+  if (k === 'clear'){ q('#wsQ').value = ''; SR.q = ''; q('#wsQ').focus(); renderDrop(); }
+  else if (k === 'hide') hideSearch();
+  else if (k === 'help'){ e.stopPropagation(); searchHelp(a); }
+  else if (k === 'gos') gosFill(a);
+  else if (k === 'copyq') copyText((SR.last && SR.last.q) || '').then(ok => toast(ok ? 'Запрос скопирован — вставьте его на сайте (Ctrl+V)' : 'Не удалось скопировать'));
+}
+// перетаскивание файлов дела на сайт: ссылка на файл + имя; для папки Windows — DownloadURL (Chrome)
+function setFileDrag(dt, f){
+  if (!f || !W.id) return;
+  const name = baseName(f.name), ext = (name.split('.').pop() || '').toLowerCase();
+  const info = {url: `${location.origin}/api/ws/${W.id}/file/${f.id}`, name, mime: MIME[ext] || 'application/octet-stream', size: f.size || 0};
+  try {
+    dt.setData(FILE_MARK, JSON.stringify(info));
+    dt.setData('text/uri-list', info.url);
+    dt.setData('DownloadURL', `${info.mime}:${name}:${info.url}`);
+  } catch (x) {}
+  return info;
+}
+
+// ================================================================ (0.8.0) меню «Окна»
+let winPop = null;
+function closeWinPop(){ if (winPop){ winPop.remove(); winPop = null; } }
+document.addEventListener('click', e => { if (winPop && !winPop.contains(e.target) && !e.target.closest('#wsWinBtn,[data-sa=help]')) closeWinPop(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeWinPop(); });
+function winPopAt(anchor, html){
+  closeWinPop();
+  winPop = document.createElement('div'); winPop.className = 'ws-pop ws-winpop';
+  winPop.innerHTML = html;
+  document.body.appendChild(winPop);
+  const r = anchor.getBoundingClientRect();
+  winPop.style.left = Math.max(8, Math.min(r.left, innerWidth - winPop.offsetWidth - 8)) + 'px';
+  winPop.style.top = Math.min(r.bottom + 6, innerHeight - winPop.offsetHeight - 8) + 'px';
+  return winPop;
+}
+function winList(){
+  const L = [];
+  const stOf = w => !w ? 'закрыто' : w.pop && !w.pop.closed ? 'откреплено' : w.min ? 'свёрнуто' : 'открыто';
+  [['app', 'Заявление'], ['pas', 'Паспорт'], ['dom', 'Домены'], ['row', 'Строка таблицы']].forEach(([id, t]) => L.push({id, t, s: stOf(WM.get(id))}));
+  if (hasMgr()) L.push({id: 'mgr', t: 'manager · смена администратора', s: stOf(WM.get('mgr'))});
+  WM.all().filter(w => w.kind === 'page' || w.id === 'oth').forEach(w => L.push({id: w.id, t: w.title.replace(/<[^>]+>/g, ''), s: stOf(w)}));
+  resDomains().filter(d => d.status === 'found').forEach(d => {
+    const id = 'sd_' + d.domain.replace(/[^\w.-]/g, '_');
+    L.push({id, t: 'Sd · ' + d.domain, s: stOf(WM.get(id)), sd: d.domain});
+  });
+  return L;
+}
+function openWinMenu(anchor){
+  if (winPop){ closeWinPop(); return; }
+  const L = winList(), nsd = L.filter(x => x.sd).length;
+  const p = winPopAt(anchor, `<h5>Окна рабочего места</h5>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"><button class="sm primary" data-wa="all" title="Вернуть все свёрнутые окна на их места (расположение окон не меняется)">Показать все</button>
+      ${nsd ? `<button class="sm" data-wa="sdall" title="Открыть Sd каждого найденного домена">Sd всех доменов (${nsd})</button>` : ''}
+      <button class="sm" data-wa="search">${SR.on ? 'Убрать' : 'Показать'} строку «Поиск»</button></div>
+    <div class="ws-wlist">${L.map(x => `<button type="button" data-wopen="${esc(x.id)}" ${x.sd ? `data-wsd="${esc(x.sd)}"` : ''}><span>${esc(x.t)}</span><small class="ws-ws ${x.s === 'открыто' ? 'on' : ''}">${x.s}</small></button>`).join('')}</div>`);
+  p.onclick = e => {
+    const b = e.target.closest('[data-wa],[data-wopen]'); if (!b) return;
+    if (b.dataset.wa === 'all') showAllWins();
+    else if (b.dataset.wa === 'sdall') resDomains().filter(d => d.status === 'found').forEach((d, i) => { openSd(d.domain); const w = WM.get('sd_' + d.domain.replace(/[^\w.-]/g, '_')); if (w && i){ const r = WM.rectPx(w); const D = q('#wsDesk').getBoundingClientRect(); w.fr = {...w.fr, x: Math.max(0, (r.x - i * 24) / D.width), y: Math.min(.6, (r.y + i * 24) / D.height)}; WM.apply(w); } });
+    else if (b.dataset.wa === 'search') toggleSearch();
+    else showWin(b.dataset.wopen, b.dataset.wsd);
+    closeWinPop();
+  };
+}
+function showWin(id, sd){
+  const w = WM.get(id);
+  if (w && w.pop && !w.pop.closed){ w.pop.focus(); return; }
+  if (w){ WM.restore(id); WM.focus(id); return; }
+  if (sd){ openSd(sd); return; }
+  if (id === 'mgr'){ gateClick({target: q('#wsOpenMgr')}); return; }
+}
+function showAllWins(){
+  // свёрнутые окна возвращаются на свои места — раскладка не применяется, окно заявления не сдвигается
+  WM.all().forEach(w => { if (w.min && !(w.pop && !w.pop.closed)) WM.restore(w.id); });
+  WM.dock();
+  toast('Все окна показаны на своих местах');
+}
+
+// ================================================================ (0.8.0) удаление недавних дел
+async function deleteCase(id){
+  const r = await fetch(`/api/ws/${id}`, {method: 'DELETE'});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+  return j;
+}
+function bindRecent(total){
+  const box = q('#wsRecent'); if (!box) return;
+  box.onclick = async e => {
+    const del = e.target.closest('[data-wsdel]'), yes = e.target.closest('[data-wsdelyes]'), no = e.target.closest('[data-wsdelno]');
+    const all = e.target.closest('#wsDelAll'), allYes = e.target.closest('#wsDelAllYes'), allNo = e.target.closest('#wsDelAllNo');
+    if (del){
+      const td = del.closest('td');
+      td.dataset.html = td.innerHTML;
+      td.innerHTML = `<span class="ws-delq">Удалить дело и его файлы с диска?</span> <button class="sm danger" data-wsdelyes="${esc(del.dataset.wsdel)}">Удалить</button> <button class="sm" data-wsdelno="1">Нет</button>`;
+    } else if (no){ const td = no.closest('td'); td.innerHTML = td.dataset.html || ''; }
+    else if (yes){
+      yes.disabled = true;
+      try { await deleteCase(yes.dataset.wsdelyes); toast('Дело удалено'); } catch (x) { toast('Не удалилось: ' + esc(x.message), 6000); }
+      showIntake();
+    } else if (all){
+      q('#wsDelBar').innerHTML = `<div class="msg warn">Удалить все дела рабочего места (${total})? Папки дел с файлами и результаты их проверок будут стёрты с диска.
+        <button class="sm danger" id="wsDelAllYes">Удалить все</button> <button class="sm" id="wsDelAllNo">Отмена</button></div>`;
+    } else if (allNo) q('#wsDelBar').innerHTML = '';
+    else if (allYes){
+      allYes.disabled = true;
+      try {
+        const j = await api('/api/ws/recent/clear', {});
+        toast(`Удалено дел: ${j.deleted.length}${j.skipped.length ? `, оставлено (ещё разбираются): ${j.skipped.length}` : ''}`, 6000);
+      } catch (x) { toast('Не удалилось: ' + esc(x.message), 6000); }
+      showIntake();
+    }
+  };
 }
 
 // ================================================================ запуск

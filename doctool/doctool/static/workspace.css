@@ -58,6 +58,24 @@ body.ws-mode main{display:none}
 .ws-dock{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap;align-items:center}
 .ws-dock button{font-size:12px;padding:2px 9px}
 
+/* ---------- (0.8.3) верхняя панель убирается наверх ---------- */
+/* Шапка и вкладки (#appTop) и шапка дела, лента, панель раскладки (#wsTop) уезжают вверх (отрицательный отступ на свою
+   высоту --h, её измеряет workspace.js), стол с окнами растёт; остаётся тонкая полоса .ws-mini. */
+#appTop,.ws-top{transition:margin-top .18s ease,opacity .18s ease,visibility 0s}
+.ws-top{flex:0 0 auto}
+body.ws-mode.ws-topoff #appTop,body.ws-mode.ws-topoff .ws-top{margin-top:calc(-1 * var(--h,240px));opacity:0;visibility:hidden;pointer-events:none;
+  transition:margin-top .18s ease,opacity .18s ease,visibility 0s linear .18s}
+.ws-mini{display:none;gap:6px;align-items:center;padding:3px 10px;font-size:12.5px;color:var(--muted);background:var(--card);border-bottom:1px solid var(--line);
+  flex:0 0 auto;min-height:30px;position:relative;z-index:2}
+body.ws-mode.ws-topoff .ws-mini{display:flex}
+.ws-mini button{padding:1px 9px;font-size:12.5px}
+.ws-mini #wsTopShow{border-color:var(--accent);color:var(--accent);font-weight:600}
+.ws-mini-info{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto;max-width:40%}
+.ws-mini-info b{color:var(--text);font-weight:600}
+.ws-mini .ws-steps{margin-left:auto;flex-wrap:nowrap;overflow:hidden}
+.ws-mini-dock{display:flex;gap:5px;align-items:center;min-width:0;overflow:hidden}
+.ws-mini-dock .ws-dock{margin-left:0;flex-wrap:nowrap}
+
 /* ---------- рабочий стол и окна ---------- */
 .ws-desk{position:relative;flex:1;min-height:0;background:var(--desk);overflow:hidden;margin:0 8px;border-radius:8px}
 .ws-win{position:absolute;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:var(--wshadow);overflow:hidden}

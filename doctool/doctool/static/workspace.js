@@ -1,5 +1,7 @@
 /* PySimpleManager — рабочее место оператора (0.7.6; 0.8.0 — строка «Поиск», меню «Окна», удаление дел; 0.8.1 — дело
- * без файлов и добавление файлов в открытое дело, выделение текста PDF, без окна «Сверка»).
+ * без файлов и добавление файлов в открытое дело, выделение текста PDF, без окна «Сверка»; 0.8.2 — кнопки «Смена
+ * админа через manager» и «Безбумажные операции» (доверенность в manager) при любой операции; 0.8.3 — верхняя панель
+ * убирается наверх, стол с окнами растёт).
  *
  * Дело из архива тикетницы (или пустое): страницы по документам (лента), плавающие окна (заявление, паспорт, домены,
  * строка таблицы, Sd, manager), смена администратора в manager через расширение, строка для таблицы xlsx, строка
@@ -97,16 +99,17 @@ async function init(){
     } catch (x) {}
     inp.focus(); toast('Вставьте номер тикета: Ctrl+V');
   });
-  q('#wsTicket').addEventListener('input', () => { saveState({ticket: q('#wsTicket').value.trim()}); renderRow(); });
+  q('#wsTicket').addEventListener('input', () => { saveState({ticket: q('#wsTicket').value.trim()}); renderRow(); renderMini(); });
   q('#wsOp').addEventListener('change', () => {
     saveState({operation: q('#wsOp').value}, true); store.set('pysm.ws.op', q('#wsOp').value);
     renderRow(); renderSteps(); renderGate();
     if (W.ws && W.ws.status === 'ready' && !W.ws.job_id) setRecheck(true);
   });
-  q('#wsVia').addEventListener('change', () => { saveState({via: q('#wsVia').value}); store.set('pysm.ws.via', q('#wsVia').value); renderRow(); });
+  q('#wsVia').addEventListener('change', () => { saveState({via: q('#wsVia').value}); store.set('pysm.ws.via', q('#wsVia').value); renderRow(); renderMini(); });
   q('#wsRecheck').addEventListener('click', recheck);
   q('#wsCopyRow2').addEventListener('click', copyRow);
   q('#wsOpenMgr').addEventListener('click', gateClick);
+  q('#wsOpenLoa').addEventListener('click', openLoa);
   q('#wsStripT').addEventListener('click', () => { W.stripManual = true; stripMode(!q('#wsStrip').classList.contains('compact')); });
   // на невысоком экране лента — одной строкой, пока оператор сам не переключил
   addEventListener('resize', () => { if (!W.stripManual) stripMode(innerHeight < 820); });
@@ -130,7 +133,19 @@ async function init(){
   });
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyK' && W.id && !q('#tabWork').classList.contains('hidden')){ e.preventDefault(); toggleSearch(); }
+    // (0.8.3) Ctrl+Shift+↑ — убрать верхнюю панель, Ctrl+Shift+↓ — вернуть (в полях ввода — обычное выделение текста)
+    if (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && W.id && !q('#tabWork').classList.contains('hidden')
+        && !(e.target.closest && e.target.closest('input,textarea,select,[contenteditable]'))){ e.preventDefault(); setTop(e.key === 'ArrowUp'); }
   });
+  // (0.8.3) верхняя панель: убрать наверх / вернуть; тонкая полоса вместо неё («Перепроверить» — и в полосе)
+  q('#wsTopHide').addEventListener('click', () => setTop(true));
+  q('#wsTopShow').addEventListener('click', () => setTop(false));
+  q('#wsMiniSearch').addEventListener('click', () => { toggleSearch(); renderMini(); });
+  q('#wsMiniRecheck').addEventListener('click', recheck);
+  q('#wsMiniWin').addEventListener('click', e => openWinMenu(e.currentTarget));
+  q('#wsMini').addEventListener('dblclick', e => { if (!e.target.closest('button')) setTop(false); });
+  const ro = new ResizeObserver(measureTop);
+  ['#appTop', '#wsTop'].forEach(s => { const el = q(s); if (el) ro.observe(el); });
   stripMode(innerHeight < 820);
   const m = /ws=([0-9a-f]{6,32})/.exec(location.hash);
   if (m) openCase(m[1]); else showIntake();
@@ -139,8 +154,43 @@ async function init(){
 function shown(){ if (W.id) WM.all().forEach(w => { WM.apply(w); w.onResize && w.onResize(); }); }
 function stripMode(compact){ q('#wsStrip').classList.toggle('compact', compact); q('#wsStripT').textContent = compact ? 'Лента ▾' : 'Лента ▴'; }
 
+// ================================================================ (0.8.3) верхняя панель: убрать наверх / вернуть
+// Шапка программы с вкладками (#appTop) и шапка дела с лентой и панелью раскладки (#wsTop) уезжают наверх на свою
+// высоту (--h), стол с окнами растёт — окна держат доли стола и растут вместе с ним. Остаётся полоса #wsMini: «▾ Панель»,
+// тикет · операция · способ получения, шаги дела, «Поиск», «Окна», свёрнутые окна (#wsDock переносится в полосу).
+// Выбор запоминается (localStorage pysm.ws.topoff); на экране приёма и на других вкладках панель на месте.
+const TOP = {off: !!store.get('pysm.ws.topoff', false)};
+function measureTop(){
+  ['#appTop', '#wsTop'].forEach(s => { const el = q(s); if (el && el.offsetHeight) el.style.setProperty('--h', el.offsetHeight + 'px'); });
+}
+function applyTop(){
+  const on = !!(TOP.off && W.id);
+  measureTop();
+  document.body.classList.toggle('ws-topoff', on);
+  const dk = q('#wsDock'), hide = q('#wsTopHide');
+  if (on && dk.parentNode !== q('#wsMiniDock')) q('#wsMiniDock').appendChild(dk);
+  if (!on && dk.parentNode !== hide.parentNode) hide.parentNode.insertBefore(dk, hide);
+  renderMini();
+}
+function setTop(off){
+  if (TOP.off === !!off) return;
+  TOP.off = !!off; store.set('pysm.ws.topoff', TOP.off);
+  closeWinPop(); closeGatePop();
+  applyTop();
+  if (off) toast('Панель убрана наверх — вернуть: «▾ Панель» или Ctrl+Shift+↓', 3500);
+}
+function renderMini(){
+  const box = q('#wsMiniInfo'); if (!box) return;
+  const t = ticketNo(), o = q('#wsOp').value, v = q('#wsVia').value;
+  box.innerHTML = [t ? `<b>${esc(t)}</b>` : 'тикет не указан', esc(o), esc(v)].filter(Boolean).join(' · ');
+  box.title = box.textContent;
+  q('#wsMiniSteps').innerHTML = q('#wsSteps').innerHTML.replace(/ data-step="[^"]*"/g, '');   // копия шагов шапки, без data-step
+  q('#wsMiniSearch').classList.toggle('on', !!SR.on);
+}
+
 async function showIntake(){
   W.id = null; W.ws = null; W.res = null;
+  applyTop();                              // (0.8.3) на экране приёма верхняя панель всегда на месте
   q('#wsMain').classList.add('hidden'); q('#wsIntake').classList.remove('hidden');
   q('#wsSteps').innerHTML = '';
   try {
@@ -205,6 +255,7 @@ function openCase(id){
   W.id = id;
   if (location.hash !== '#ws=' + id) history.replaceState(null, '', '#ws=' + id);
   q('#wsIntake').classList.add('hidden'); q('#wsMain').classList.remove('hidden');
+  applyTop();                              // (0.8.3) панель убрана, если оператор её убрал
   buildWindows();
   poll(true);
 }
@@ -256,7 +307,7 @@ async function loadResult(){
     const r = await getJSON(`/api/ws/${W.id}/result${W.domain ? '?domain=' + encodeURIComponent(W.domain) : ''}`);
     if (!r.ready) return;
     W.res = r;
-    renderDomains(); renderRow(); renderGate(); renderSteps(); renderMgr(); renderSst();
+    renderDomains(); renderRow(); renderGate(); renderSteps(); renderMgr(); renderLoa(); renderSst();
   } catch (e) { toast('Результат не получен: ' + esc(e.message)); }
 }
 
@@ -315,7 +366,7 @@ function movePage(pid, cls){
   if (!p || p.cls === cls) return Promise.resolve(null);
   return pageAction({action: 'move', pid, cls}, `${esc(p.label)} → «${CLS[cls]}». Нажмите «Перепроверить», когда разложите все страницы`);
 }
-function setRecheck(on){ W.recheck = on; q('#wsRecheck').classList.toggle('hidden', !on); if (on) q('#wsRecheck').classList.add('primary'); }
+function setRecheck(on){ W.recheck = on; q('#wsRecheck').classList.toggle('hidden', !on); if (on) q('#wsRecheck').classList.add('primary'); q('#wsMiniRecheck').classList.toggle('hidden', !on); }
 async function recheck(){
   try {
     const r = await api(`/api/ws/${W.id}/check`, {});
@@ -835,7 +886,7 @@ function openDom(fr){
   q('#wsDomLoad').onclick = domLookup;
   q('.body', w.el).addEventListener('click', e => {
     const c = e.target.closest('input[data-inc]');
-    if (c){ const ex = excluded(); if (c.checked) ex.delete(c.dataset.inc); else ex.add(c.dataset.inc); saveState({mgr: {excluded: [...ex]}}); renderDomains(); renderGate(); renderRow(); return; }
+    if (c){ const ex = excluded(); if (c.checked) ex.delete(c.dataset.inc); else ex.add(c.dataset.inc); saveState({mgr: {excluded: [...ex]}}); renderDomains(); renderGate(); renderRow(); renderLoa(); return; }
     const sd = e.target.closest('[data-sd]'); if (sd) openSd(sd.dataset.sd);
     const wq = e.target.closest('[data-wsq]');
     if (wq){ SR.q = wq.dataset.wsq; if (!SR.on) showSearch(); else { const i = q('#wsQ'); if (i){ i.value = SR.q; i.focus(); i.select(); } } return; }
@@ -911,7 +962,7 @@ async function pollLookup(id, since){
 function renderLoose(items){
   // дело без проверки (операция без типа заявления): домены — без сверки с документами
   W.res = {result: {domains: items, domains_from_app: [], decision: {code: 'review', title: 'Без проверки документов', reasons: []}, job_id: ''}, matrix: {rows: [], domains: []}, boxes: {}, gos: {}, new_admin: {}, login_to: ''};
-  renderDomains(); renderRow(); renderGate();
+  renderDomains(); renderRow(); renderGate(); renderLoa();
 }
 function openSd(dn){
   const d = resDomains().find(x => x.domain === dn); if (!d) return;
@@ -1054,7 +1105,7 @@ function gateReasons(){
   const inc = resDomains().filter(d => d.status === 'found' && !excluded().has(d.domain));
   const stops = inc.filter(d => d.flags_level === 'stop');
   if (stops.length) R.push(`стоп по домену ${stops.map(d => d.domain).join(', ')} — снимите галку у домена или откройте с причиной`);
-  if (!inc.length) R.push('нет найденных в manager доменов для смены');
+  // (0.8.2) пустой список доменов — не причина: окно открывается сразу, домены можно вписать на странице manager
   const d = W.res && W.res.result.decision;
   if (d && d.code === 'reject') R.push('вердикт программы: ' + d.title + ((d.reasons || []).length ? ' — ' + d.reasons.slice(0, 2).join('; ') : ''));
   return R;
@@ -1066,18 +1117,21 @@ function renderGate(){
   const stops = inc.filter(d => d.flags_level === 'stop').length, warns = inc.filter(d => d.flags_level === 'warn').length;
   g.innerHTML = `<span class="badge ${stops ? 's-fail' : warns ? 's-warn' : inc.length ? 's-ok' : 's-info'}">Домены: ${inc.length} в смене${stops ? ` · стоп ${stops}` : ''}${warns ? ` · внимание ${warns}` : ''}</span>
     ${R.length || !hasMgr() ? '' : '<span class="badge s-ok">можно открывать смену</span>'}`;
-  q('#wsOpenMgr').classList.toggle('primary', !R.length);
-  q('#wsOpenMgr').classList.toggle('hidden', !hasMgr());
+  // (0.8.2) обе кнопки видны всегда; выделена кнопка страницы manager этой операции (config/workspace.yaml: manager_page)
+  q('#wsOpenMgr').classList.toggle('primary', hasMgr() && !R.length);
+  q('#wsOpenLoa').classList.toggle('primary', op().manager_page === 'loa_add');
 }
-// кнопка «Открыть смену в manager» — только у операций со страницей manager (config/workspace.yaml: manager_page)
+// шаг «Смена в manager» в шапке дела — у операций со страницей domain_move, «Доверенность в manager» — loa_add
 const hasMgr = () => op().manager_page === 'domain_move';
 function renderSteps(){
   const box = q('#wsSteps'); if (!box || !W.ws) { if (box) box.innerHTML = ''; return; }
-  const mg = st().mgr || {}, rw = st().row || {};
+  const mg = st().mgr || {}, lo = st().loa || {}, rw = st().row || {};
   const S = [['Приём', W.ws.status === 'ready' ? 'done' : 'cur', 'intake'],
     ...(hasMgr() ? [['Смена в manager', mg.done ? 'done' : mg.step ? 'cur' : '', 'mgr']] : []),
+    ...(op().manager_page === 'loa_add' ? [['Доверенность в manager', lo.done ? 'done' : lo.step ? 'cur' : '', 'loa']] : []),
     ['Строка таблицы', rw.copied ? 'done' : '', 'row']];
   box.innerHTML = S.map(([t, c, k], i) => `<span class="ws-step ${c}" data-step="${k}">${i + 1}. ${esc(t)}</span>`).join('');
+  renderMini();
 }
 let gatePop = null;
 function closeGatePop(){ if (gatePop){ gatePop.remove(); gatePop = null; } }
@@ -1125,14 +1179,14 @@ function renderMgr(){
     ${mg.why ? `<div class="msg warn">Открыто с причиной: ${esc(mg.why)}</div>` : ''}
     <h4>Шаг 1 · «Перенос доменов между аккаунтами»</h4>
     <table><tr><th style="width:34%">Поле страницы</th><th>Значение</th></tr>
-      <tr><td>Домены <span class="mono">domains</span></td><td>${inc.map(esc).join('<br>') || '<span class="hint">нет доменов</span>'}</td></tr>
+      <tr><td>Домены <span class="mono">domains</span></td><td>${inc.map(esc).join('<br>') || '<span class="hint">нет — поле на странице не трогается: впишите домены в manager или загрузите их в окне «Домены»</span>'}</td></tr>
       <tr><td>Операция</td><td><label class="chk"><input type="checkbox" checked disabled> смена администратора <span class="mono">do_change_admin</span></label>
         <label class="chk"><input type="checkbox" id="mAcc" ${acc ? 'checked' : ''}> перенос на другой аккаунт <span class="mono">do_change_account</span></label></td></tr>
       ${acc ? `<tr><td>Принимающий аккаунт <span class="mono">login_to</span></td><td><input type="text" id="mLogin" value="${esc(loginTo)}" style="width:100%"><span class="hint">из «Номер договора» заявления: ${esc(adm.contract || '—')}</span></td></tr>` : ''}
       <tr><td>Загрузить документы <span class="mono">attachment</span></td><td>${files.map(f => `<label class="chk"><input type="checkbox" data-mf="${f.id}" ${sel.has(f.id) ? 'checked' : ''}> ${esc(f.name.split('/').pop())} <span class="hint">${(f.size / 1024 / 1024).toFixed(2)} МБ</span></label>`).join('') || '<span class="hint">нет файлов</span>'}</td></tr>
       <tr><td>Остальные флажки</td><td class="c-info">не проверять контакты…, allow_rereg_only_bill, сохранить ЧУ, расторгнуть сделку — расширение не трогает</td></tr></table>
     <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap"><button class="primary" id="mFill">Вписать на странице manager</button>
-      <span class="hint">Расширение откроет «Перенос доменов между аккаунтами» и заполнит её. <b>«Далее» нажимаете вы.</b></span></div>
+      <span class="hint">Расширение откроет «Перенос доменов между аккаунтами» и заполнит её${inc.length ? '' : ' (без доменов — только флажки и документы)'}. <b>«Далее» нажимаете вы.</b></span></div>
     <div id="mFillMsg">${mg.step >= 1 ? `<div class="msg ok">Шаг 1 заполнен${(mg.files || []).length ? `, документов: ${mg.files.length}` : ''}.</div>` : ''}</div>
     <h4>Шаг 2 · «Данные нового администратора»</h4>
     <p class="hint" style="margin:0 0 6px">После «Далее» в manager: «Сверить» прочитает данные на странице и подсветит их там (зелёный — совпадает с заявлением, красный — нет).</p>
@@ -1155,7 +1209,7 @@ function renderMgr(){
       if (!r.ok) q('#mFillMsg', b).innerHTML = `<div class="msg fail">${esc((r.error || {}).message || 'ошибка')}</div>`;
       else {
         const d = r.data || {};
-        q('#mFillMsg', b).innerHTML = `<div class="msg ok"><b>Страница заполнена</b>${d.tab_opened ? ' (вкладка открыта)' : ''}: ${esc((d.changed || []).join(', ') || 'всё уже было так')}.
+        q('#mFillMsg', b).innerHTML = `<div class="msg ok"><b>Страница заполнена</b>${d.tab_opened ? ' (вкладка открыта)' : ''}: ${esc((d.changed || []).join(', ') || 'всё уже было так')}.${inc.length ? '' : ' <b>Домены впишите на странице.</b>'}
           ${(d.attached || []).length ? `Документы: ${esc(d.attached.join(', '))}.` : ''}${(d.notes || []).length ? ' <br>Замечания: ' + esc(d.notes.join('; ')) : ''}<br><b>Проверьте страницу и нажмите «Далее» в manager.</b></div>`;
         saveState({mgr: {step: 1}});
         renderSteps();
@@ -1190,6 +1244,112 @@ function mgrRowsHTML(rows){
     ${rows.map(r => `<tr><td>${esc(r.title)}</td><td class="${C[r.status] || ''}">${esc(r.app) || '<span class="hint">в заявлении нет</span>'}</td><td class="${C[r.status] || ''}">${esc(r.mgr) || '<span class="hint">—</span>'}</td><td>${L[r.status] || ''}</td></tr>`).join('')}</table>`;
 }
 
+// ================================================================ (0.8.2) безбумажные операции: доверенность в manager
+// Кнопка «Безбумажные операции» (есть всегда): окно с полями страницы manager «Добавить новый документ от
+// пользователя» (Документы → Доверенности → Добавить, /userdocs/loa_add) под теми же названиями. Значения — из Sd
+// найденного домена (физлицо: серия и номер паспорта, ФИО; юрлицо: код страны и ИНН; e-mail и телефон
+// администратора), иначе паспорт и ФИО из документов дела; всё можно поправить. Расширение вписывает их на странице
+// (/api/ws/{id}/manager/loa_fill); вид документа, срок действия, «Показать домены…» и «Добавить документ» — оператор.
+const LOA_KEYS = ['passport_inn', 'fullname', 'email', 'customer_phone'];
+const LOA_LABEL = {
+  person: {passport_inn: 'Номер паспорта (физ.лицо)', fullname: 'ФИО Администратора'},
+  org: {passport_inn: 'Код страны регистрации компании (RU, ...)', fullname: 'ИНН компании'},
+  '': {passport_inn: 'Номер паспорта (физ.лицо) / Код страны регистрации компании (RU, ...)', fullname: 'ФИО Администратора / ИНН компании'},
+};
+const LOA_LABEL_ALL = {email: 'Высылать письма об окончании срока доверенности на указанный email', customer_phone: 'Телефон (опционально)'};
+const firstPhone = s => String(s || '').split(/[\n,;]+/).map(x => x.trim()).filter(Boolean)[0] || '';
+function loaSources(){
+  // администраторы найденных доменов (домены с одинаковым паспортом / ИНН — одна строка) в порядке строки таблицы
+  // (включённые галкой, по заявлению), затем остальные; последним — документы дела (паспорт, иначе заявление)
+  const inc = incDomains(), out = [];
+  const pos = d => { const i = inc.indexOf(d.domain); return i < 0 ? 1e6 : i; };
+  const found = resDomains().filter(d => d.status === 'found' && (d.kind === 'person' || d.kind === 'org'))
+    .sort((a, b) => pos(a) - pos(b));
+  for (const d of found){
+    const sd = d.sd || {};
+    const v = d.kind === 'person' ? {passport_inn: d.passport || '', fullname: d.fio || ''}
+      : {passport_inn: String(sd.country || 'RU').trim().toUpperCase(), fullname: String(sd.code || '').replace(/\D/g, '')};
+    const key = (v.passport_inn + ':' + v.fullname).replace(/\s/g, '').toLowerCase();
+    const same = out.find(x => x.key === key);
+    if (same){ same.domains.push(d.domain); continue; }
+    out.push({id: d.domain, key, kind: d.kind, domains: [d.domain], ...v, email: (d.emails || [])[0] || '',
+      emails: [...new Set([...(d.emails || []), d.account_email].filter(Boolean))], customer_phone: firstPhone(sd.phone || sd.o_phone)});
+  }
+  const L = (W.res && W.res.loa_doc) || {};
+  if (L.passport || L.fio) out.push({id: '@docs', key: '@docs', kind: 'person', domains: [], passport_inn: L.passport || '', fullname: L.fio || '', email: '', emails: [], customer_phone: ''});
+  return out;
+}
+function openLoa(){
+  saveState({loa: {opened: true}});
+  const D = q('#wsDesk').getBoundingClientRect();
+  WM.open('loa', 'manager · безбумажные операции <small>· доверенность: что впишет расширение</small>', {kind: 'panel', closable: true,
+    fr: {x: .22, y: .04, w: Math.min(.58, 780 / Math.max(1, D.width)), h: .9}});
+  renderLoa(); renderSteps();
+}
+function renderLoa(){
+  const w = WM.get('loa'); if (!w || !W.ws) return;
+  const b = q('.body', w.el);
+  if (b.contains(document.activeElement) && document.activeElement.matches('input[data-lf]')) return;   // не мешать вводу
+  const S = loaSources(), ls = st().loa || {};
+  const src = S.find(x => x.id === ls.src) || S[0] || null;
+  const sid = src ? src.id : '';
+  // правки оператора относятся к своему источнику: другой источник (или загруженные домены) — значения из него
+  const ed = ls.edit_src === sid ? (ls.edit || {}) : {};
+  const kind = src ? src.kind : '';
+  const lab = {...LOA_LABEL[kind], ...LOA_LABEL_ALL};
+  const val = k => k in ed ? ed[k] : src ? (src[k] || '') : '';
+  const srcText = x => x.id === '@docs' ? 'документы дела (паспорт / заявление)'
+    : `Sd: ${x.domains.join(', ')} · ${x.kind === 'org' ? 'юрлицо' : 'физлицо'}`;
+  const nAdm = S.filter(x => x.id !== '@docs').length;
+  const docs = (W.res && W.res.loa_doc) || {};
+  const pDiff = src && src.id !== '@docs' && kind === 'person' && docs.passport && src.passport_inn
+    && docs.passport.replace(/\s/g, '') !== src.passport_inn.replace(/\s/g, '');
+  b.innerHTML = `<div class="ws-pad">
+    <p class="hint" style="margin:0 0 8px">Страница manager «Добавить новый документ от пользователя» (Документы → Доверенности → Добавить). Поля — как на странице.</p>
+    <label class="f">Данные администратора из <select id="lSrc" ${S.length ? '' : 'disabled'}>${S.length ? S.map(x => `<option value="${esc(x.id)}" ${x.id === sid ? 'selected' : ''}>${esc(srcText(x))}</option>`).join('') : '<option value="">нет данных — впишите вручную</option>'}</select></label>
+    ${S.length ? '' : '<p class="hint" style="margin:6px 0 0">Загрузите домены в окне «Домены» (данные возьмутся из Sd) или добавьте паспорт в дело — или впишите поля ниже.</p>'}
+    ${nAdm > 1 ? `<p class="hint" style="margin:6px 0 0">У доменов разные администраторы (${nAdm}): доверенность на каждого добавляется отдельно — выберите, чьи данные вписать.</p>` : ''}
+    ${pDiff ? `<div class="msg warn" style="margin-top:6px">В документах дела другой паспорт: ${esc(docs.passport)}. По паспорту и ФИО manager ищет домены администратора — сверьте.</div>` : ''}
+    <table style="margin-top:8px"><tr><th style="width:42%">Поле страницы</th><th>Значение</th></tr>
+      ${LOA_KEYS.map(k => `<tr><td>${esc(lab[k])} <span class="mono">${k}</span></td><td><input type="text" data-lf="${k}" value="${esc(val(k))}" style="width:100%"${k === 'email' ? ' list="lMails"' : ''}>${k in ed ? '<small class="hint">изменено вручную</small>' : ''}</td></tr>`).join('')}
+      <tr><td>Вид документа, «Документ действителен С / ПО», список доменов, внутренний номер документа</td><td class="c-info">расширение не трогает — выбираете и вписываете вы</td></tr></table>
+    <datalist id="lMails">${(src ? src.emails : []).map(e => `<option value="${esc(e)}">`).join('')}</datalist>
+    <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap"><button class="primary" id="lFill">Вписать на странице manager</button>
+      <span class="hint">Расширение откроет страницу доверенности и впишет поля. Проверить домены — «Показать домены, на которые будет выдана доверенность»; <b>«Добавить документ» нажимаете вы.</b></span></div>
+    <div id="lMsg">${ls.step >= 1 ? '<div class="msg ok">Поля вписаны на странице manager.</div>' : ''}</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap"><button id="lDone">Документ добавлен → строка таблицы</button>
+      <span class="hint">Нажмите после «Добавить документ» в manager.</span></div></div>`;
+  q('#lSrc', b).onchange = e => { saveState({loa: {src: e.target.value, edit: {}, edit_src: e.target.value}}); renderLoa(); };
+  qq('input[data-lf]', b).forEach(i => {
+    i.oninput = () => {
+      const cur = st().loa || {};
+      const e = cur.edit_src === sid ? {...(cur.edit || {})} : {};
+      e[i.dataset.lf] = i.value;
+      saveState({loa: {edit: e, edit_src: sid}});
+    };
+  });
+  q('#lFill', b).onclick = async () => {
+    const btn = q('#lFill', b); btn.disabled = true;
+    const fields = {};
+    qq('input[data-lf]', b).forEach(i => { fields[i.dataset.lf] = i.value.trim(); });
+    q('#lMsg', b).innerHTML = '<div class="msg">Открываю manager…</div>';
+    try {
+      const r = await api(`/api/ws/${W.id}/manager/loa_fill`, {fields});
+      if (!r.ok){
+        const er = r.error || {};
+        q('#lMsg', b).innerHTML = `<div class="msg fail">${er.code === 'unknown_cmd' ? 'Расширение старой версии — обновите его: chrome://extensions → PySimpleManager → «Обновить» (⟳), затем повторите.' : esc(er.message || 'ошибка')}</div>`;
+      } else {
+        const d = r.data || {};
+        saveState({loa: {step: 1}}); renderSteps();
+        q('#lMsg', b).innerHTML = `<div class="msg ok"><b>Страница заполнена</b>${d.tab_opened ? ' (вкладка открыта)' : ''}: ${esc((d.changed || []).map(x => x.label).join(', ') || 'всё уже было так')}.
+          ${(d.missing || []).length ? '<br>Нет на странице: ' + esc(d.missing.join(', ')) + '.' : ''}<br><b>Выберите «Вид документа» и срок действия, проверьте домены и нажмите «Добавить документ» в manager.</b></div>`;
+      }
+    } catch (e) { q('#lMsg', b).innerHTML = `<div class="msg fail">${esc(e.message)}</div>`; }
+    finally { btn.disabled = false; }
+  };
+  q('#lDone', b).onclick = () => { saveState({loa: {done: true, done_at: new Date().toISOString()}}, true); renderSteps(); WM.close('loa'); WM.restore('row'); WM.focus('row'); toast('Доверенность добавлена. Скопируйте строку таблицы'); };
+}
+
 // ================================================================ (0.8.0) строка «Поиск» и сайт рядом
 // Кнопка «Поиск» или Ctrl+K: строка запроса над окнами. Сайт (Google, ЕГРЮЛ, Госуслуги, быстрые ссылки из
 // config/workspace.yaml) открывает расширение — во второй половине окна Chrome (разделённый экран), окном справа или
@@ -1214,7 +1374,7 @@ function toggleSearch(){ if (SR.on) hideSearch(); else showSearch(); }
 function showSearch(){
   if (!W.id) return;
   SR.on = true;
-  q('#wsSbar').classList.remove('hidden'); q('#wsSearchBtn').classList.add('on');
+  q('#wsSbar').classList.remove('hidden'); q('#wsSearchBtn').classList.add('on'); q('#wsMiniSearch').classList.add('on');
   renderSbar();
   const last = (st().search || {}).last;
   // сайт этого дела был открыт и его убрали — вернуть на место без перезагрузки страницы
@@ -1224,7 +1384,7 @@ function showSearch(){
 }
 function hideSearch(){
   SR.on = false;
-  q('#wsSbar').classList.add('hidden'); q('#wsSearchBtn').classList.remove('on');
+  q('#wsSbar').classList.add('hidden'); q('#wsSearchBtn').classList.remove('on'); q('#wsMiniSearch').classList.remove('on');
   SR.drop = false;
   if ((st().search || {}).last){ SR.hidden = true; api('/api/site/hide', {}).catch(() => {}); }
 }
@@ -1452,7 +1612,7 @@ function setFileDrag(dt, f){
 // ================================================================ (0.8.0) меню «Окна»
 let winPop = null;
 function closeWinPop(){ if (winPop){ winPop.remove(); winPop = null; } }
-document.addEventListener('click', e => { if (winPop && !winPop.contains(e.target) && !e.target.closest('#wsWinBtn,[data-sa=help]')) closeWinPop(); });
+document.addEventListener('click', e => { if (winPop && !winPop.contains(e.target) && !e.target.closest('#wsWinBtn,#wsMiniWin,[data-sa=help]')) closeWinPop(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeWinPop(); });
 function winPopAt(anchor, html){
   closeWinPop();
@@ -1468,7 +1628,8 @@ function winList(){
   const L = [];
   const stOf = w => !w ? 'закрыто' : w.pop && !w.pop.closed ? 'откреплено' : w.min ? 'свёрнуто' : 'открыто';
   [['app', 'Заявление'], ['pas', 'Паспорт'], ['dom', 'Домены'], ['row', 'Строка таблицы']].forEach(([id, t]) => L.push({id, t, s: stOf(WM.get(id))}));
-  if (hasMgr()) L.push({id: 'mgr', t: 'manager · смена администратора', s: stOf(WM.get('mgr'))});
+  L.push({id: 'mgr', t: 'manager · смена администратора', s: stOf(WM.get('mgr'))});
+  L.push({id: 'loa', t: 'manager · безбумажные операции', s: stOf(WM.get('loa'))});
   WM.all().filter(w => w.kind === 'page' || w.id === 'oth').forEach(w => L.push({id: w.id, t: w.title.replace(/<[^>]+>/g, ''), s: stOf(w)}));
   resDomains().filter(d => d.status === 'found').forEach(d => {
     const id = 'sd_' + d.domain.replace(/[^\w.-]/g, '_');
@@ -1499,6 +1660,7 @@ function showWin(id, sd){
   if (w){ WM.restore(id); WM.focus(id); return; }
   if (sd){ openSd(sd); return; }
   if (id === 'mgr'){ gateClick({target: q('#wsOpenMgr')}); return; }
+  if (id === 'loa'){ openLoa(); return; }
 }
 function showAllWins(){
   // свёрнутые окна возвращаются на свои места — раскладка не применяется, окно заявления не сдвигается

@@ -616,7 +616,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         adm = workspace.new_admin(res)
         return {"ready": True, "result": payload, "matrix": mx, "boxes": workspace.field_boxes(ws, res),
                 "gos": workspace.gosuslugi_data(res), "new_admin": adm,
-                "login_to": workspace.contract_login(adm.get("contract", ""))}
+                "login_to": workspace.contract_login(adm.get("contract", "")), "loa_doc": workspace.loa_doc(res)}
 
     @app.post("/api/ws/{ws_id}/gosuslugi")
     def ws_gosuslugi(ws_id: str, body: dict = Body(default={})):
@@ -639,12 +639,11 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
     @app.post("/api/ws/{ws_id}/manager/fill")
     def ws_manager_fill(ws_id: str, body: dict = Body(...)):
         """Шаг 1 «Перенос доменов между аккаунтами»: домены, смена администратора, перенос на аккаунт,
-        принимающий аккаунт, документы в «Загрузить документы». «Далее» нажимает оператор."""
+        принимающий аккаунт, документы в «Загрузить документы». «Далее» нажимает оператор.
+        (0.8.2) Список доменов может быть пустым: страница открывается, поле «Домены» не трогается."""
         ws = _ws(ws_id)
         doms = split_domains(" ".join(body.get("domains") or []) if isinstance(body.get("domains"), list)
                              else str(body.get("domains") or ""))
-        if not doms:
-            raise HTTPException(400, "Нет доменов для смены")
         files = []
         total = 0
         for fid in body.get("files") or []:
@@ -666,6 +665,23 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
             ws.set_state({"mgr": {"step": 1, "domains": doms, "change_account": params["change_account"],
                                   "login_to": params["login_to"], "files": [f["name"] for f in files]}})
         return {"ok": bool(reply.get("ok")), "data": reply.get("data"), "error": reply.get("error")}
+
+    @app.post("/api/ws/{ws_id}/manager/loa_fill")
+    def ws_manager_loa_fill(ws_id: str, body: dict = Body(...)):
+        """(0.8.2) Безбумажные операции: «Добавить новый документ от пользователя» (/userdocs/loa_add, доверенность) —
+        номер паспорта / код страны компании, ФИО / ИНН компании, e-mail, телефон. Вид документа, срок действия и
+        «Добавить документ» — оператор."""
+        ws = _ws(ws_id)
+        fields = {k: re.sub(r"\s+", " ", str(v)).strip() for k, v in (body.get("fields") or {}).items()
+                  if k in workspace.LOA_FIELDS and v is not None}
+        fields = {k: v for k, v in fields.items() if v}
+        if not fields:
+            raise HTTPException(400, "Нечего вписывать — заполните поля в окне «Безбумажные операции»")
+        _need_extension()
+        reply = _ext("loa_fill", {"fields": fields}, timeout=300)
+        if reply.get("ok"):
+            ws.set_state({"loa": {"step": 1, "filled": sorted(fields)}})
+        return {"ok": bool(reply.get("ok")), "data": reply.get("data"), "error": reply.get("error"), "sent": fields}
 
     @app.post("/api/ws/{ws_id}/manager/read")
     def ws_manager_read(ws_id: str, body: dict = Body(default={})):

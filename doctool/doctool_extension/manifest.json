@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PySimpleManager",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Данные доменов и аккаунтов из manager.reg.ru для PySimpleManager; сайты проверок рядом с рабочим местом. По кнопке в программе заполняет формы, но не отправляет их.",
   "minimum_chrome_version": "116",
   "permissions": ["tabs", "scripting", "storage", "alarms", "webRequest"],

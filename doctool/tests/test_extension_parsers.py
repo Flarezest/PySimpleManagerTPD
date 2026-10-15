@@ -63,7 +63,9 @@ def test_sd_email_and_intl(page):
     intl = json.loads(run(page, "sd_intl.html", "M.parseSd(document)"))
     assert intl["group"] == "o_deti_org" and intl["status"] == "Активна (A)"
     assert intl["fields"]["o_email"] == "owner@example.com\nsecond@example.org"
-    assert intl["fields"]["o_company"] == "Test Holding LP" and "o_phone" not in intl["fields"]
+    # (0.8.2) телефон администратора передаётся (для доверенности), телефоны контактов a_/t_ — нет
+    assert intl["fields"]["o_company"] == "Test Holding LP" and intl["fields"]["o_phone"] == "+70000000000"
+    assert "a_phone" not in intl["fields"] and "t_phone" not in intl["fields"]
     assert "authinfo" not in intl["fields"] and "o_addr" not in intl["fields"]
 
 
@@ -167,7 +169,8 @@ def test_sd_org_legal_address(page):
     f = org["fields"]
     assert f["address_r_street"] == "ул. Тестовая" and f["address_r_house"] == "1" and f["address_r_zip"] == "140000"
     assert f["address_r_frame"] == "" and f["address_r_building"] == ""
-    assert "address_r_flat" not in f and "p_addr_street" not in f and "phone" not in f
+    assert "address_r_flat" not in f and "p_addr_street" not in f
+    assert f["phone"].splitlines()[0].startswith("+7")          # (0.8.2) телефон — для доверенности
 
 
 def test_esia_fields_org_and_person(page):
@@ -213,6 +216,41 @@ def test_domain_move_fill(page):
     assert st["untouched"] == [False, False, False, False]          # остальные флажки страницы не трогаются
     # не та страница — ошибка, ничего не заполняется
     r = json.loads(run(page, "domain_move_contacts.html", f"M.domainMoveFill({json.dumps(params, ensure_ascii=False)})"))
+    assert not r["ok"] and r["error"]["code"] == "bad_page"
+
+
+def test_domain_move_fill_without_domains(page):
+    # (0.8.2) список доменов пуст: поле «Домены» не трогается, флажок смены администратора ставится
+    page.goto((FIX / "domain_move.html").as_uri())
+    page.add_script_tag(content=JS)
+    page.evaluate("() => { document.querySelector('[name=domains]').value = 'typed-by-operator.ru'; }")
+    r = page.evaluate("() => window.__doctoolManager.domainMoveFill({domains: [], change_admin: true})")
+    assert r["ok"] and "Домены" not in r["data"]["changed"] and any("не вписаны" in n for n in r["data"]["notes"]), r
+    st = page.evaluate("() => [document.querySelector('[name=domains]').value, document.querySelector('[name=do_change_admin]').checked]")
+    assert st == ["typed-by-operator.ru", True]
+
+
+def test_loa_fill(page):
+    # (0.8.2) безбумажные операции: «Добавить новый документ от пользователя» (/userdocs/loa_add, доверенность)
+    fields = {"passport_inn": "4000 123456", "fullname": "Тестов Пётр Иванович", "email": "person@example.com",
+              "customer_phone": "+79990000001", "doc_start_date": "01.01.2026"}
+    r = json.loads(run(page, "loa_add.html", f"M.loaFill({json.dumps(fields, ensure_ascii=False)})"))
+    assert r["ok"] and [x["name"] for x in r["data"]["changed"]] == ["passport_inn", "fullname", "email", "customer_phone"], r
+    assert r["data"]["missing"] == [] and r["data"]["doc_type"] == ""
+    st = page.evaluate("""() => ({vals: ['passport_inn', 'fullname', 'email', 'customer_phone', 'doc_start_date', 'doc_end_date',
+        'external_doc_id', 'force_doc_user_login'].map(n => document.querySelector('[name=' + n + ']').value),
+        type: document.querySelector('[name=doc_type_and_subtype]').value, url: location.href,
+        marked: document.querySelector('[name=fullname]').style.outlineStyle})""")
+    assert st["vals"] == ["4000 123456", "Тестов Пётр Иванович", "person@example.com", "+79990000001", "", "", "", ""]
+    assert st["type"] == "" and st["url"].endswith("loa_add.html") and st["marked"] == "solid"   # форма не отправлена
+    # идентификатор администратора, который страница соберёт для «Показать домены…» (её же функция; $ — замена jQuery)
+    rid = page.evaluate("() => { window.$ = s => ({val: () => document.querySelector(s).value}); return generate_registrant_id(); }")
+    assert rid == "4000123456:ТестовПётрИванович"
+    # юрлицо: код страны и ИНН — в те же поля; пустые значения не трогают поле
+    r = json.loads(run(page, "loa_add.html", 'M.loaFill({passport_inn: "RU", fullname: "7701234567", email: ""})'))
+    assert r["ok"] and [x["new"] for x in r["data"]["changed"]] == ["RU", "7701234567"]
+    # не та страница — ошибка, ничего не заполняется
+    r = json.loads(run(page, "domain_move.html", 'M.loaFill({passport_inn: "RU"})'))
     assert not r["ok"] and r["error"]["code"] == "bad_page"
 
 

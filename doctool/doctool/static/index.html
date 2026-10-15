@@ -94,6 +94,7 @@ ul.flags li{margin:2px 0}
 </style>
 </head>
 <body>
+<div id="appTop">
 <header>
   <h1>PySimpleManager <span class="ver" id="appVer"></span></h1>
   <span class="meta" id="meta">загрузка…</span>
@@ -105,6 +106,7 @@ ul.flags li{margin:2px 0}
   <button data-tab="tabOwner">Смена владельца ЛК</button>
   <div class="ws-steps hidden" id="wsSteps"></div>
 </nav>
+</div>
 <!-- ================================================================ (0.7.6) рабочее место: static/workspace.js -->
 <div id="tabWork" class="wsx hidden">
   <section id="wsIntake" class="ws-intake">
@@ -125,6 +127,7 @@ ul.flags li{margin:2px 0}
     <div class="ws-recent" id="wsRecent"></div>
   </section>
   <div id="wsMain" class="hidden" style="flex:1;min-height:0;display:flex;flex-direction:column">
+    <div class="ws-top" id="wsTop">
     <div class="ws-case">
       <label class="f">Номер тикета <span style="display:flex;gap:4px"><input type="text" id="wsTicket">
         <button class="sm" data-wspaste="wsTicket" title="Вставить из буфера обмена">Вставить</button></span></label>
@@ -149,13 +152,26 @@ ul.flags li{margin:2px 0}
       <button id="wsJoin" class="hidden">Собрать страницы</button>
       <button id="wsRecheck" class="hidden" title="Страницы переложены — прочитать документы заново">Перепроверить</button>
       <div class="ws-dock" id="wsDock"></div>
+      <button id="wsTopHide" title="Убрать верхнюю панель наверх — больше места для документов (Ctrl+Shift+↑)">▴ Убрать панель</button>
+    </div>
+    </div>
+    <!-- (0.8.3) верхняя панель убрана: тонкая полоса — вернуть панель, дело, шаги, «Поиск», «Окна», свёрнутые окна -->
+    <div class="ws-mini" id="wsMini">
+      <button id="wsTopShow" title="Вернуть верхнюю панель со всеми кнопками (Ctrl+Shift+↓)">▾ Панель</button>
+      <span class="ws-mini-info" id="wsMiniInfo"></span>
+      <button id="wsMiniRecheck" class="primary hidden" title="Страницы переложены — прочитать документы заново">Перепроверить</button>
+      <div class="ws-steps" id="wsMiniSteps"></div>
+      <button id="wsMiniSearch" title="Строка поиска (Ctrl+K)">Поиск</button>
+      <button id="wsMiniWin" title="Все окна рабочего места">Окна ▾</button>
+      <div class="ws-mini-dock" id="wsMiniDock"></div>
     </div>
     <div class="ws-sbar hidden" id="wsSbar"></div>
     <div class="ws-desk" id="wsDesk"><div class="ws-snap" id="wsSnap"></div></div>
     <div class="ws-abar">
       <div class="chips" id="wsGate"></div>
       <div class="act">
-        <button id="wsOpenMgr">Открыть смену в manager</button>
+        <button id="wsOpenMgr" title="Окно «manager · смена администратора»: расширение откроет «Перенос доменов между аккаунтами» и впишет домены и документы; «Далее» — вы">Смена админа через manager</button>
+        <button id="wsOpenLoa" title="Окно доверенности: расширение откроет «Документы → Доверенности → Добавить» и впишет паспорт и ФИО (у юрлица — код страны и ИНН), e-mail и телефон; «Добавить документ» — вы">Безбумажные операции</button>
         <button id="wsCopyRow2">Копировать строку таблицы</button>
       </div>
     </div>

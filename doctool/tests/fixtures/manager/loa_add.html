@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<!-- manager.reg.ru/userdocs/loa_add (15.10.2026), обезличено: логин оператора, токен; без меню и jQuery -->
+<html><head><meta charset="UTF-8"><meta name="_csrf" content="00000000000000000000000000000000"><title>Добавить новый документ от пользователя</title></head>
+<body>
+    <div id="content">    <table width="100%" cellpadding="0" cellspacing="0" border="0" height="50">
+     <tbody><tr>
+      <td align="left"><h2>Добавить новый документ от пользователя</h2></td>
+      <td align="right"><h3>[operator]&nbsp;<a href="https://logoff@manager.reg.ru/" title="Выйти из manager">[x]</a></h3></td>
+     </tr>
+    </tbody></table>
+    
+
+    
+
+
+
+<script>
+
+    function get_domains_by_registrant_id(registrant_id) {
+        //alert('regid = ' + registrant_id); //return false;
+        if ( ! registrant_id ) {
+            return false;
+        }
+
+        var response = $.ajax({
+            url: '/userdocs/_get_domains_by_registrant_id?registrant_id=' + registrant_id,
+            async: false,
+        }).responseText;
+
+        return response;
+
+    }
+
+
+    function validate_form() {
+
+        if ( ! $('#doc_type_and_subtype').val() ) {
+
+            alert('Поле "Вид документа" не заполнено!');
+            return false;
+        }
+
+        if ( ! $('#passport_inn').val() ) {
+
+            alert('Поле "Номер паспорта (физ.лицо)/ Код cтраны регистрации компании" не заполнено!');
+            return false;
+        }
+
+        if ( ! $('#fullname').val() ) {
+
+            alert('Поле "ФИО Администратора / ИНН компании" не заполнено!');
+            return false;
+        }
+
+        if ( ! $('#doc_start_date').val() ) {
+
+            alert('Поле "Документ действителен C" не заполнено!');
+            return false;
+        }
+
+        if ( ! $('#doc_end_date').val() ) {
+
+            alert('Поле "Документ действителен ПО" не заполнено!');
+            return false;
+        }
+
+        if ( ! $('#email').val() ) {
+
+            alert('Поле "email" не заполнено!');
+            return false;
+        }
+
+        var registrant_id = generate_registrant_id();
+        var response = get_domains_by_registrant_id(registrant_id);
+
+        var skip_domain_list_check = $('#skip_domain_list_check').attr('checked');
+
+        if ( response && response == ' ' ) {
+                return confirm('На указанные данные нет зарегистрированных доменов!\n Документ будет создан без привязки к пользоватлю! Продолжить?');
+        }
+
+        return true;
+    }
+
+    function generate_registrant_id () {
+
+        if ( ! $('#passport_inn').val() ) {
+
+            alert('Поле "Номер паспорта / ИНН компании" не заполнено!');
+            return false;
+        }
+
+        if ( ! $('#fullname').val() ) {
+
+            alert('Поле "ФИО Администратора / Название компании" не заполнено!');
+            return false;
+        }
+
+        var passport_inn    = $('#passport_inn').val();
+        passport_inn        = passport_inn.replace(/\s+/g, '');
+
+        var fullname    = $('#fullname').val();
+        fullname        = fullname.replace(/\s+/g, '');
+
+        var registrant_id = passport_inn + ':' + fullname;
+
+        return registrant_id;
+    }
+
+</script>
+
+
+
+<form action="https://manager.reg.ru/userdocs/loa_add" method="post" onsubmit="return validate_form();">
+
+<p>
+    Вид документа:
+    <select name="doc_type_and_subtype" id="doc_type_and_subtype">            <option value="" selected="selected">---</option>            <optgroup label="Копия доверенности на операции с доменами">            <option value="loa_general">Обычная доверенность на управление доменом</option>            </optgroup><optgroup label="Копия доверенности на продажу домена">            <option value="loa_sell:shop">В Магазине доменов</option>    </optgroup></select>    <br><br>
+
+    Номер паспорта (физ.лицо)/ Код cтраны регистрации компании (RU, ...):
+    <input type="text" name="passport_inn" id="passport_inn" size="64" maxlength="128" value=""><br><br>
+
+    ФИО Администратора / ИНН компании:
+    <input type="text" name="fullname" id="fullname" size="64" maxlength="128" value=""><br><br>
+
+    Ввести список доменов (если надо):
+    <input type="checkbox" id="toggle_domain_list"><br><br>
+
+    <textarea name="domain_list" id="domain_list" cols="40" rows="10" disabled="disabled" style="display:none; margin-bottom: 20px"></textarea><br>
+
+    Документ действителен:<br>
+        С: <input type="text" name="doc_start_date" id="doc_start_date" value="" size="10" maxlength="10" class="dp-applied hasDatepicker">
+        ПО: <input type="text" name="doc_end_date" id="doc_end_date" value="" size="10" maxlength="10" class="dp-applied hasDatepicker"><br><br>
+
+    Высылать письма об окончании срока доверенности<br>
+    на указанный email:
+    <input type="text" name="email" id="email" size="32" maxlength="128" value=""><br><br>
+
+    Добавить внутренний номер документа (опционально)<br>
+    <input type="text" name="external_doc_id" id="external_doc_id" size="32" maxlength="128" value=""><br><br>
+
+    Телефон (опционально)<br>
+    <input type="text" name="customer_phone" id="customer_phone" size="32" maxlength="128" value=""><br><br>
+
+    </p><div id="toggle_doc_user_login" style="display: none">
+            Создать доверенность даже если нет доменов:
+            <input type="checkbox" id="skip_domain_list_check" name="skip_domain_list_check" checked="checked"><br><br>
+
+            Логин пользователя (если нет списка доменов)<br>
+            <input type="text" name="force_doc_user_login" id="force_doc_user_login" size="32" maxlength="128" value=""><br><br>
+    </div>
+
+    <button id="domain_list_preview" title="Показать домены, на которые будет выдана доверенность" style="display:block;">Показать домены, на которые будет выдана доверенность</button><br><br>
+
+    <input type="hidden" name="action" value="add">
+    <input type="hidden" name="service_ids" value="">
+    <input type="hidden" name="user_id" value="">
+    <input type="submit" value="Добавить документ">
+<p></p>
+<input type="hidden" value="00000000000000000000000000000000" name="_csrf"></form>
+
+
+
+<pre>
+</pre>
+    </div>
+</body></html>

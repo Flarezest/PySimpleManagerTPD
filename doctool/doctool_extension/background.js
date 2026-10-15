@@ -18,6 +18,8 @@
  *                       справа или вкладка; site_open с fill — вписать запрос в поле поиска (ЕГРЮЛ). Страница
  *                       «Проверка действительности паспорта» (gosuslugi_fill) открывается там же.
  *    site_open, site_hide и gosuslugi_fill выполняются сразу, не дожидаясь очереди запросов к manager.
+ *    (0.8.2) loa_fill — безбумажные операции: «Добавить новый документ от пользователя» (доверенность,
+ *                       /userdocs/loa_add): номер паспорта / код страны компании, ФИО / ИНН, e-mail, телефон.
  *    content/drop.js — файлы дела, перетащенные из рабочего места на страницы проверки ЭП (Госуслуги),
  *                       Контур.Крипто и Nextcloud: расширение берёт файл у программы и кладёт его на страницу.
  *    lookup и account читают страницы в отдельной фоновой вкладке manager.
@@ -26,8 +28,9 @@
  * Расширение читает страницы manager. Меняет оно только значения полей форм во вкладках, которые видит оператор,
  * и только по кнопке в программе: базовая анкета (с 0.7.3 — и переключатель «Физик / ИП / Юрик»), с 0.7.6 —
  * страницы смены администратора и форма проверки паспорта на Госуслугах, с 0.8.0 — поле поиска ЕГРЮЛ и файлы,
- * перетащенные оператором на страницы проверки ЭП, Контур.Крипто и Nextcloud. Кнопки («Сохранить», «Далее»,
- * «Продолжить», «Найти», «Изменить», «Удалить» и т. п.) оно не нажимает и формы не отправляет.
+ * перетащенные оператором на страницы проверки ЭП, Контур.Крипто и Nextcloud, с 0.8.2 — форма доверенности
+ * (безбумажные операции). Кнопки («Сохранить», «Далее», «Продолжить», «Найти», «Изменить», «Удалить», «Добавить
+ * документ» и т. п.) оно не нажимает и формы не отправляет.
  */
 const VERSION = chrome.runtime.getManifest().version;
 const MANAGER = 'https://manager.reg.ru/';
@@ -35,6 +38,7 @@ const IDENTITY = 'https://identity.reg.ru/';
 const GOSUSLUGI = 'https://www.gosuslugi.ru/';
 const GOSUSLUGI_FORM = 'https://www.gosuslugi.ru/621102/1/form';   // «Проверка действительности паспорта»
 const DOMAIN_MOVE = 'https://manager.reg.ru/manager/domain_move';
+const LOA_ADD = 'https://manager.reg.ru/userdocs/loa_add';          // (0.8.2) «Доверенности → Добавить»
 const DEFAULTS = { port: 8765, authWaitSec: 180, pauseMs: 300, closeTabAfterSec: 60 };
 
 let ws = null;
@@ -141,6 +145,7 @@ async function handle(m) {
     else if (m.cmd === 'domain_move_read') reply = await domainMoveStep2(m.id, 'domainMoveRead', []);
     else if (m.cmd === 'domain_move_mark') reply = await domainMoveStep2(m.id, 'domainMoveMark', [(m.params || {}).marks || {}]);
     else if (m.cmd === 'domain_move_fill_contacts') reply = await domainMoveStep2(m.id, 'domainMoveFillContacts', [(m.params || {}).fields || {}]);
+    else if (m.cmd === 'loa_fill') reply = await loaFill(m.id, m.params || {});
     else reply = { ok: false, error: { code: 'unknown_cmd', message: `Неизвестная команда: ${m.cmd}` } };
   } catch (e) {
     reply = { ok: false, error: { code: e.code || 'error', message: e.message || String(e) } };
@@ -381,18 +386,48 @@ async function domainMoveTab(step) {
 }
 
 async function domainMoveFill(reqId, params) {
-  if (!params.domains || !params.domains.length) throw fail('bad_request', 'Нет доменов для смены администратора');
-  note(`Смена администратора: ${params.domains.join(', ')}`);
+  // (0.8.2) без доменов страница тоже открывается: поле «Домены» оператор заполнит сам
+  const doms = params.domains || [];
+  note(`Смена администратора: ${doms.length ? doms.join(', ') : 'без списка доменов'}`);
   progressTo(reqId, 'domain_move', 'открываю «Перенос доменов между аккаунтами» в manager');
   const { tabId, opened } = await domainMoveTab(1);
   await focusTab(tabId);
   const { authWaitSec } = await settings();
   await waitLoaded(tabId, 30000, authWaitSec * 1000);
   await waitForLogin(tabId);
-  progressTo(reqId, 'fill', `вписываю домены${(params.files || []).length ? ' и прикрепляю документы' : ''}`);
+  progressTo(reqId, 'fill', `${doms.length ? 'вписываю домены' : 'отмечаю смену администратора'}${(params.files || []).length ? ' и прикрепляю документы' : ''}`);
   const out = await runInTab(tabId, 'domainMoveFill', [params]);
   if (out.ok) out.data.tab_opened = opened;
   note(`Смена администратора: ${out.ok ? `заполнено (${(out.data.changed || []).length}), файлов ${(out.data.attached || []).length}` : out.error.message}`);
+  return out;
+}
+
+// ------------------------------------------------------------------ безбумажные операции: доверенность (0.8.2)
+
+// Вкладка оператора с формой «Добавить новый документ от пользователя»: уже открытая или новая.
+async function loaTab() {
+  const tabs = await chrome.tabs.query({ url: `${LOA_ADD}*` });
+  for (const t of tabs) {
+    if (await probe(t.id, () => !!document.querySelector('form input[name="passport_inn"]'))) return { tabId: t.id, opened: false };
+  }
+  const tab = await chrome.tabs.create({ url: LOA_ADD, active: true });
+  return { tabId: tab.id, opened: true };
+}
+
+async function loaFill(reqId, params) {
+  const fields = params.fields || {};
+  if (!Object.values(fields).some(v => String(v || '').trim())) throw fail('bad_request', 'Нечего вписывать в доверенность');
+  note('Безбумажные операции: доверенность в manager');
+  progressTo(reqId, 'loa', 'открываю «Добавить новый документ от пользователя» (доверенность) в manager');
+  const { tabId, opened } = await loaTab();
+  await focusTab(tabId);
+  const { authWaitSec } = await settings();
+  await waitLoaded(tabId, 30000, authWaitSec * 1000);
+  await waitForLogin(tabId);
+  progressTo(reqId, 'fill', 'вписываю данные администратора');
+  const out = await runInTab(tabId, 'loaFill', [fields]);
+  if (out.ok) out.data.tab_opened = opened;
+  note(`Безбумажные операции: ${out.ok ? `вписано полей ${(out.data.changed || []).length}` : out.error.message}`);
   return out;
 }
 

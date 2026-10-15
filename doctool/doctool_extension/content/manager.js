@@ -28,13 +28,18 @@
  *   domainMoveMark        — подсветить их по итогам сверки с заявлением (зелёный / красный);
  *   domainMoveFillContacts — шаг 2, «заполнить вручную»: ФИО, телефон, e-mail из заявления.
  * Кнопки «Далее», «Использовать» и остальные флажки страницы скрипт не трогает.
+ *
+ * С 0.8.2 — безбумажные операции: loaFill — «Добавить новый документ от пользователя» (/userdocs/loa_add,
+ * доверенность): номер паспорта / код страны компании, ФИО / ИНН компании, e-mail, телефон. «Добавить документ»,
+ * «Показать домены…», вид документа и срок действия — оператор.
  */
 (() => {
-  const VERSION = '0.8.1';
+  const VERSION = '0.8.2';
   if (window.__doctoolManager && window.__doctoolManager.version === VERSION) return;
 
-  // Поля Sd, которые передаются в doctool. authinfo, телефоны, адреса и служебные поля не передаются.
+  // Поля Sd, которые передаются в doctool. authinfo, адреса и служебные поля не передаются.
   // E-mail администратора передаётся (с 0.5.0): e_mail — зоны .RU/.РФ/.SU, o_email — остальные зоны.
+  // Телефон администратора (phone / o_phone) — с 0.8.2, для доверенности (безбумажные операции).
   // Юридический адрес юрлица (улица, дом, корпус, строение, индекс) — с 0.7.2, для сверки с ЕСИА.
   const SD_FIELDS = [
     // физлицо (.RU/.РФ/.SU)
@@ -46,8 +51,8 @@
     // администратор (владелец) в остальных зонах — группа o_* (o_deti_org, o_gtld…)
     'o_company', 'o_company_ru', 'o_first_name', 'o_first_name_ru', 'o_last_name', 'o_last_name_ru',
     'o_patronimic', 'o_patronimic_ru', 'o_country_code', 'o_birth_date',
-    // контактный e-mail
-    'e_mail', 'o_email',
+    // контактный e-mail; (0.8.2) телефон
+    'e_mail', 'o_email', 'phone', 'o_phone',
     // общее
     'code', 'country', 'last_admin_change', 'date_update_details', 'matches_user_contacts',
   ];
@@ -601,7 +606,9 @@
       }
       mark(el.closest('label') || el, '#f0ad4e');
     };
-    setVal(ta, (p.domains || []).join('\n'), 'Домены');
+    // (0.8.2) список пуст — поле «Домены» не трогается (оператор впишет сам)
+    if ((p.domains || []).length) setVal(ta, p.domains.join('\n'), 'Домены');
+    else notes.push('домены не вписаны — список в программе пуст');
     check('do_change_admin', p.change_admin !== false, 'смена администратора');
     check('do_change_account', !!p.change_account, 'перенос на другой аккаунт');
     if (p.change_account) setVal(form.querySelector('input[name="login_to"]'), String(p.login_to || ''), 'Принимающий аккаунт');
@@ -735,9 +742,46 @@
     return { ok: true, data: { step: 2, mode: 'fill', changed, missing } };
   }
 
+  // ------------------------------------------------------------------ безбумажные операции: доверенность (0.8.2)
+
+  // «Документы → Доверенности → Добавить» (/userdocs/loa_add, «Добавить новый документ от пользователя»).
+  // Поля, которые вписываются (только переданные непустые): passport_inn — «Номер паспорта (физ.лицо) / Код cтраны
+  // регистрации компании», fullname — «ФИО Администратора / ИНН компании», email, customer_phone. Из них страница
+  // собирает идентификатор администратора (паспорт:ФИО без пробелов) для «Показать домены…». Вид документа, срок
+  // действия, список доменов, внутренний номер — оператор; «Добавить документ» не нажимается.
+  const LOA_FIELDS = [['passport_inn', 'Номер паспорта (физ.лицо) / Код cтраны регистрации компании'],
+    ['fullname', 'ФИО Администратора / ИНН компании'], ['email', 'email'], ['customer_phone', 'Телефон']];
+  function loaFill(fields) {
+    const pi = document.querySelector('form input[name="passport_inn"]');
+    const form = pi && pi.closest('form');
+    if (!form || !form.querySelector('[name="fullname"]')) {
+      return { ok: false, error: { code: 'bad_page', message: 'Во вкладке не страница «Добавить новый документ от пользователя» (доверенность): нет поля «Номер паспорта / Код страны».' } };
+    }
+    const changed = [], missing = [];
+    for (const [name, label] of LOA_FIELDS) {
+      const value = String((fields || {})[name] ?? '').trim();
+      if (!value) continue;
+      const el = form.querySelector(`[name="${name}"]`);
+      if (!el) { missing.push(label); continue; }
+      const old = el.value;
+      if (old !== value) {
+        el.value = value;
+        fireEv(el, 'input');
+        fireEv(el, 'change');
+        changed.push({ name, label, old, new: value });
+      }
+      mark(el, '#f0ad4e');
+    }
+    try { pi.scrollIntoView({ block: 'center' }); } catch (e) { /* ничего */ }
+    const sel = form.querySelector('[name="doc_type_and_subtype"]');
+    const opt = sel && sel.selectedOptions[0];
+    return { ok: true, data: { changed, missing, doc_type: sel && sel.value ? (opt ? opt.textContent.trim() : sel.value) : '',
+      untouched: ['Вид документа', 'Документ действителен С / ПО', 'список доменов', 'внутренний номер документа'] } };
+  }
+
   window.__doctoolManager = {
     version: VERSION, lookup, account, fillRunic, parseBills, pickService, parseSd, parseS, parseEsiaList,
     parseUserDetails, parseRunic, setRunicType, isManagerPage,
-    domainMoveFill, domainMoveRead, domainMoveMark, domainMoveFillContacts,
+    domainMoveFill, domainMoveRead, domainMoveMark, domainMoveFillContacts, loaFill,
   };
 })();

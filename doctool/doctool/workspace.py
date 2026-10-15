@@ -239,7 +239,7 @@ class Workspace:
         self.result_dirs: list[str] = []   # (0.8.0) папки результатов проверок дела (results/<время>_<дело>) — для удаления
         self.created = _now()
         self.state: dict = {"ticket": "", "operation": "", "via": "", "marks": {}, "gos": {}, "row": {}, "mgr": {},
-                            "search": {}}
+                            "search": {}, "loa": {}}
         self.lock = threading.RLock()
         self._text: dict[str, dict] = {}   # (0.8.1) текстовый слой страниц PDF (text_layer)
         self.version = 0               # растёт при каждом изменении — интерфейс перечитывает состояние
@@ -623,7 +623,7 @@ class Workspace:
             for k in ("ticket", "operation", "via"):
                 if k in data:
                     self.state[k] = str(data[k] or "")
-            for k in ("marks", "gos", "row", "mgr", "search"):
+            for k in ("marks", "gos", "row", "mgr", "search", "loa"):   # loa — (0.8.2) доверенность
                 if isinstance(data.get(k), dict):
                     self.state[k] = {**(self.state.get(k) or {}), **data[k]}
         self.save()
@@ -862,6 +862,32 @@ def gosuslugi_data(res) -> dict:
             out["surname"] = out["surname"] or fio[0]
             out["name"] = out["name"] or fio[1]
     out["surname"], out["name"] = out["surname"].capitalize(), out["name"].capitalize()
+    return out
+
+
+# (0.8.2) Безбумажные операции: поля формы «Добавить новый документ от пользователя» (manager /userdocs/loa_add,
+# доверенность), которые вписывает расширение. passport_inn — «Номер паспорта (физ.лицо) / Код cтраны регистрации
+# компании (RU, ...)», fullname — «ФИО Администратора / ИНН компании», email — «Высылать письма об окончании срока
+# доверенности на указанный email», customer_phone — «Телефон (опционально)».
+LOA_FIELDS = ("passport_inn", "fullname", "email", "customer_phone")
+
+
+def loa_doc(res) -> dict:
+    """(0.8.2) Паспорт и ФИО из документов дела (паспорт, иначе заявление) — запасной источник для доверенности,
+    если у доменов нет Sd: {"passport": "4012 654321", "fio": "Иванов Иван Иванович"}."""
+    out = {"passport": "", "fio": ""}
+    if res is None:
+        return out
+    g = gosuslugi_data(res)
+    if g["series"] and g["number"]:
+        out["passport"] = f"{g['series']} {g['number']}"
+    if res.pas is not None:
+        cap = lambda w: "-".join(x[:1].upper() + x[1:].lower() for x in w.split("-"))   # noqa: E731
+        out["fio"] = " ".join(cap(str(res.pas.get(k)).strip())
+                              for k in ("surname", "given_name", "patronymic") if res.pas.get(k))
+    if not out["fio"] and res.app is not None:
+        F = Fields(res.app)
+        out["fio"] = re.sub(r"\s+", " ", str(F.get("applicant_fio") or F.get("applicant_header") or "")).strip()
     return out
 
 

@@ -13,7 +13,7 @@ import yaml
 
 LEVELS = ("stop", "warn", "info", "off")
 COLUMN4 = ("domain", "contract")
-MANAGER_PAGES = ("domain_move",)       # страницы manager, которые расширение умеет заполнять для операции
+MANAGER_PAGES = ("domain_move", "loa_add")   # страницы manager, которые расширение заполняет (шаг в шапке дела)
 OPEN_IN = ("auto", "split", "window", "tab")   # (0.8.0) где открывается сайт из строки «Поиск»
 FILLERS = ("egrul",)                   # (0.8.0) формы поиска, в которые расширение вписывает запрос
 
@@ -29,6 +29,7 @@ DEFAULT = {
             {"title": "Смена владельца аккаунта", "column4": "contract"},
             {"title": "Восстановление доступа", "column4": "contract"},
             {"title": "Деактивация номера", "column4": "contract"},
+            {"title": "Безбумажные операции", "column4": "domain", "manager_page": "loa_add"},
         ],
         "operators": {},
     },

@@ -141,9 +141,9 @@ def test_domain_report_provider_column_sort_and_org_esia():
     c = org_domain(None, domain="third-org.ru", provider="").to_dict()            # нет ссылки ЕСИА на Sd
     html = domain_report.build([a, b, c])
     heads = re.findall(r'<th title="Сортировать">([^<]+)<span class="arr">', html)
-    assert heads == ["Домен", "manager", "Администратор (Sd)", "Сверка", "ЕСИА", "Provider", "Прочее"]
+    assert heads == ["Домен", "manager", "Администратор (Sd)", "Сверка", "ЕСИА", "MO", "Provider", "Прочее"]   # MO — 0.8.4
     assert "<td>RU-CENTER-RU</td>" in html and "<td>cctldru</td>" in html and "provider:" not in html
-    assert 'colspan="7"' in html and 'id="bygroups"' in html and "localeCompare" in html
+    assert 'colspan="8"' in html and 'id="bygroups"' in html and "localeCompare" in html
     # кнопка ESIA — у всех найденных доменов юрлиц, и когда сверки нет (окно объяснит почему)
     for dom in ("testdomain-org.ru", "second-org.ru", "third-org.ru"):
         assert f'class="esia" data-d="{dom}"' in html

@@ -166,7 +166,8 @@ def domains_table(domains: list[dict]) -> str:
             extra = (f"provider: {e(d.get('provider', '') or '—')}<br>аккаунт: {e(d.get('account', '') or '—')}<br>"
                      + (f"e-mail аккаунта: {e(d['account_email'])}<br>" if d.get("account_email") else "")
                      + f"смена админа: {e(d.get('last_admin_change', '') or '—')}<br>страна: {e(sd.get('country', '') or '—')}"
-                     + (f"<br>ЕСИА: {e(d['esia_ru'])}" if d.get("esia_ru") else ""))
+                     + (f"<br>ЕСИА: {e(d['esia_ru'])}" if d.get("esia_ru") else "")
+                     + (f"<br>MO (владелец аккаунта): {e(d['mo_ru'])}" if d.get("mo_ru") else ""))
         else:
             w = d.get("whois") or {}
             data = e(d.get("error", ""))

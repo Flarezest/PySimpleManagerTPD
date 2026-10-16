@@ -27,6 +27,7 @@ import re
 
 import cv2
 import numpy as np
+import pytesseract
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
@@ -35,7 +36,7 @@ from .domains import ManagerUnavailable, sort_by_problem, split_domains
 from .integrations import push_to_system
 from .jobs import JobManager, result_payload
 from .manager_bridge import ExtensionBridge, ManagerTasks
-from .ocr import IMAGE_EXT, OllamaVLM, downscale
+from .ocr import IMAGE_EXT, OllamaVLM, check_tesseract, downscale
 from .service import APP_MODES, PAS_MODES, CaseInput, table_rows
 from .verdict import load_case_types
 
@@ -548,6 +549,18 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
             return ws.text_layer(pid)
         except workspace.WsError as e:
             raise HTTPException(404, str(e)) from e
+
+    @app.post("/api/ws/{ws_id}/ocr")
+    def ws_ocr(ws_id: str, body: dict = Body(...)):
+        """(0.8.4) Ручное выделение текста: текст в рамке на странице ({pid, rect: [x, y, w, h]} в px показанного
+        превью). PDF с текстовым слоем — слова слоя, сканы и фото — печатный текст (Tesseract)."""
+        ws = _ws(ws_id)
+        try:
+            return ws.read_zone(str(body.get("pid") or ""), body.get("rect") or [])
+        except workspace.WsError as e:
+            raise HTTPException(400, str(e)) from e
+        except (pytesseract.TesseractNotFoundError, pytesseract.TesseractError) as e:
+            raise HTTPException(500, check_tesseract() or f"Tesseract: {e}") from e
 
     @app.get("/api/ws/{ws_id}/docx/{pid}", response_class=HTMLResponse)
     def ws_docx(ws_id: str, pid: str):

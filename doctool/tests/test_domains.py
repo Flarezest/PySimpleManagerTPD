@@ -305,3 +305,84 @@ def test_esia_in_reports():
     assert "Идентификация через Госуслуги (ЕСИА)" in html and "second-pp.ru" in html.split("К сведению")[1]
     assert "</script" not in html.split('id="esia-data">')[1].split("</script>")[0]
     assert "ЕСИА: approved" in report.domains_table([good])
+
+
+# ------------------------------------------------------------------ 0.8.4: MO — администратор домена ↔ владелец аккаунта
+
+SD_PP_MO = {**SD_PP, "fields": {**SD_PP["fields"], "phone": "+79990000000\n79990000000",
+                                "e_mail": "person@example.com\nperson2@example.com", "p_addr_zip": "101000",
+                                "p_addr_city": "Москва", "p_addr_street": "Тестовая", "p_addr_house": "1",
+                                "p_addr_flat": "1", "matches_user_contacts": "1"}}
+BA_PP = {"ru_pp.person_r_surname": "Тестов", "ru_pp.person_r_name": "Пётр", "ru_pp.person_r_patronimic": "Сергеевич",
+         "ru_pp.birth_date": "15.03.1990", "ru_pp.country": "RU", "ru_pp.passport_number": "4509123456",
+         "ru_pp.passport_date": "20.04.2010", "ru_pp.passport_place": "ГУ МВД РОССИИ ПО Г. МОСКВЕ",
+         "ru_pp.phone": "+79990000000", "ru_pp.e_mail": "person@example.com", "ru_pp.p_addr_zip": "101000",
+         "ru_pp.p_addr_city": "Москва", "ru_pp.p_addr_addr": "Тестовая, д 1, кв 1"}
+
+
+def with_owner(owner, sd=SD_PP_MO, s=S_PP, domain="testdomain-pp.ru"):
+    r = reply(sd, s, domain)
+    if owner is not ...:
+        r["data"]["account_owner"] = owner
+    return domains.from_extension(domain, r)
+
+
+def test_mo_match_person():
+    d = with_owner({"user_id": "1000", "source": "user_details", "type": "", "ba": BA_PP}).to_dict()
+    assert d["mo_status"] == "match" and d["mo_ru"] == "Sd = анкета (13 из 13)" and d["mo_type"] == "pp"
+    rows = {r["title"]: r for r in d["mo_rows"]}
+    # паспорт: серия и номер Sd ↔ 10 цифр анкеты; адрес Sd по полям ↔ одной строкой; ИНН только в Sd — без цвета
+    assert rows["Серия и номер паспорта"]["sd"] == "4509 123456" and rows["Серия и номер паспорта"]["status"] == "ok"
+    assert rows["Почтовый адрес"]["sd"] == "Тестовая, д 1, кв 1" and rows["Почтовый адрес"]["status"] == "ok"
+    assert rows["ИНН"]["status"] == "" and rows["ИНН"]["detail"] == "нет в анкете"
+    # телефоны и e-mail — по общему значению, лишние — в пояснении
+    assert rows["E-mail"]["status"] == "ok" and rows["E-mail"]["detail"] == "в Sd ещё person2@example.com"
+    assert rows["Телефон"]["status"] == "ok"
+    assert domains.DomainInfo.from_dict(d).owner["ba"]["ru_pp.phone"] == "+79990000000"
+
+
+def test_mo_mismatch_and_states():
+    bad = with_owner({"user_id": "1000", "ba": {**BA_PP, "ru_pp.phone": "+79991112233",
+                                                 "ru_pp.p_addr_addr": "ул. Тестовая, д. 1, кв. 7"}}).to_dict()
+    assert bad["mo_status"] == "mismatch" and bad["mo_ru"] == "Sd ≠ анкета: Телефон, Почтовый адрес"
+    assert "номера не совпадают" in next(r for r in bad["mo_rows"] if r["title"] == "Почтовый адрес")["detail"]
+    # «кем выдан» написан по-разному — жёлтый
+    warn = with_owner({"user_id": "1000", "ba": {**BA_PP, "ru_pp.passport_place": "ГУ МВД РОССИИ ПО ГОРОДУ МОСКВЕ"}}).to_dict()
+    assert warn["mo_status"] == "warn" and "Кем выдан" in warn["mo_ru"]
+    # администратор — физлицо, аккаунт — на юрлице: другое лицо; контакты всё равно сверяются
+    org_acc = with_owner({"user_id": "2000", "ba": {"ru_org.org_r": "ООО «Тест»", "ru_org.phone": "+79990000000"}}).to_dict()
+    assert org_acc["mo_status"] == "mismatch" and "владелец аккаунта — юрлицо" in org_acc["mo_ru"]
+    assert [r["title"] for r in org_acc["mo_rows"]] == ["Тип контактов", "Телефон", "E-mail"] and org_acc["mo_type"] == "org"
+    # старое расширение (нет account_owner), ошибка страницы, пустая анкета, данные до 0.8.4, другая зона
+    assert with_owner(...).to_dict()["mo_ru"] == "анкета владельца не загружена — обновите расширение до 0.8.4"
+    assert with_owner({"user_id": "1000", "error": "HTTP 500"}).to_dict()["mo_status"] == "error"
+    assert with_owner({"user_id": "1000", "ba": {"ru_pp.fax": ""}}).to_dict()["mo_ru"] == "базовая анкета владельца аккаунта пуста"
+    assert with_owner(None).to_dict()["mo_status"] == ""
+    old = with_owner(...).to_dict(); old.pop("owner")
+    assert domains.DomainInfo.from_dict(old).to_dict()["mo_status"] == ""
+    intl = with_owner({"user_id": "1", "ba": BA_PP}, sd={"group": "o_gtld", "fields": {"o_company": "X"}},
+                      s={"provider": "x", "dname": "x.com", "contype": "o_gtld", "user_id": "1"}, domain="x.com")
+    assert intl.to_dict()["mo_status"] == ""
+
+
+def test_mo_org_and_reports():
+    sd = {**SD_ORG, "fields": {**SD_ORG["fields"], "kpp": "770101001", "address_r_zip": "140000", "address_r_city": "Тестово",
+                               "address_r_street": "ул. Тестовая", "address_r_house": "1", "address_r_flat": "5",
+                               "phone": "+79990001122", "e_mail": "org@example.org"}}
+    ba = {"ru_org.org_r": "Общество с ограниченной ответственностью \"Тест\"", "ru_org.code": "7701234567",
+          "ru_org.kpp": "770101001", "ru_org.country": "RU", "ru_org.address_r_zip": "140000",
+          "ru_org.address_r_city": "Тестово", "ru_org.address_r_addr": "ул. Тестовая, д. 1, офис 5",
+          "ru_org.phone": "+79990001122", "ru_org.e_mail": "Org@Example.org"}
+    info = with_owner({"user_id": "2000", "type": "org", "ba": ba}, sd=sd, s=S_ORG, domain="testdomain-org.ru")
+    d = info.to_dict()
+    assert d["mo_status"] == "match", d["mo_rows"]
+    assert {r["title"] for r in d["mo_rows"] if r["status"] == "ok"} >= {"Название организации", "ИНН", "КПП", "Юр. адрес",
+                                                                         "E-mail"}
+    from doctool import domain_report, report
+    bad = with_owner({"user_id": "1000", "ba": {**BA_PP, "ru_pp.birth_date": "16.03.1990"}}, domain="second-pp.ru",
+                     s={**S_PP, "dname": "second-pp.ru"}).to_dict()
+    html = domain_report.build([d, bad])
+    assert 'class="esia mo" data-d="second-pp.ru"' in html and 'id="mo-data"' in html and '"ba_field"' in html
+    assert "second-pp.ru" in html.split("К сведению")[1].split("владельцем аккаунта")[1]
+    assert "</script" not in html.split('id="mo-data">')[1].split("</script>")[0]
+    assert "MO (владелец аккаунта): Sd ≠ анкета: Дата рождения" in report.domains_table([bad])

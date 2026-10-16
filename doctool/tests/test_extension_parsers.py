@@ -164,12 +164,13 @@ def test_fill_runic_guards(page):
 # ------------------------------------------------------------------ 0.7.2: ЕСИА у юрлиц
 
 def test_sd_org_legal_address(page):
-    # юридический адрес юрлица — для сверки с ЕСИА; почтовый адрес (p_addr_*) и квартира/офис не передаются
+    # юридический адрес юрлица — для сверки с ЕСИА; (0.8.4) почтовый адрес и квартира — для сверки MO
     org = json.loads(run(page, "sd_org.html", "M.parseSd(document)"))
     f = org["fields"]
     assert f["address_r_street"] == "ул. Тестовая" and f["address_r_house"] == "1" and f["address_r_zip"] == "140000"
     assert f["address_r_frame"] == "" and f["address_r_building"] == ""
-    assert "address_r_flat" not in f and "p_addr_street" not in f
+    assert f["address_r_flat"] == "41" and f["p_addr_street"] == "Садовая" and f["p_addr_house"] == "2"
+    assert "address_r_district" not in f and "sms_security_number" not in f and "transfer_email" not in f
     assert f["phone"].splitlines()[0].startswith("+7")          # (0.8.2) телефон — для доверенности
 
 
@@ -322,3 +323,51 @@ def test_lookup_account_email(page):
     assert a["ok"] and a["data"]["login"] == "person@example.com", a
     assert a["data"]["account"] == "1000" and a["data"]["account_email"] == "owner.mail@example.org"
     assert b["data"]["account_email"] == "owner.mail@example.org" and hits.count("/manager/user_details") == 1
+
+
+def test_lookup_account_owner_for_mo(page):
+    """(0.8.4) MO: при загрузке домена — базовая анкета владельца аккаунта (только поля сверки) со страницы «Данные
+    пользователя» (той же, что для e-mail, — без лишних запросов); нет блока анкеты — форма /user/N/runic_details."""
+    import re as _re
+    no_block = _re.sub(r'<div class="user_contacts_block".*?</table>\s*</div>', "",
+                       (FIX / "user_details_pp.html").read_text(encoding="utf-8"), flags=_re.S)
+    assert "user_contacts_block" not in no_block
+    pages = {"/bill/bills": "bills_pp.html", "/tech/srv_details": "sd_pp.html", "/tech/service_details": "s_pp.html",
+             "/manager/user_details": "user_details_pp.html", "/user/1000/runic_details": "runic_pp.html"}
+    hits, mode = [], {"no_block": False}
+
+    def handle(route):
+        from urllib.parse import urlparse
+        path = urlparse(route.request.url).path
+        hits.append(path)
+        if path == "/manager/user_details" and mode["no_block"]:
+            body = no_block
+        else:
+            body = (FIX / pages.get(path, "home.html")).read_text(encoding="utf-8")
+        route.fulfill(status=200, content_type="text/html; charset=utf-8", body=body)
+
+    page.route("https://manager.reg.ru/**", handle)
+    try:
+        page.goto("https://manager.reg.ru/")
+        page.add_script_tag(content=JS)
+        a = page.evaluate("async () => window.__doctoolManager.lookup('t1', 'testdomain-pp.ru', 'testdomain-pp.ru', {esia: false})")
+        runic_a = hits.count("/user/1000/runic_details")
+        mode["no_block"] = True
+        page.add_script_tag(content=JS.replace("const VERSION = '", "const VERSION = 'x"))   # новый кэш аккаунтов
+        b = page.evaluate("async () => window.__doctoolManager.lookup('t2', 'testdomain-pp.ru', 'testdomain-pp.ru', {esia: false})")
+    finally:
+        page.unroute("https://manager.reg.ru/**")
+    o = a["data"]["account_owner"]
+    assert o["user_id"] == "1000" and o["source"] == "user_details" and o["urls"]["runic"].endswith("/user/1000/runic_details")
+    assert o["ba"]["ru_pp.person_r_surname"] == "Тестов" and o["ba"]["ru_pp.p_addr_addr"] == "Тестовая, д 1, кв 1"
+    assert "ru_pp.sms_security_number" not in o["ba"] and "ru_pp.oid_esia" not in o["ba"] and "ru_pp.person" not in o["ba"]
+    assert a["data"]["account_email"] == "owner.mail@example.org"
+    assert a["data"]["sd"]["fields"]["p_addr_street"] == "Тестовая" and a["data"]["sd"]["fields"]["p_addr_flat"] == "579"
+    assert runic_a == 0                                         # блок анкеты есть — форма не открывается
+    ob = b["data"]["account_owner"]
+    assert ob["source"] == "runic" and ob["type"] == "pp" and ob["ba"]["ru_pp.passport_number"]
+    assert hits.count("/user/1000/runic_details") == 1
+    # программа: ответ расширения → MO
+    from doctool import domains
+    d = domains.from_extension("testdomain-pp.ru", a).to_dict()
+    assert d["mo_status"] in ("match", "mismatch", "warn") and d["mo_rows"], d["mo_ru"]

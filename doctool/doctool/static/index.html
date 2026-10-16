@@ -140,8 +140,9 @@ ul.flags li{margin:2px 0}
     <div class="ws-tbar">
       <button id="wsSearchBtn" title="Строка поиска: Google, ЕГРЮЛ, Госуслуги, быстрые ссылки — сайт открывается рядом (Ctrl+K)"><svg class="ws-si" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4L14 14"/></svg> Поиск<span class="ws-kbd">Ctrl+K</span></button>
       <button id="wsWinBtn" title="Все окна рабочего места: открыть любое, показать все свёрнутые">Окна ▾</button>
+      <label class="ws-tsel" title="Зажмите левую кнопку мыши и обведите печатный текст на странице рамкой — он попадёт в буфер обмена. Рукопись не распознаётся. Страница при этом прокручивается колесом мыши"><input type="checkbox" id="wsTsel" data-tsel><span>Ручное выделение<br class="ws-br"> текста</span></label>
       <button id="wsStripT" title="Лента страниц: миниатюры / одной строкой">Лента ▴</button>
-      <span>Раскладка:</span>
+      <span class="ws-lbl">Раскладка:</span>
       <button data-wspreset="cols3">3 колонки</button>
       <button data-wspreset="docs">Документы крупно</button>
       <button data-wspreset="grid">Сетка 2×2</button>
@@ -163,6 +164,7 @@ ul.flags li{margin:2px 0}
       <div class="ws-steps" id="wsMiniSteps"></div>
       <button id="wsMiniSearch" title="Строка поиска (Ctrl+K)">Поиск</button>
       <button id="wsMiniWin" title="Все окна рабочего места">Окна ▾</button>
+      <label class="ws-tsel" title="Зажмите левую кнопку мыши и обведите печатный текст на странице рамкой — он попадёт в буфер обмена. Рукопись не распознаётся. Страница при этом прокручивается колесом мыши"><input type="checkbox" id="wsMiniTsel" data-tsel> Ручное выделение текста</label>
       <div class="ws-mini-dock" id="wsMiniDock"></div>
     </div>
     <div class="ws-sbar hidden" id="wsSbar"></div>
@@ -181,7 +183,7 @@ ul.flags li{margin:2px 0}
 <main>
 <div id="tabCheck">
 <section class="card" id="domCard">
-  <h2>Домены в manager <span class="hint">— данные Sd, S и ЕСИА (Госуслуги) через расширение Chrome</span></h2>
+  <h2>Домены в manager <span class="hint">— данные Sd, S, ЕСИА (Госуслуги) и MO (владелец аккаунта) через расширение Chrome</span></h2>
   <div class="row">
     <label class="f" style="flex:1;min-width:280px">Домены (через пробел, запятую или с новой строки)
       <textarea id="domList" placeholder="example.ru&#10;пример.рф"></textarea></label>
@@ -194,7 +196,8 @@ ul.flags li{margin:2px 0}
   </div>
   <div id="domLog" class="hidden"></div>
   <div class="wrap"><table id="domTable" class="hidden"><thead><tr>
-    <th>Домен</th><th>manager</th><th>Администратор (Sd)</th><th>Паспорт / ИНН</th><th>ЕСИА</th><th>Страна</th>
+    <th>Домен</th><th>manager</th><th>Администратор (Sd)</th><th>Паспорт / ИНН</th><th>ЕСИА</th>
+    <th title="matches account owner contacts — совпадает ли администратор домена (Sd) с владельцем аккаунта (базовая анкета)">MO</th><th>Страна</th>
     <th>Смена админа</th><th>Provider</th><th>Аккаунт</th><th>Проверки</th></tr></thead><tbody></tbody></table></div>
 </section>
 
@@ -292,6 +295,10 @@ ul.flags li{margin:2px 0}
   <div class="hd"><h3 id="esiaTitle">ЕСИА ↔ Sd</h3><button style="margin-left:auto" onclick="document.getElementById('esiaDlg').close()">Закрыть</button></div>
   <div class="bd" id="esiaBody"></div>
 </dialog>
+<dialog id="moDlg">
+  <div class="hd"><h3 id="moTitle">MO · Sd ↔ владелец аккаунта</h3><button style="margin-left:auto" onclick="document.getElementById('moDlg').close()">Закрыть</button></div>
+  <div class="bd" id="moBody"></div>
+</dialog>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -317,7 +324,7 @@ function renderDomains(items){
   let grp = null;
   $('#domTable tbody').innerHTML = items.map(d => {
     const head = d.problem && d.problem !== grp
-      ? (grp = d.problem, `<tr class="grp"><td colspan="10">${esc(d.problem_ru || d.problem)} — ${cnt[d.problem]}</td></tr>`) : '';
+      ? (grp = d.problem, `<tr class="grp"><td colspan="11">${esc(d.problem_ru || d.problem)} — ${cnt[d.problem]}</td></tr>`) : '';
     return head + domainRow(d);
   }).join('');
 }
@@ -331,7 +338,7 @@ function domainRow(d){
       : w.status === 'error' ? 'WHOIS недоступен: ' + esc(w.error) : '';
     return `<tr><td><b>${esc(d.domain)}</b></td>
       <td><span class="badge s-${d.status==='not_found'?'fail':'review'}">${MST[d.status]||d.status}</span></td>
-      <td colspan="8">${esc(d.error)}${wt ? `<br>${wt}` : ''}${w.manual_url ? ` · ${link(w.manual_url,'проверить WHOIS вручную')}` : ''}</td></tr>`;
+      <td colspan="9">${esc(d.error)}${wt ? `<br>${wt}` : ''}${w.manual_url ? ` · ${link(w.manual_url,'проверить WHOIS вручную')}` : ''}</td></tr>`;
   }
   const person = d.kind === 'person', org = d.kind === 'org';
   const mail = (d.emails||[]).length ? `<br><small>e-mail: ${d.emails.map(esc).join(', ')}</small>` : '';
@@ -341,12 +348,13 @@ function domainRow(d){
   const doc = person ? `${esc(d.passport||'—')}<br><small>выдан ${esc(sd.passport_date||'—')}<br>${esc(sd.passport_place||'')}</small>`
               : org ? `ИНН ${esc(sd.code||'—')}` : '—';
   const esiaBtn = d.esia_status || (d.esia && Object.keys(d.esia).length) ? `<button class="sm esiaBtn" data-esia="${esc(d.domain)}" title="Идентификация через Госуслуги: сверка Sd ↔ ЕСИА">ESIA</button>` : '';
+  const moBtn = d.mo_status ? `<button class="sm esiaBtn" data-mo="${esc(d.domain)}" title="MO (matches owner): сверка Sd ↔ базовая анкета владельца аккаунта #${esc(d.account || '?')}">MO</button>` : '';
   const accBtn = d.account ? ` <button class="sm" data-acc="${esc(d.account)}" title="Открыть вкладку «Смена владельца ЛК» с этим аккаунтом">→ ЛК</button>` : '';
   const kBtn = d.admin_comment ? `<button class="kbtn" data-k="${esc(d.domain)}" title="Комментарий администратора в S — показать">К</button>` : '';
   const flags = (d.flags || []).length ? '<ul class="flags">' + d.flags.map(f => `<li><span class="badge s-${FLAG_CLS[f.level] || 'info'}">${FLAG_RU[f.level] || f.level}</span> ${esc(f.text)}</li>`).join('') + '</ul>' : '';
-  return `<tr><td><b>${esc(d.domain)}</b>${kBtn}<br><small>${link((d.urls||{}).sd,'Sd')} ${link((d.urls||{}).s,'S')}</small>${esiaBtn}</td>
+  return `<tr><td><b>${esc(d.domain)}</b>${kBtn}<br><small>${link((d.urls||{}).sd,'Sd')} ${link((d.urls||{}).s,'S')}</small>${esiaBtn}${moBtn}</td>
     <td><span class="badge s-ok">найден</span><br><small>${esc(d.service_status||'')}</small></td>
-    <td>${who}</td><td>${doc}</td><td>${esiaCell(d)}</td><td>${esc(sd.country||sd.o_country_code||'—')}</td><td>${esc(d.last_admin_change||'—')}</td>
+    <td>${who}</td><td>${doc}</td><td>${esiaCell(d)}</td><td>${moCell(d)}</td><td>${esc(sd.country||sd.o_country_code||'—')}</td><td>${esc(d.last_admin_change||'—')}</td>
     <td>${esc(d.provider||'—')}</td><td>${esc(d.account||'—')}${accBtn}${d.login ? `<br><small>логин: ${esc(d.login)}</small>` : ''}${d.account_email ? `<br><small>e-mail: ${esc(d.account_email)}</small>` : ''}</td>
     <td>${flags || '<small>—</small>'}</td></tr>`;
 }
@@ -461,6 +469,42 @@ function showEsia(d){
   $('#esiaDlg').showModal();
 }
 
+// ------------------------------------------------------------------ (0.8.4) MO: администратор домена (Sd) ↔ владелец аккаунта
+const MO_CLS = {match:'ok', warn:'warn', mismatch:'fail', no_data:'review', error:'review'};
+const MO_SHORT = {match:'совпадает', warn:'похоже', mismatch:'не совпадает', no_data:'нет анкеты', error:'ошибка'};
+const OWNER_TYPE = {pp:'физлицо', ip:'ИП', org:'юрлицо'};
+function moCell(d){
+  if (!d.mo_status) return '<small>—</small>';
+  const more = (d.mo_ru || '').replace(/^Sd [=≈≠] анкета:?\s*/, '');
+  return `<span class="badge s-${MO_CLS[d.mo_status] || 'info'}" title="${esc(d.mo_ru)}">${MO_SHORT[d.mo_status] || esc(d.mo_status)}</span>${more ? `<br><small>${esc(more)}</small>` : ''}`;
+}
+function showMo(d){
+  const o = d.owner || {}, u = o.urls || {}, sd = d.sd || {};
+  const lk = (url, t) => url ? `<a href="${esc(url)}" target="_blank">${t}</a>` : '';
+  $('#moTitle').textContent = `MO · Sd ↔ владелец аккаунта — ${d.domain}`;
+  const why = d.mo_status === 'no_data' || d.mo_status === 'error' ? d.mo_ru : '';
+  const grp = (d.mo_rows || []).length && d.mo_rows[0].field === 'group' ? d.mo_rows[0] : null;
+  const rows = (d.mo_rows || []).filter(r => r !== grp).map(r => `<tr><td class="k">${esc(r.title)}</td>
+    <td class="${C(r.status)}">${esc(r.sd) || '<span class="hint">пусто</span>'}<br><span class="mono">${esc(r.field)}</span></td>
+    <td class="${C(r.status)}">${esc(r.ba) || '<span class="hint">пусто</span>'}<br><span class="mono">${esc(r.ba_field)}</span></td>
+    <td>${r.detail ? `<small>${esc(r.detail)}</small>` : ''}</td></tr>`).join('');
+  const mu = sd.matches_user_contacts;
+  $('#moBody').innerHTML = `<div class="kv" style="margin-top:0">
+      <div><b>Итог</b><span class="badge s-${MO_CLS[d.mo_status] || 'info'}">${esc(d.mo_ru || '—')}</span></div>
+      <div><b>Аккаунт (владелец услуги)</b>#${esc(d.account || '—')}${d.login ? ' · ' + esc(d.login) : ''}${d.account_email ? '<br>e-mail: ' + esc(d.account_email) : ''}</div>
+      <div><b>Базовая анкета</b>${esc(OWNER_TYPE[d.mo_type] || '—')}${o.source === 'runic' ? ' · из формы базовой анкеты' : o.source ? ' · со страницы «Данные пользователя»' : ''}</div>
+      <div><b>manager: matches_user_contacts (Sd)</b>${mu === undefined || mu === '' ? '—' : esc(mu)} <span class="hint">— поле manager, для справки</span></div>
+      <div><b>Ссылки</b>${[lk(u.user_details, 'Данные пользователя'), lk(u.runic, 'Базовая анкета'), lk((d.urls || {}).sd, 'Sd')].filter(Boolean).join(' · ') || '—'}</div>
+    </div>
+    ${why ? `<div class="msg">${esc(why)}</div>` : ''}
+    ${grp ? `<div class="msg fail">${esc(grp.detail)} — это разные лица; ниже сверены только контакты.</div>` : ''}
+    ${rows ? `<table style="margin-top:12px"><tr><th>Поле</th><th>Sd (${esc(d.group || 'ru_pp')})</th><th>Базовая анкета${o.user_id ? ' #' + esc(o.user_id) : ''}</th><th></th></tr>${rows}</table>
+      <p class="hint">Зелёный — совпадает, красный — расходится, жёлтый — написано по-разному (кем выдан, адрес, форма организации);
+        без цвета — значения нет с одной из сторон. Телефоны и e-mail совпадают, если есть общий. Адрес Sd (улица, дом, квартира)
+        собран в одну строку, как в анкете. На вердикт MO не влияет.</p>` : ''}`;
+  $('#moDlg').showModal();
+}
+
 // ------------------------------------------------------------------ вкладки
 function showTab(id){
   document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === id));
@@ -476,6 +520,8 @@ try { const t = /ws=/.test(location.hash) ? 'tabWork' : localStorage.getItem('do
 document.addEventListener('click', e => {
   const es = e.target.closest && e.target.closest('[data-esia]');
   if (es && dom.items[es.dataset.esia]) showEsia(dom.items[es.dataset.esia]);
+  const mo = e.target.closest && e.target.closest('[data-mo]');
+  if (mo && dom.items[mo.dataset.mo]) showMo(dom.items[mo.dataset.mo]);
   const ac = e.target.closest && e.target.closest('[data-acc]');
   if (ac){ showTab('tabOwner'); $('#ownQuery').value = ac.dataset.acc; ownParse(); ownLoad(); window.scrollTo(0, 0); }
 });

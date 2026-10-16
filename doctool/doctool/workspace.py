@@ -20,14 +20,17 @@
 results/_workspace/<время>_<id>/. С 0.8.0 дело можно удалить из «Недавних дел» (WorkspaceManager.delete): папка дела
 и папки результатов его проверок (result_dirs) стираются с диска. С 0.8.1 дело можно начать без файлов и добавлять
 файлы в открытое дело (WorkspaceManager.add — разбираются только новые страницы); у страниц PDF с текстовым слоем —
-слова с координатами для выделения текста в просмотре (Workspace.text_layer).
+слова с координатами для выделения текста в просмотре (Workspace.text_layer). С 0.8.4 — ручное выделение текста
+рамкой (Workspace.read_zone): слова текстового слоя PDF или печатный текст скана (ocr.read_printed).
 """
 from __future__ import annotations
 
 import json
+import math
 import re
 import shutil
 import threading
+import time
 import traceback
 import uuid
 import zipfile
@@ -42,7 +45,7 @@ import numpy as np
 from . import archive, fieldnorm, wsconfig
 from .application import detect_form, page_kind
 from .formspec import Fields, load_forms
-from .ocr import IMAGE_EXT, best_orientation, docx_text, downscale, keyword_score, rotate, tesseract_text
+from .ocr import IMAGE_EXT, best_orientation, docx_text, downscale, keyword_score, read_printed, rotate, tesseract_text
 from .passport_rf import KEYWORDS as PASSPORT_KW
 
 DOC_EXT = IMAGE_EXT | {".pdf", ".docx"}
@@ -242,6 +245,7 @@ class Workspace:
                             "search": {}, "loa": {}}
         self.lock = threading.RLock()
         self._text: dict[str, dict] = {}   # (0.8.1) текстовый слой страниц PDF (text_layer)
+        self._zone_src: tuple | None = None   # (0.8.4) (id страницы, изображение для проверки) — последняя для read_zone
         self.version = 0               # растёт при каждом изменении — интерфейс перечитывает состояние
 
     # ---- хранение
@@ -478,6 +482,83 @@ class Workspace:
         res = {"rot": rot, "lines": list(lines.values())}
         self._text[pid] = res
         return res
+
+    # ---- (0.8.4) ручное выделение текста: рамка на странице → текст (в интерфейсе — сразу в буфер обмена)
+    def read_zone(self, pid: str, rect: list) -> dict:
+        """Текст в рамке. rect — [x, y, w, h] в px показанного превью с учётом поворота страницы (как у add_crop).
+        PDF с текстовым слоем — слова слоя, центр которых в рамке (точно, без распознавания); если таких слов нет
+        (картинка внутри PDF), а также у сканов, фото и вырезок — печатный текст Tesseract по изображению в разрешении
+        проверки (ocr.read_printed; рукопись не читается). → {"text", "source": "pdf" | "ocr", "conf", "ms", …}."""
+        t0 = time.monotonic()
+        p = self.page(pid)
+        if p.kind == "docx":
+            raise WsError("в документе Word текст выделяется мышью — рамка не нужна")
+        try:
+            x, y, w, h = (float(v) for v in rect)
+        except (TypeError, ValueError):
+            raise WsError("рамка задана неверно") from None
+        if w < 4 or h < 4:
+            raise WsError("рамка слишком маленькая")
+        box = [x, y, x + w, y + h]
+        if p.kind == "pdf" and p.text:
+            text = self._zone_words(p, box)
+            if text:
+                return {"text": text, "source": "pdf", "conf": 100.0, "ms": round((time.monotonic() - t0) * 1000)}
+        res = read_printed(self._zone_image(p, box))
+        return {"text": res["text"], "source": "ocr", "conf": res["conf"], "variant": res["variant"], "rot": res["rot"],
+                "tries": res["tries"], "ms": round((time.monotonic() - t0) * 1000)}
+
+    def _zone_words(self, p: WsPage, box: list) -> str:
+        """Слова текстового слоя PDF в рамке (box — x0, y0, x1, y1 в px показанного превью): строки — как их видит
+        оператор (по высоте на показанной странице), слова в строке — слева направо."""
+        import pymupdf
+        W0, H0 = p.pv
+        words = []
+        with pymupdf.open(self.file(p.file).path) as doc:
+            pg = doc[p.index]
+            sx, sy = W0 / pg.rect.width, H0 / pg.rect.height
+            m = pg.rotation_matrix                       # слова — в координатах страницы без /Rotate
+            for x0, y0, x1, y1, word, *_ in pg.get_text("words", sort=False):
+                r = (pymupdf.Rect(x0, y0, x1, y1) * m).normalize()
+                b = rot_box([r.x0 * sx, r.y0 * sy, r.x1 * sx, r.y1 * sy], W0, H0, p.rot)
+                cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+                if box[0] <= cx <= box[2] and box[1] <= cy <= box[3]:
+                    words.append((b, word))
+        rows: list[list] = []
+        for b, word in sorted(words, key=lambda x: (x[0][1] + x[0][3]) / 2):
+            cy, hh = (b[1] + b[3]) / 2, max(1.0, b[3] - b[1])
+            if rows and abs(rows[-1][0] - cy) < 0.5 * max(hh, rows[-1][1]):
+                rows[-1][2].append((b, word))
+            else:
+                rows.append([cy, hh, [(b, word)]])
+        return "\n".join(" ".join(w for _, w in sorted(r[2], key=lambda x: x[0][0])) for r in rows)
+
+    def _source_image(self, p: WsPage) -> np.ndarray:
+        hit = self._zone_src
+        if hit and hit[0] == p.id:
+            return hit[1]
+        img = self._extract_image(p)
+        if img is None:
+            raise WsError("изображение страницы не открылось")
+        self._zone_src = (p.id, img)
+        return img
+
+    def _zone_image(self, p: WsPage, box: list) -> np.ndarray:
+        """Область рамки в разрешении проверки (PDF — 300 dpi, изображение — исходное), с поворотом страницы."""
+        if p.kind == "crop":
+            src = self.page(p.src)
+            base = rotate(self._source_image(src), p.crop_rot)
+            cx, cy, cw, ch = (int(v) for v in p.crop)
+            base = base[max(0, cy):cy + ch, max(0, cx):cx + cw]
+        else:
+            base = rotate(self._source_image(p), p.rot)
+        s = p.sx or 1.0
+        H, W = base.shape[:2]
+        x0, y0 = max(0, int(box[0] / s)), max(0, int(box[1] / s))
+        x1, y1 = min(W, math.ceil(box[2] / s)), min(H, math.ceil(box[3] / s))
+        if x1 - x0 < 3 or y1 - y0 < 3:
+            raise WsError("рамка за пределами страницы")
+        return base[y0:y1, x0:x1].copy()
 
     # ---- разбор страниц
     def classify(self, start: int = 0) -> None:

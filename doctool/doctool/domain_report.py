@@ -8,6 +8,8 @@
 окно сверки Sd ↔ ЕСИА встроено в файл (данные — в блоке <script type="application/json" id="esia-data">).
 С 0.7.2 — то же у доменов юрлиц; provider — отдельная колонка; таблицу доменов можно сортировать щелчком
 по заголовку колонки (повторный щелчок — обратный порядок, «По группам» — исходный вид).
+С 0.8.4 — колонка «MO» и кнопка MO: сверка Sd домена с базовой анкетой владельца аккаунта (данные — в блоке
+<script type="application/json" id="mo-data">).
 """
 from __future__ import annotations
 
@@ -124,6 +126,11 @@ def notes(items: list[dict]) -> list[str]:
         out.append("Идентификация через Госуслуги (ЕСИА) по Sd доменов (физлица и юрлица): " + ", ".join(f"{_e(k)} — {v}" for k, v in st.most_common())
                    + (f"; данные Sd не совпадают с ЕСИА: {', '.join(map(_e, bad[:15]))}{' и др.' if len(bad) > 15 else ''}" if bad else "")
                    + ". На вердикт не влияет — кнопка ESIA у домена открывает сверку.")
+    mo_bad = [d["domain"] for d in found if d.get("mo_status") == "mismatch"]
+    if mo_bad:
+        out.append("Администратор домена (Sd) не совпадает с владельцем аккаунта (базовая анкета, MO): "
+                   + ", ".join(map(_e, mo_bad[:15])) + (" и др." if len(mo_bad) > 15 else "")
+                   + ". На вердикт не влияет — кнопка MO у домена открывает сверку.")
     other = Counter(d.get("group") or "?" for d in found if d.get("kind") not in ("person", "org"))
     if other:
         out.append("Домены с другим типом контактов (не ru_pp/ru_org) — сверка только вручную: "
@@ -175,6 +182,8 @@ def _domain_row(d: dict, similar: dict[str, str]) -> str:
     if urls.get("s"):
         links.insert(1, _link(urls["s"], "S"))
     esia_btn = f' <button class="esia" data-d="{_e(dom)}">ESIA</button>' if d.get("esia") or d.get("esia_status") else ""
+    if d.get("mo_status"):
+        esia_btn += f' <button class="esia mo" data-d="{_e(dom)}" title="MO: Sd ↔ базовая анкета владельца аккаунта">MO</button>'
     kb = (f' <button class="kb" data-c="{_e(d["admin_comment"])}" title="Комментарий администратора в S — показать">К</button>'
           if d.get("admin_comment") else "")
     head = f'<td data-k="{_e(dom)}"><b>{_e(dom)}</b>{kb}<br><span class=src>{" ".join(links)}</span>{esia_btn}</td>'
@@ -194,11 +203,11 @@ def _domain_row(d: dict, similar: dict[str, str]) -> str:
         if dom in similar:
             wt += f"<br><span class=hint>похож на {_e(similar[dom])} из списка</span>"
         return (f'<tr class="fail" data-q="{_e(dom)}">{head}<td>не найден</td><td>{_e(d.get("error") or "")}</td>'
-                f"<td></td><td></td><td></td><td>{wt}</td></tr>")
+                f"<td></td><td></td><td></td><td></td><td>{wt}</td></tr>")
     if d.get("status") != FOUND:
         svc = "<br>".join(_link(f"{MANAGER}/tech/srv_details?service_id={sid}", f"Sd {sid} ({st})") for sid, st in _services(d))
         return (f'<tr class="review" data-q="{_e(dom)}">{head}<td>ошибка</td><td>{_e(d.get("error") or "")}</td>'
-                f"<td></td><td></td><td></td><td>{svc}</td></tr>")
+                f"<td></td><td></td><td></td><td></td><td>{svc}</td></tr>")
     sd = d.get("sd") or {}
     sst = d.get("service_status") or ""
     mail = (f"<br>e-mail: {', '.join(map(_e, d['emails']))}" if d.get("emails") else "")
@@ -231,9 +240,9 @@ def _domain_row(d: dict, similar: dict[str, str]) -> str:
              f"смена админа: {_e(d.get('last_admin_change') or '—')}<br>"
              f"страна: {_e(sd.get('country') or sd.get('o_country_code') or '—')}")
     cls = d.get("verdict") or ""
-    q += f" {d.get('esia_ru', '')} {d.get('provider', '')} {d.get('login', '')} {d.get('account_email', '')} {d.get('admin_comment', '')}"
+    q += f" {d.get('esia_ru', '')} {d.get('mo_ru', '')} {d.get('provider', '')} {d.get('login', '')} {d.get('account_email', '')} {d.get('admin_comment', '')}"
     return (f'<tr class="{cls}" data-q="{_e(q)}">{head}<td>найден<br><span{"" if sst.startswith("Активна") else " class=bad"}>'
-            f"{_e(sst)}</span></td><td>{data}</td><td>{cmp_}</td><td>{_esia_cell(d)}</td>"
+            f"{_e(sst)}</span></td><td>{data}</td><td>{cmp_}</td><td>{_esia_cell(d)}</td><td>{_mo_cell(d)}</td>"
             f"<td>{_e(d.get('provider') or '—')}</td><td>{extra}</td></tr>")
 
 
@@ -251,6 +260,33 @@ def _esia_cell(d: dict) -> str:
     text = (d.get("esia_ru") or "").replace(f"{state} · ", "", 1) if state else d.get("esia_ru") or ""
     return ((f"<b>{_e(state)}</b><br>" if state else "")
             + f'<span class="tag {_ESIA_CLS.get(d["esia_status"], "info")}">{_e(text)}</span>')
+
+
+_MO_CLS = {"match": "ok", "warn": "warn", "mismatch": "fail", "no_data": "review", "error": "review"}
+
+
+def _mo_cell(d: dict) -> str:
+    if not d.get("mo_status"):
+        return "<span class=src>—</span>"
+    return f'<span class="tag {_MO_CLS.get(d["mo_status"], "info")}">{_e(d.get("mo_ru") or "")}</span>'
+
+
+def _mo_data(items: list[dict]) -> str:
+    """(0.8.4) Данные для окна MO: по домену — аккаунт, тип анкеты, строки сверки Sd ↔ базовая анкета."""
+    out = {}
+    for d in items:
+        if not d.get("mo_status"):
+            continue
+        o = d.get("owner") or {}
+        out[d["domain"]] = {
+            "group": d.get("group") or "", "status": d.get("mo_status"), "text": d.get("mo_ru") or "",
+            "type": {"pp": "физлицо", "ip": "ИП", "org": "юрлицо"}.get(d.get("mo_type") or "", ""),
+            "account": d.get("account") or "", "login": d.get("login") or "", "email": d.get("account_email") or "",
+            "mu": (d.get("sd") or {}).get("matches_user_contacts", ""),
+            "ud_url": (o.get("urls") or {}).get("user_details") or "", "runic_url": (o.get("urls") or {}).get("runic") or "",
+            "sd_url": (d.get("urls") or {}).get("sd") or "", "rows": d.get("mo_rows") or [],
+        }
+    return json.dumps(out, ensure_ascii=False).replace("</", "<\\/")
 
 
 def _esia_data(items: list[dict]) -> str:
@@ -333,7 +369,7 @@ _ESIA_JS = """
   var WHY = {none: 'Записей об идентификации через Госуслуги нет.', no_link: 'На странице Sd нет ссылки «Идентификация через Госуслуги».',
              no_data: 'Файла данных ЕСИА нет или он не загрузился.'};
   document.addEventListener('click', function(ev){
-    var b = ev.target.closest ? ev.target.closest('button.esia') : null;
+    var b = ev.target.closest ? ev.target.closest('button.esia:not(.mo)') : null;
     if (!b) return;
     var x = data[b.getAttribute('data-d')]; if (!x) return;
     document.getElementById('esiaTitle').textContent = 'ЕСИА ↔ Sd — ' + b.getAttribute('data-d');
@@ -370,6 +406,38 @@ _ESIA_JS = """
 })();
 """
 
+_MO_JS = """
+(function(){
+  var data = JSON.parse(document.getElementById('mo-data').textContent || '{}');
+  function e(s){ return (s === undefined || s === null ? '' : String(s)).replace(/[&<>"]/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function a(u, t){ return u ? '<a href="' + e(u) + '" target="_blank" rel="noopener">' + t + '</a>' : ''; }
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest ? ev.target.closest('button.mo') : null;
+    if (!b) return;
+    var x = data[b.getAttribute('data-d')]; if (!x) return;
+    document.getElementById('moTitle').textContent = 'MO · Sd ↔ владелец аккаунта — ' + b.getAttribute('data-d');
+    var h = '<table class="kv"><tr><th>итог</th><td colspan="3">' + e(x.text) + '</td></tr><tr><th>аккаунт</th><td>#' + e(x.account || '—')
+      + (x.login ? ' · ' + e(x.login) : '') + (x.email ? '<br>e-mail: ' + e(x.email) : '') + '</td><th>базовая анкета</th><td>'
+      + e(x.type || '—') + '</td></tr><tr><th>matches_user_contacts (Sd)</th><td>' + e(x.mu === '' ? '—' : x.mu)
+      + ' <span class=src>— поле manager, для справки</span></td><th>ссылки</th><td>'
+      + [a(x.ud_url, 'Данные пользователя'), a(x.runic_url, 'Базовая анкета'), a(x.sd_url, 'Sd')].filter(Boolean).join(' · ') + '</td></tr></table>';
+    if (x.rows.length) {
+      h += '<table><tr><th>Поле</th><th>Sd (' + e(x.group || 'ru_pp') + ')</th><th>Базовая анкета</th><th></th></tr>';
+      x.rows.forEach(function(r){
+        var c = r.status ? ' class="' + r.status + '"' : '';
+        h += '<tr><td>' + e(r.title) + '</td><td' + c + '>' + e(r.sd) + '<br><span class=src>' + e(r.field) + '</span></td><td' + c + '>'
+          + e(r.ba) + '<br><span class=src>' + e(r.ba_field) + '</span></td><td class=src>' + e(r.detail) + '</td></tr>';
+      });
+      h += '</table><p class=src>Зелёный — совпадает, красный — расходится, жёлтый — написано по-разному; без цвета — значения '
+        + 'нет с одной из сторон. Телефоны и e-mail совпадают, если есть общий. На вердикт MO не влияет.</p>';
+    }
+    document.getElementById('moBody').innerHTML = h;
+    document.getElementById('moDlg').showModal();
+  });
+})();
+"""
+
 _CSS = """
 body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:24px;color:#1d1d1f;background:#fff}
 h1{font-size:22px;margin:0 0 4px} h2{font-size:17px;margin:28px 0 8px}
@@ -395,6 +463,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}
 .dhd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;position:sticky;top:0;background:#fff}
 dialog table.kv{margin-bottom:10px} dialog h3{font-size:14px;margin:14px 0 6px}
 @media print{.tools{display:none} th{position:static} button.esia{display:none}}
+button.mo{border-color:#6b46c1;color:#6b46c1}
 """
 
 
@@ -415,7 +484,7 @@ def build(domains: list[dict], case_id: str = "", case_title: str = "", checks: 
     for d in items:
         if d.get("problem") != group:
             group = d.get("problem")
-            rows.append(f'<tr class="grp" id="g-{_e(group or "")}"><td colspan="7">{_e(titles.get(group, group or ""))} — '
+            rows.append(f'<tr class="grp" id="g-{_e(group or "")}"><td colspan="8">{_e(titles.get(group, group or ""))} — '
                         f'<span class="cnt" data-total="{counts[group]}">{counts[group]}</span></td></tr>')
         rows.append(_domain_row(d, sim))
     summary = " · ".join(f'<a href="#g-{code}">{_e(title)}: <b>{counts[code]}</b></a>'
@@ -442,12 +511,15 @@ def build(domains: list[dict], case_id: str = "", case_title: str = "", checks: 
 <span class="src" id="shown"></span><span class="src">Сортировка — щелчок по заголовку колонки</span>
 <button type="button" id="bygroups" style="display:none">По группам</button></div>
 <table id="dom"><thead><tr>{''.join(f'<th title="Сортировать">{h}<span class="arr"></span></th>' for h in
-    ("Домен", "manager", "Администратор (Sd)", "Сверка", "ЕСИА", "Provider", "Прочее"))}</tr></thead>
+    ("Домен", "manager", "Администратор (Sd)", "Сверка", "ЕСИА", "MO", "Provider", "Прочее"))}</tr></thead>
 <tbody>{''.join(rows)}</tbody></table>
 <dialog id="esiaDlg"><div class="dhd"><b id="esiaTitle"></b><button onclick="this.closest('dialog').close()">Закрыть</button></div>
 <div id="esiaBody"></div></dialog>
+<dialog id="moDlg"><div class="dhd"><b id="moTitle"></b><button onclick="this.closest('dialog').close()">Закрыть</button></div>
+<div id="moBody"></div></dialog>
 <script type="application/json" id="esia-data">{_esia_data(items)}</script>
-<script>{_JS}{_ESIA_JS}</script>
+<script type="application/json" id="mo-data">{_mo_data(items)}</script>
+<script>{_JS}{_ESIA_JS}{_MO_JS}</script>
 </body></html>
 """
 

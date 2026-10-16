@@ -348,7 +348,8 @@ def test_web_manual_entry_owner_kinds_and_domains_width(tmp_path, browser):
                            "passport_place": "ГУ МВД РОССИИ ПО Г. МОСКВЕ И МОСКОВСКОЙ ОБЛАСТИ (ОТДЕЛ ПО ВОПРОСАМ МИГРАЦИИ)"},
                     "emails": ["very.long.administrator.email.address@example-company-domain.ru"],
                     "provider": "cctldru", "account": "1000", "login": "person-login", "account_email": "owner.mail@example.org",
-                    "verdict": "review", "esia_status": "match",
+                    "verdict": "review", "esia_status": "match", "mo_status": "mismatch",
+                    "mo_ru": "Sd ≠ анкета: Телефон, E-mail, Почтовый адрес, Кем выдан",
                     "esia_state": "approved", "esia_ru": "approved · Sd = ЕСИА (9 из 9)",
                     "flags": [{"level": "warn", "text": "Смена администратора меньше 30 дней назад"}],
                     "last_admin_change": "2025-11-20 10:00:00", "service_status": "Активна (A)", "problem": "review",
@@ -357,9 +358,11 @@ def test_web_manual_entry_owner_kinds_and_domains_width(tmp_path, browser):
             w = pg.evaluate("() => { const w = document.querySelector('#domCard .wrap'); return [w.scrollWidth, w.clientWidth,"
                             " document.documentElement.scrollWidth, window.innerWidth]; }")
             assert w[0] <= w[1] + 1 and w[2] <= w[3], w                                  # нет прокрутки вбок
-            cell = pg.text_content("#domTable tbody tr:nth-child(2) td:nth-child(9)")
+            cell = pg.text_content("#domTable tbody tr:nth-child(2) td:nth-child(10)")
             assert "логин: person-login" in cell and "e-mail: owner.mail@example.org" in cell, cell
-            assert "Смена администратора меньше 30 дней" in pg.text_content("#domTable tbody tr:nth-child(2) td:nth-child(10)")
+            assert "Смена администратора меньше 30 дней" in pg.text_content("#domTable tbody tr:nth-child(2) td:nth-child(11)")
+            mo = pg.text_content("#domTable tbody tr:nth-child(2) td:nth-child(6)")        # (0.8.4) колонка MO
+            assert "не совпадает" in mo and "Телефон" in mo, mo
             # 3) смена владельца: поля по типу нового владельца, сверка юрлица — поля ru_org
             pg.click("nav.tabs button[data-tab=tabOwner]")
             pg.check("input[name=ownKind][value=org]")

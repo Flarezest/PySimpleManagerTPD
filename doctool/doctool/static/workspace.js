@@ -1,13 +1,14 @@
 /* PySimpleManager — рабочее место оператора (0.7.6; 0.8.0 — строка «Поиск», меню «Окна», удаление дел; 0.8.1 — дело
  * без файлов и добавление файлов в открытое дело, выделение текста PDF, без окна «Сверка»; 0.8.2 — кнопки «Смена
  * админа через manager» и «Безбумажные операции» (доверенность в manager) при любой операции; 0.8.3 — верхняя панель
- * убирается наверх, стол с окнами растёт).
+ * убирается наверх, стол с окнами растёт; 0.8.4 — ручное выделение текста рамкой (печатный текст → буфер обмена),
+ * MO у доменов).
  *
  * Дело из архива тикетницы (или пустое): страницы по документам (лента), плавающие окна (заявление, паспорт, домены,
  * строка таблицы, Sd, manager), смена администратора в manager через расширение, строка для таблицы xlsx, строка
  * «Поиск» (Ctrl+K) — сайт открывается рядом с рабочим местом через расширение, файлы дела перетаскиваются на сайт.
  * Сервер — /api/ws/* (doctool/workspace.py, web.py). Общие функции страницы ($, esc, api, copyText, showKPop,
- * showEsia, FLAG_RU, FLAG_CLS, ST) — из index.html.
+ * showEsia, showMo, FLAG_RU, FLAG_CLS, ST) — из index.html.
  */
 (() => {
 'use strict';
@@ -35,7 +36,7 @@ const today = () => new Date().toLocaleDateString('ru-RU');
 
 const W = {id: null, ws: null, res: null, meta: null, logLen: 0, timer: null, sel: null, domain: '', built: false,
            operator: store.get('pysm.operator', {login: '', surname: ''}), docx: {}, recheck: false, lookupTask: null,
-           lastJob: '', lastStatus: ''};
+           lastJob: '', lastStatus: '', textsel: store.get('pysm.ws.textsel', false)};
 window.WS = {shown, domainByName: n => ((W.res && W.res.result.domains) || []).find(d => d.domain === n)};
 
 const CLS = {application: 'Заявление', passport: 'Паспорт', other: 'Прочее', unknown: 'Не определено', hidden: 'Скрытые (пустые, повторы)'};
@@ -143,6 +144,8 @@ async function init(){
   q('#wsMiniSearch').addEventListener('click', () => { toggleSearch(); renderMini(); });
   q('#wsMiniRecheck').addEventListener('click', recheck);
   q('#wsMiniWin').addEventListener('click', e => openWinMenu(e.currentTarget));
+  qq('[data-tsel]').forEach(cb => cb.addEventListener('change', () => setTextSel(cb.checked)));   // (0.8.4)
+  syncTsel();
   q('#wsMini').addEventListener('dblclick', e => { if (!e.target.closest('button')) setTop(false); });
   const ro = new ResizeObserver(measureTop);
   ['#appTop', '#wsTop'].forEach(s => { const el = q(s); if (el) ro.observe(el); });
@@ -710,8 +713,8 @@ function renderDoc(w, keepScroll){
       ${w.kind === 'doc' && ps.length > 1 ? '<span class="sep"></span><button data-d="split" title="Каждую страницу — в своё окно">Разложить</button>' : ''}
       ${p.kind !== 'docx' && p.kind !== 'crop' ? `<span class="sep"></span><button data-d="crop" title="Обвести рамкой паспорт (или другую часть страницы) — вырезка уйдёт в окно «Паспорт»">${w.selmode ? 'Отмена рамки' : '⬚ Рамкой → паспорт'}</button>` : ''}
     </div>
-    <div class="ws-vp${w.selmode ? ' selmode' : ''}">${p.kind === 'docx' ? '<div class="ws-docx">загрузка…</div>' : '<div class="ws-stage"></div>'}</div>
-    <div class="ws-pinfo">${p.kind === 'pdf' && p.text ? '<span title="Текст страницы можно выделить мышью и скопировать (Ctrl+C), как в браузере">текст выделяется</span> · ' : ''}${esc(p.label)} · ${esc(p.sub || '')} · ${p.manual ? 'группа выбрана вручную' : 'уверенность ' + Math.round(p.conf * 100) + ' %'}${p.auto_rot ? ' · повёрнута автоматически' : ''}${p.why ? ' · ' + esc(p.why) : ''}</div></div>`;
+    <div class="ws-vp${w.selmode ? ' selmode' : W.textsel && p.kind !== 'docx' ? ' tselmode' : ''}">${p.kind === 'docx' ? '<div class="ws-docx">загрузка…</div>' : '<div class="ws-stage"></div>'}</div>
+    <div class="ws-pinfo">${W.textsel && p.kind !== 'docx' ? '<span>рамка мышью → текст в буфер обмена (прокрутка — колесом)</span> · ' : p.kind === 'pdf' && p.text ? '<span title="Текст страницы можно выделить мышью и скопировать (Ctrl+C), как в браузере">текст выделяется</span> · ' : ''}${esc(p.label)} · ${esc(p.sub || '')} · ${p.manual ? 'группа выбрана вручную' : 'уверенность ' + Math.round(p.conf * 100) + ' %'}${p.auto_rot ? ' · повёрнута автоматически' : ''}${p.why ? ' · ' + esc(p.why) : ''}</div></div>`;
   bindTools(w, p);
   const vp = q('.ws-vp', body);
   if (p.kind === 'docx'){
@@ -817,6 +820,11 @@ function bindViewer(w, vp, stage, p, z){
       vp.addEventListener('pointermove', mv); vp.addEventListener('pointerup', upf);
       return;
     }
+    if (W.textsel && p.kind !== 'docx'){                // (0.8.4) ручное выделение текста: рамка → текст в буфер
+      e.preventDefault();
+      dragRect(vp, stage, e, rect => readZone(p, rect.map(v => v / z), rect.box));
+      return;
+    }
     if (e.target.closest('.ws-tl span')) return;      // по тексту — выделение (страница не двигается)
     const sx = e.clientX, sy = e.clientY, sl = vp.scrollLeft, stp = vp.scrollTop;
     vp.setPointerCapture(e.pointerId); vp.classList.add('panning');
@@ -825,6 +833,99 @@ function bindViewer(w, vp, stage, p, z){
     vp.addEventListener('pointermove', mv); vp.addEventListener('pointerup', upf);
   };
 }
+// ---------------------------------------------------------------- (0.8.4) ручное выделение текста
+// Флажок «Ручное выделение текста» (на верхней панели и на полосе, когда панель убрана; общий для всех окон, запоминается
+// в браузере): зажатой ЛКМ
+// обводится рамка — сервер возвращает текст (PDF с текстовым слоем — слова слоя, скан / фото — печатный текст,
+// Tesseract; /api/ws/<id>/ocr), текст сразу копируется в буфер обмена и показывается в окошке у рамки (можно поправить,
+// скопировать снова, вписать в «Поиск»). Работает и в откреплённом окне.
+function syncTsel(){ qq('[data-tsel]').forEach(cb => { cb.checked = !!W.textsel; cb.closest('label').classList.toggle('on', !!W.textsel); }); }
+function setTextSel(on){
+  W.textsel = !!on; store.set('pysm.ws.textsel', W.textsel);
+  syncTsel(); closeTextPop();
+  WM.all().filter(w => w.kind === 'doc' || w.kind === 'page').forEach(w => { w.selmode = false; renderDoc(w, true); if (w.pop && !w.pop.closed) renderPopup(w); });
+  if (W.textsel) toast('Ручное выделение текста: зажмите левую кнопку мыши и обведите печатный текст — он попадёт в буфер обмена');
+}
+function dragRect(cap, stage, e, done){
+  // рамка мышью внутри stage; done([x, y, w, h] в px stage, с полем box — элемент рамки), если рамка не меньше 6 px
+  const doc = stage.ownerDocument, sr = stage.getBoundingClientRect();
+  const x0 = e.clientX - sr.left, y0 = e.clientY - sr.top;
+  const box = doc.createElement('div'); box.className = 'ws-sel ts'; stage.appendChild(box);
+  try { cap.setPointerCapture(e.pointerId); } catch (_) { /* ничего */ }
+  const mv = ev => {
+    const x1 = ev.clientX - sr.left, y1 = ev.clientY - sr.top;
+    Object.assign(box.style, {left: Math.min(x0, x1) + 'px', top: Math.min(y0, y1) + 'px', width: Math.abs(x1 - x0) + 'px', height: Math.abs(y1 - y0) + 'px'});
+  };
+  const up = ev => {
+    cap.removeEventListener('pointermove', mv); cap.removeEventListener('pointerup', up);
+    const x1 = ev.clientX - sr.left, y1 = ev.clientY - sr.top;
+    const r = [Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0)];
+    if (r[2] < 6 || r[3] < 6){ box.remove(); return; }
+    r.box = box; done(r);
+  };
+  cap.addEventListener('pointermove', mv); cap.addEventListener('pointerup', up);
+}
+function copyIn(doc, t){
+  // в буфер обмена из нужного окна (откреплённое окно — своим navigator, иначе Chrome отвечает «документ не в фокусе»)
+  const win = doc.defaultView;
+  const fallback = () => {
+    const ta = doc.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    doc.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = doc.execCommand('copy'); } catch (e) { /* ничего */ }
+    ta.remove(); return ok;
+  };
+  if (win.navigator.clipboard && win.isSecureContext) return win.navigator.clipboard.writeText(t).then(() => true, () => fallback());
+  return Promise.resolve(fallback());
+}
+function noteIn(doc, t){ if (doc === document) toast(t); else { const m = doc.getElementById('tsmsg'); if (m) m.textContent = t; } }
+async function readZone(p, rect, box){
+  const doc = box.ownerDocument;
+  closeTextPop();
+  box.classList.add('busy');
+  let res;
+  try { res = await api(`/api/ws/${W.id}/ocr`, {pid: p.id, rect: rect.map(v => Math.round(v * 10) / 10)}); }
+  catch (e) { box.remove(); noteIn(doc, 'Текст не прочитан: ' + e.message); return; }
+  box.classList.remove('busy');
+  const text = (res.text || '').trim();
+  if (!text){ box.remove(); noteIn(doc, 'В рамке не найден печатный текст — обведите строку плотнее (рукопись не распознаётся)'); return; }
+  const ok = await copyIn(doc, text);
+  showTextPop(doc, box, text, res, ok);
+}
+let tpop = null;
+function closeTextPop(){ if (tpop){ tpop.el.remove(); tpop.box.remove(); tpop = null; } }
+function toSearch(t){
+  SR.q = t.replace(/\s+/g, ' ').trim();
+  if (!SR.on) showSearch(); else { const i = q('#wsQ'); if (i){ i.value = SR.q; i.focus(); i.select(); } }
+}
+function showTextPop(doc, box, text, res, copied){
+  closeTextPop();
+  const el = doc.createElement('div'); el.className = 'ws-tpop';
+  const src = res.source === 'pdf' ? 'из текста PDF' : `распознано · уверенность ${Math.round(res.conf || 0)} %`;
+  const low = res.source !== 'pdf' && (res.conf || 0) < 70;
+  el.innerHTML = `<div class="hd"><b>${copied ? 'Скопировано в буфер обмена' : 'Не скопировалось — скопируйте кнопкой'}</b><span class="hint">${src}</span><button data-t="x" title="Закрыть (Esc)">×</button></div>
+    <textarea spellcheck="false" rows="${Math.min(8, text.split('\n').length)}"></textarea>
+    <div class="ft">${low ? '<span class="lowc">низкая уверенность — проверьте текст</span>' : '<span class="hint">можно поправить и скопировать снова</span>'}
+      <button data-t="copy">Копировать</button>${text.includes('\n') ? '<button data-t="line" title="Строки через пробел — и в буфер обмена">В одну строку</button>' : ''}${doc === document ? '<button data-t="q" title="Вписать в строку «Поиск»">В поиск</button>' : ''}</div>`;
+  const ta = el.querySelector('textarea'); ta.value = text;
+  doc.body.appendChild(el);
+  const r = box.getBoundingClientRect(), vw = doc.defaultView.innerWidth, vh = doc.defaultView.innerHeight;
+  let top = r.bottom + 6; if (top + el.offsetHeight > vh - 8) top = Math.max(8, r.top - el.offsetHeight - 6);
+  el.style.left = Math.max(8, Math.min(r.left, vw - el.offsetWidth - 8)) + 'px'; el.style.top = top + 'px';
+  el.onclick = async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.t === 'x') closeTextPop();
+    if (b.dataset.t === 'q'){ const t = ta.value; closeTextPop(); toSearch(t); }
+    if (b.dataset.t === 'copy' || b.dataset.t === 'line'){
+      if (b.dataset.t === 'line') ta.value = ta.value.replace(/\s*\n\s*/g, ' ').trim();
+      const ok = await copyIn(doc, ta.value);
+      const t0 = b.textContent; b.textContent = ok ? 'Скопировано' : 'Не удалось'; setTimeout(() => { b.textContent = t0; }, 1200);
+    }
+  };
+  tpop = {el, box};
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTextPop(); });
+document.addEventListener('pointerdown', e => { if (tpop && tpop.el.ownerDocument === document && !tpop.el.contains(e.target)) closeTextPop(); }, true);
+
 function splitPages(w){
   const ps = docPages(w), r = WM.rectPx(w), d = q('#wsDesk').getBoundingClientRect();
   const n = ps.length, ww = r.w / n;
@@ -850,31 +951,55 @@ function detach(w){
     .pst{position:relative;margin:10px auto;box-shadow:0 2px 12px rgba(0,0,0,.35);background:#fff;overflow:hidden}.pst img{position:absolute;left:0;top:0;transform-origin:0 0}
     .tl{position:absolute;left:0;top:0;transform-origin:0 0;line-height:1}.tl span{position:absolute;white-space:pre;color:transparent;transform-origin:0 0;cursor:text;font-family:sans-serif}
     .tl ::selection{background:rgba(0,90,255,.3)}.hint{color:#667085;font-size:12px}
-    .docx{background:#fff;margin:10px auto;padding:30px 40px;max-width:820px;font:15px/1.5 "Times New Roman",serif}</style></head>
-    <body><div class="bar"><b id="pt"></b><span class="hint">Окно открыто отдельно — его можно унести на второй монитор. Текст PDF выделяется и копируется.</span>
+    .docx{background:#fff;margin:10px auto;padding:30px 40px;max-width:820px;font:15px/1.5 "Times New Roman",serif}
+    body.ocr .pst{cursor:crosshair}body.ocr .tl{pointer-events:none;user-select:none}.bar label{display:flex;gap:4px;align-items:center;font-size:12.5px;white-space:nowrap}
+    ${TSEL_CSS}</style></head>
+    <body><div class="bar"><b id="pt"></b><span class="hint" id="tsmsg">Окно открыто отдельно — его можно унести на второй монитор. Текст PDF выделяется и копируется.</span>
+    <label title="Зажмите левую кнопку мыши и обведите печатный текст рамкой — он попадёт в буфер обмена"><input type="checkbox" id="tsel">Ручное выделение текста</label>
     <button id="back" style="margin-left:auto">Вернуть в рабочее место</button></div><div id="pp"></div></body></html>`);
   pop.document.close();
   pop.document.getElementById('back').onclick = () => pop.close();
+  pop.document.getElementById('tsel').onchange = e => setTextSel(e.target.checked);
+  pop.document.getElementById('pp').addEventListener('pointerdown', e => {      // (0.8.4) рамка → текст и здесь
+    const tp = tpop && tpop.el.ownerDocument === pop.document ? tpop : null;
+    if (tp && !tp.el.contains(e.target)) closeTextPop();
+    const st = e.target.closest('.pst');
+    if (!W.textsel || e.button !== 0 || !st) return;
+    const p = docPages(w).find(x => x.id === st.dataset.pid); if (!p) return;
+    e.preventDefault();
+    dragRect(st, st, e, rect => readZone(p, rect.map(v => v / +st.dataset.z), rect.box));
+  });
+  pop.document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTextPop(); });
   WM.minimize(w.id); WM.dock();
   renderPopup(w);
   Promise.all(docPages(w).filter(p => p.kind === 'pdf' && p.text).map(textLayer)).then(() => { if (w.pop && !w.pop.closed) renderPopup(w); });
   const t = setInterval(() => { if (pop.closed){ clearInterval(t); w.pop = null; WM.restore(w.id); renderDoc(w); } }, 700);
 }
+const TSEL_CSS = `.ws-sel{position:absolute;pointer-events:none;z-index:5}.ws-sel.ts{border:2px solid #2b6cb0;background:rgba(43,108,176,.12)}
+  .ws-sel.ts.busy{border-style:dashed}.ws-tpop{position:fixed;z-index:50;width:380px;max-width:calc(100vw - 16px);background:#fff;color:#1d2433;
+  border:1px solid #d0d5dd;border-radius:8px;box-shadow:0 8px 28px rgba(16,24,40,.25);padding:8px 10px;font:13px "Segoe UI",system-ui,sans-serif}
+  .ws-tpop .hd{display:flex;gap:2px 8px;align-items:baseline;flex-wrap:wrap}.ws-tpop .hd b{white-space:nowrap}.ws-tpop .hd .hint{color:#667085;font-size:11.5px;order:3;flex-basis:100%}.ws-tpop .hd button{margin-left:auto;border:0;background:none;font-size:16px;cursor:pointer}
+  .ws-tpop textarea{width:100%;box-sizing:border-box;margin:6px 0;font:13px/1.4 Consolas,monospace;resize:vertical}
+  .ws-tpop .ft{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.ws-tpop .ft .hint,.ws-tpop .ft .lowc{margin-right:auto;font-size:11.5px;color:#667085}
+  .ws-tpop .ft .lowc{color:#b54708;font-weight:600}`;
 function renderPopup(w){
   const pop = w.pop, doc = pop.document, box = doc.getElementById('pp'); if (!box) return;
   doc.getElementById('pt').innerHTML = w.title;
+  doc.body.classList.toggle('ocr', !!W.textsel);
+  const cb = doc.getElementById('tsel'); if (cb) cb.checked = !!W.textsel;
   const Wd = Math.max(300, pop.innerWidth - 40), T = W.text || {};
   box.innerHTML = docPages(w).map(p => {
     if (p.kind === 'docx') return `<div class="docx">${W.docx[p.id] || ''}</div>`;
     const rot = p.rot || 0, W0 = p.pv[0], H0 = p.pv[1], rw = rot % 180 ? H0 : W0, rh = rot % 180 ? W0 : H0, z = Wd / rw;
     const tr = {0: [0, 0], 90: [H0 * z, 0], 180: [W0 * z, H0 * z], 270: [0, W0 * z]}[rot];
     const tf = `width:${W0}px;height:${H0}px;transform:translate(${tr[0]}px,${tr[1]}px) rotate(${rot}deg) scale(${z})`;
-    return `<div class="pst" style="width:${rw * z}px;height:${rh * z}px"><img src="${location.origin}${p.url}" style="${tf}">
+    return `<div class="pst" data-pid="${p.id}" data-z="${z}" style="width:${rw * z}px;height:${rh * z}px"><img src="${location.origin}${p.url}" style="${tf}">
       ${T[p.id] ? `<div class="tl" style="${tf}">${T[p.id]}</div>` : ''}</div>`;
   }).join('');
 }
 
 // ================================================================ домены
+const MO_WS = {match: 'ok', warn: 'warn', mismatch: 'fail', no_data: 'review', error: 'review'};   // (0.8.4) MO
 const WST = {stop: '<span class="badge s-fail">стоп</span>', warn: '<span class="badge s-warn">внимание</span>', info: '<span class="badge s-info">к сведению</span>', '': '<span class="badge s-ok">в порядке</span>'};
 const excluded = () => new Set(((st().mgr || {}).excluded) || []);
 const resDomains = () => (W.res && W.res.result.domains) || [];
@@ -892,6 +1017,8 @@ function openDom(fr){
     if (wq){ SR.q = wq.dataset.wsq; if (!SR.on) showSearch(); else { const i = q('#wsQ'); if (i){ i.value = SR.q; i.focus(); i.select(); } } return; }
     const es = e.target.closest('[data-wsesia]');
     if (es){ const d = resDomains().find(x => x.domain === es.dataset.wsesia); if (d && typeof showEsia === 'function') showEsia(d); }
+    const mo = e.target.closest('[data-wsmo]');
+    if (mo){ const d = resDomains().find(x => x.domain === mo.dataset.wsmo); if (d && typeof showMo === 'function') showMo(d); }
   });
   renderDomains();
   return w;
@@ -924,12 +1051,13 @@ function renderDomains(){
     const v = d.verdict ? `<span class="badge s-${d.verdict}">${esc((typeof ST !== 'undefined' && ST[d.verdict]) || d.verdict)}</span>` : '';
     const kb = d.admin_comment ? `<button class="kbtn" data-k="${esc(d.domain)}" title="Комментарий администратора в S — показать">К</button>` : '';
     return `<div class="ws-dc${off ? ' off' : ''}"><div class="h"><label title="Включить домен в смену администратора и в строку таблицы"><input type="checkbox" data-inc="${esc(d.domain)}" ${off ? '' : 'checked'}></label>
-        <b>${esc(d.domain)}</b>${kb} <button class="ws-lnk" data-sd="${esc(d.domain)}">Sd</button> ${link((d.urls || {}).s, 'S')} <button class="ws-lnk" data-wsesia="${esc(d.domain)}">ESIA</button>
+        <b>${esc(d.domain)}</b>${kb} <button class="ws-lnk" data-sd="${esc(d.domain)}">Sd</button> ${link((d.urls || {}).s, 'S')} <button class="ws-lnk" data-wsesia="${esc(d.domain)}">ESIA</button>${d.mo_status ? ` <button class="ws-lnk" data-wsmo="${esc(d.domain)}" title="MO (matches owner): Sd ↔ базовая анкета владельца аккаунта">MO</button>` : ''}
         <span style="margin-left:auto">${WST[d.flags_level || ''] || ''}</span></div>
       <div class="g"><span>Администратор</span><span>${who} ${v}</span>
         ${d.kind === 'person' ? `<span>Паспорт</span><span>${d.passport ? `${esc(d.passport)} <button class="ws-lnk" data-wsq="${esc(d.passport)}" title="Вписать в строку «Поиск»">в поиск</button>` : '—'}${sd.passport_date || sd.passport_place ? `<small class="ws-sub">выдан ${esc(sd.passport_date || '—')}${sd.passport_place ? ' · ' + esc(sd.passport_place) : ''}</small>` : ''}</span>`
           : d.kind === 'org' ? `<span>ИНН</span><span>${sd.code ? `${esc(sd.code)} <button class="ws-lnk" data-wsq="${esc(sd.code)}" title="Вписать в строку «Поиск»">в поиск</button>` : '—'}</span>` : ''}
         <span>ЕСИА</span><span>${esc(d.esia_ru || '—')}</span>
+        <span>MO</span><span>${d.mo_status ? `<span class="badge s-${MO_WS[d.mo_status] || 'info'}">${esc(d.mo_ru)}</span>` : '—'}</span>
         <span>Смена админа</span><span>${esc(d.last_admin_change || '—')}</span>
         <span>Provider</span><span>${esc(d.provider || '—')}</span>
         <span>Аккаунт</span><span class="ws-acc">${esc(d.account || '—')}${d.account ? ` <button class="ws-lnk" data-acc="${esc(d.account)}" title="Вкладка «Смена владельца ЛК» с этим аккаунтом">→ ЛК</button>` : ''}${d.login ? `<small>логин: ${esc(d.login)}</small>` : ''}${d.account_email ? `<small>e-mail: ${esc(d.account_email)}</small>` : ''}</span></div>
@@ -981,11 +1109,12 @@ function openSd(dn){
         : row('Организация', esc(d.holder), '', 'org_r') + row('ИНН', esc(sd.code), C('code'), 'code')}
       ${row('E-mail', esc((d.emails || []).join(', ')), '', 'e_mail')}${row('Смена администратора', esc(d.last_admin_change), '', 'last_admin_change')}</table>
     <h5>Услуга (S)</h5><table>
-      ${row('Аккаунт', `${esc(d.account)}${d.login ? `<br><small>логин: ${esc(d.login)}</small>` : ''}`, '', 'user_id')}${row('E-mail аккаунта', esc(d.account_email), '', 'user_details: email')}${row('Provider', esc(d.provider), '', 'provider')}
+      ${row('Аккаунт', `${esc(d.account)}${d.login ? `<br><small>логин: ${esc(d.login)}</small>` : ''}`, '', 'user_id')}${row('E-mail аккаунта', esc(d.account_email), '', 'user_details: email')}${row('Владелец аккаунта (MO)', d.mo_status ? `${esc(d.mo_ru)} <button class="ws-lnk" data-wsmo2="${esc(d.domain)}">MO</button>` : '', d.mo_status === 'match' ? 'c-ok' : d.mo_status === 'mismatch' ? 'c-fail' : d.mo_status === 'warn' ? 'c-warn' : '', 'Sd ↔ базовая анкета')}${row('Provider', esc(d.provider), '', 'provider')}
       ${row('Статус', esc(s.state || d.service_status), '', 'state')}${row('Оплачен до', esc(s.expiration_date), '', 'expiration_date')}
       <tr><td>Комментарий администратора<br><span class="mono">admin_comment</span></td><td class="${d.admin_comment ? 'c-warn' : ''}">${d.admin_comment ? esc(d.admin_comment) : '<span class="hint">пусто</span>'}</td></tr></table>
     ${(d.compare || []).length ? `<h5>Сверка с документами</h5><table>${d.compare.map(r => `<tr><td>${esc(r.title)}</td><td class="${r.status === 'ok' ? 'c-ok' : r.status === 'fail' ? 'c-fail' : r.status === 'warn' ? 'c-warn' : ''}">${esc(r.sd || '')}${r.doc ? `<br><small class="hint">документы: ${esc(r.doc)}</small>` : ''}${r.detail ? `<br><small>${esc(r.detail)}</small>` : ''}</td></tr>`).join('')}</table>` : ''}
     <p class="hint">${link2((d.urls || {}).sd, 'Открыть Sd в manager')} ${link2((d.urls || {}).s, 'Открыть S')}</p></div>`;
+  const mb = q('[data-wsmo2]', w.el); if (mb) mb.onclick = () => { if (typeof showMo === 'function') showMo(d); };
 }
 const link2 = (u, t) => u ? `<a href="${esc(u)}" target="_blank">${t}</a>` : '';
 

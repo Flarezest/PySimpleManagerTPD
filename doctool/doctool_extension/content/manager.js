@@ -32,12 +32,17 @@
  * С 0.8.2 — безбумажные операции: loaFill — «Добавить новый документ от пользователя» (/userdocs/loa_add,
  * доверенность): номер паспорта / код страны компании, ФИО / ИНН компании, e-mail, телефон. «Добавить документ»,
  * «Показать домены…», вид документа и срок действия — оператор.
+ *
+ * С 0.8.4 — MO (matches owner): вместе с e-mail аккаунта из той же страницы «Данные пользователя» берётся базовая
+ * анкета владельца аккаунта (скрытый блок; нет блока — форма /user/N/runic_details), только поля сверки (OWNER_FIELDS),
+ * и почтовый / юридический адрес из Sd — программа сверяет администратора домена с владельцем аккаунта.
  */
 (() => {
-  const VERSION = '0.8.2';
+  const VERSION = '0.8.4';
   if (window.__doctoolManager && window.__doctoolManager.version === VERSION) return;
 
-  // Поля Sd, которые передаются в doctool. authinfo, адреса и служебные поля не передаются.
+  // Поля Sd, которые передаются в doctool. authinfo и служебные поля не передаются; адреса — только для сверок
+  // (юридический адрес юрлица — ЕСИА, с 0.8.4 почтовый адрес — MO, сверка с базовой анкетой владельца аккаунта).
   // E-mail администратора передаётся (с 0.5.0): e_mail — зоны .RU/.РФ/.SU, o_email — остальные зоны.
   // Телефон администратора (phone / o_phone) — с 0.8.2, для доверенности (безбумажные операции).
   // Юридический адрес юрлица (улица, дом, корпус, строение, индекс) — с 0.7.2, для сверки с ЕСИА.
@@ -48,6 +53,9 @@
     'passport_expiration_date', 'is_entrepreneur',
     // юрлицо (.RU/.РФ/.SU); юридический адрес — для сверки с ЕСИА (0.7.2)
     'org_r', 'org', 'kpp', 'address_r_street', 'address_r_house', 'address_r_frame', 'address_r_building', 'address_r_zip',
+    // (0.8.4) для MO: город и квартира юридического адреса, почтовый адрес (физлица и юрлица)
+    'address_r_city', 'address_r_flat', 'address_r_additional', 'p_addr_zip', 'p_addr_city', 'p_addr_street',
+    'p_addr_house', 'p_addr_frame', 'p_addr_building', 'p_addr_flat', 'p_addr_additional',
     // администратор (владелец) в остальных зонах — группа o_* (o_deti_org, o_gtld…)
     'o_company', 'o_company_ru', 'o_first_name', 'o_first_name_ru', 'o_last_name', 'o_last_name_ru',
     'o_patronimic', 'o_patronimic_ru', 'o_country_code', 'o_birth_date',
@@ -451,20 +459,47 @@
     }
   }
 
-  // (0.8.1) e-mail аккаунта владельца услуги — поле «E-mail» страницы «Данные пользователя»; аккаунт у доменов
-  // обычно общий, страница читается один раз за 10 минут.
-  const emailCache = new Map();   // user_id → {t, value}
-  async function accountEmailFor(uid) {
-    const hit = emailCache.get(uid);
-    if (hit && Date.now() - hit.t < 10 * 60 * 1000) return hit.value;
-    let value = '';
-    try {
-      value = parseUserDetails(await getDoc(`/manager/user_details?user_id=${encodeURIComponent(uid)}`)).email || '';
-    } catch (e) {
-      return '';                    // страница не открылась — домен всё равно показываем, без e-mail аккаунта
+  // (0.8.1) e-mail аккаунта владельца услуги — поле «E-mail» страницы «Данные пользователя»; (0.8.4) с той же
+  // страницы — базовая анкета владельца аккаунта для MO (скрытый блок .user_contacts_block; если его нет — форма
+  // /user/N/runic_details). Аккаунт у доменов обычно общий: страница читается один раз за 10 минут.
+  // Из анкеты передаются только поля сверки MO (паспорт, ФИО, контакты, адрес), остальное остаётся в manager.
+  const OWNER_FIELDS = ['person_r_surname', 'person_r_name', 'person_r_patronimic', 'birth_date', 'country',
+    'passport_number', 'passport_date', 'passport_place', 'code', 'phone', 'e_mail', 'p_addr_zip', 'p_addr_city',
+    'p_addr_addr', 'org_r', 'kpp', 'address_r_zip', 'address_r_city', 'address_r_addr'];
+  const ownerFields = ba => {
+    const out = {};
+    for (const [k, v] of Object.entries(ba || {})) {
+      const [g, f] = k.split('.');
+      if ((g === 'ru_pp' || g === 'ru_org') && OWNER_FIELDS.includes(f)) out[k] = v;
     }
-    if (emailCache.size > 500) emailCache.clear();
-    emailCache.set(uid, { t: Date.now(), value });
+    return out;
+  };
+  const accountCache = new Map();   // user_id → {t, value: {email, owner}}
+  async function accountInfoFor(uid) {
+    const hit = accountCache.get(uid);
+    if (hit && Date.now() - hit.t < 10 * 60 * 1000) return hit.value;
+    const urls = { user_details: `${location.origin}/manager/user_details?user_id=${uid}`,
+                   runic: `${location.origin}/user/${uid}/runic_details` };
+    let det;
+    try {
+      det = parseUserDetails(await getDoc(`/manager/user_details?user_id=${encodeURIComponent(uid)}`));
+    } catch (e) {
+      // страница не открылась — домен всё равно показываем, без e-mail аккаунта и анкеты
+      return { email: '', owner: { user_id: uid, urls, error: String((e && e.message) || e) } };
+    }
+    let ba = ownerFields(det.ba), source = 'user_details', type = '';
+    if (!Object.values(ba).some(Boolean)) {
+      try {
+        const r = parseRunic(await getDoc(`/user/${encodeURIComponent(uid)}/runic_details`));
+        const grp = r.type === 'org' ? 'ru_org' : 'ru_pp';
+        ba = ownerFields(Object.fromEntries(Object.entries(r.values || {}).map(([k, v]) => [`${grp}.${k}`, v])));
+        source = 'runic'; type = r.type || '';
+      } catch (e) { /* анкета не открылась — программа покажет «анкета пуста» */ }
+    }
+    const value = { email: det.email || '', owner: { user_id: uid, source, type, is_entrepreneur: !!det.is_entrepreneur,
+                                                     ba, urls } };
+    if (accountCache.size > 500) accountCache.clear();
+    accountCache.set(uid, { t: Date.now(), value });
     return value;
   }
 
@@ -542,10 +577,13 @@
       }
       // ЕСИА — у физлиц (ru_pp) и юрлиц (ru_org, с 0.7.2): по ссылке со страницы Sd этого домена
       const accId = s.user_id || found.user_id;
-      let accountEmail = '';
+      let accountEmail = '', accountOwner = null;
       if (accId && opts.account_email !== false) {
-        progress('user_details', `${domain}: e-mail аккаунта #${accId}`);
-        accountEmail = await accountEmailFor(accId);
+        progress('user_details', `${domain}: аккаунт #${accId} — e-mail и базовая анкета`);
+        const a = await accountInfoFor(accId);
+        accountEmail = a.email; accountOwner = a.owner;
+      } else if (!accId) {
+        accountOwner = { error: 'на странице S нет номера аккаунта (user_id)' };
       }
       let esia = null;
       if (opts.esia !== false && (sd.group === 'ru_pp' || sd.group === 'ru_org') && sd.links && sd.links.esia) {
@@ -556,7 +594,7 @@
         ok: true,
         data: {
           domain, service_id: found.service_id, account: accId, bill_owner: found.bill_owner,
-          login: s.login || '', account_email: accountEmail,
+          login: s.login || '', account_email: accountEmail, account_owner: accountOwner,
           bill_state: found.state, sd, s, esia,
           urls: {
             bills: `${location.origin}/bill/bills?searchstring=${encodeURIComponent(found.query)}`,
@@ -781,7 +819,7 @@
 
   window.__doctoolManager = {
     version: VERSION, lookup, account, fillRunic, parseBills, pickService, parseSd, parseS, parseEsiaList,
-    parseUserDetails, parseRunic, setRunicType, isManagerPage,
+    parseUserDetails, parseRunic, setRunicType, isManagerPage, accountInfoFor,
     domainMoveFill, domainMoveRead, domainMoveMark, domainMoveFillContacts, loaFill,
   };
 })();

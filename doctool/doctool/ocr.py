@@ -323,6 +323,128 @@ def remove_lines_soft(gray: np.ndarray) -> np.ndarray:
     return out
 
 
+# ---------------------------------------------------------------- ручное выделение текста (0.8.4)
+
+def _ink_height(gray: np.ndarray) -> float:
+    """Высота знаков в области (медиана высоты пятен краски), px; 0 — не определилась."""
+    bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    n, _, st, _ = cv2.connectedComponentsWithStats(bw, connectivity=8)
+    h, w = gray.shape[:2]
+    hs = [st[i, cv2.CC_STAT_HEIGHT] for i in range(1, n)
+          if 4 <= st[i, cv2.CC_STAT_HEIGHT] <= 0.9 * h and st[i, cv2.CC_STAT_WIDTH] <= 0.5 * w
+          and st[i, cv2.CC_STAT_AREA] >= 6]
+    return float(np.median(hs)) if hs else 0.0
+
+
+def _no_rules(gray: np.ndarray, th: float) -> np.ndarray:
+    """Убирает линии таблиц и подчёркивания: горизонтальные и вертикальные отрезки длиннее трёх высот знака.
+    Пиксели, через которые проходит штрих буквы, остаются (как в remove_lines_soft)."""
+    bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    k = int(max(30, 3 * th))
+    lines = cv2.morphologyEx(bw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (k, 1))) | \
+        cv2.morphologyEx(bw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, k)))
+    if not lines.any():
+        return gray
+    lines = cv2.dilate(lines, np.ones((3, 3), np.uint8))
+    ink = ((bw > 0) & (lines == 0)).astype(np.uint8)
+    stroke = cv2.dilate(ink, np.ones((5, 5), np.uint8)) > 0
+    out = gray.copy()
+    out[(lines > 0) & ~stroke] = 255
+    return out
+
+
+def _paper(gray: np.ndarray) -> np.ndarray:
+    """Всё светлее порога Оцу — в белый: следы ручки и штампа в своём канале, фон, сетка не мешают LSTM Tesseract
+    (он читает серое изображение, а не чёрно-белое); краска знаков остаётся как есть."""
+    t, _ = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    out = gray.copy()
+    out[gray > t] = 255
+    return out
+
+
+def _flat(ch: np.ndarray) -> np.ndarray:
+    """Канал с выровненным фоном (тень, розовая сетка паспорта светлеют до белого)."""
+    if min(ch.shape[:2]) < 60:
+        return cv2.normalize(ch, None, 0, 255, cv2.NORM_MINMAX)
+    k = max(15, (min(ch.shape[:2]) // 4) | 1)
+    bg = cv2.medianBlur(ch, min(k, 51))
+    return cv2.divide(ch, bg, scale=255)
+
+
+_JUNK = re.compile(r"^[|_~=¦]+$")          # след линий таблицы и подчёркиваний, а не текст
+
+
+def _ocr_variant(img: np.ndarray, lang: str, psm: int) -> tuple[str, float, int]:
+    """Одно прочтение: (текст, средняя уверенность по буквам, число букв и цифр)."""
+    lines = tesseract_lines(img, lang=lang, psm=psm)
+    out, confs, weights = [], [], []
+    for ln in lines:
+        words = [w for w in ln.words if not _JUNK.match(w.text)]
+        if not words:
+            continue
+        if sum(c.isalnum() for w in words for c in w.text) <= 2 and min(w.conf for w in words) < 70:
+            continue                                  # обрывок линии, штампа или подписи у края рамки
+        out.append(" ".join(w.text for w in words))
+        for w in words:
+            n = sum(c.isalnum() for c in w.text)
+            if n:
+                confs.append(w.conf * n)
+                weights.append(n)
+    chars = sum(weights)
+    return "\n".join(out), (sum(confs) / chars if chars else 0.0), chars
+
+
+def read_printed(img: np.ndarray, lang: str = "rus+eng", good: float = 85.0) -> dict:
+    """Печатный текст небольшой области страницы (рамка оператора, рабочее место 0.8.4). Рукопись не читается.
+
+    Пробует несколько вариантов изображения и берёт прочтение с наибольшей уверенностью Tesseract:
+      gray — серое без линий таблиц и подчёркиваний; blue — синий канал (синяя ручка, подпись и штамп «ПОЛУЧЕНО»
+      поверх печатного текста светлеют, остатки — в белый); red — красный канал с выровненным фоном (розовая сетка
+      паспорта).
+    Мелкий текст увеличивается (высота знаков ~30 px). Узкая высокая область (номер паспорта на полях) читается и
+    повёрнутой на 90° / 270°. Одна строка — psm 7, несколько — psm 6. Достаточно уверенное прочтение (≥ good) — сразу.
+    → {"text", "conf", "variant", "rot", "psm", "tries"}."""
+    out = {"text": "", "conf": 0.0, "variant": "", "rot": 0, "psm": 0, "tries": 0}
+    if img is None or img.size == 0 or min(img.shape[:2]) < 4:
+        return out
+    color = img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
+    th = _ink_height(gray)
+    h, w = gray.shape[:2]
+    scale = min(4.0, max(0.4, 30.0 / th)) if th else (2.0 if h < 60 else 1.0)
+    if max(h, w) * scale > 4000:
+        scale = 4000 / max(h, w)
+    tall = h > 1.6 * w and h > 3 * max(th, 10)
+    rots = (0, 90, 270) if tall else (0,)
+    variants = [("gray", lambda: _no_rules(gray, th)), ("blue", lambda: _paper(_no_rules(_flat(color[:, :, 0]), th))),
+                ("red", lambda: _paper(_no_rules(_flat(color[:, :, 2]), th)))]
+    hsv = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)
+    pen = (hsv[:, :, 0] >= 95) & (hsv[:, :, 0] <= 135) & (hsv[:, :, 1] > 70) & (hsv[:, :, 2] < 235)
+    if pen.mean() > 0.003:                            # синяя ручка или штамп в рамке — сначала синий канал
+        variants.insert(0, variants.pop(1))
+    best = (-1.0, out)
+    for name, make in variants:
+        base = make()
+        if scale != 1.0:
+            base = cv2.resize(base, None, fx=scale, fy=scale,
+                              interpolation=cv2.INTER_CUBIC if scale > 1 else cv2.INTER_AREA)
+        for rot in rots:
+            im = rotate(base, rot)
+            ih = im.shape[0]
+            lines_est = ih / max(1.0, 1.9 * (th * scale if th else 30))
+            psms = (7, 6) if lines_est < 1.4 else (6,)
+            im = cv2.copyMakeBorder(im, 14, 14, 14, 14, cv2.BORDER_CONSTANT, value=255)
+            for psm in psms:
+                text, conf, chars = _ocr_variant(im, lang, psm)
+                out["tries"] += 1
+                score = conf if chars else -1.0
+                if score > best[0]:
+                    best = (score, {"text": text, "conf": round(conf, 1), "variant": name, "rot": rot, "psm": psm})
+                if score >= good and chars >= 2:
+                    return {**best[1], "tries": out["tries"]}
+    return {**best[1], "tries": out["tries"]} if best[0] >= 0 else out
+
+
 # ---------------------------------------------------------------- VLM (Ollama)
 
 class OllamaVLM:

@@ -10,8 +10,8 @@ sys.path.insert(0, str(ROOT))
 
 from doctool import domain_report, domains, fieldnorm  # noqa: E402
 
-# Ответ расширения для домена юрлица: поля Sd — как parseSd на обезличенной странице sd_org.html (+ КПП),
-# данные ЕСИА — как esiaFields() из background.js по tests/fixtures/manager/esia_org.json
+# Ответ расширения для домена юрлица: поля Sd - как parseSd на обезличенной странице sd_org.html (+ КПП),
+# данные ЕСИА - как esiaFields() из background.js по tests/fixtures/manager/esia_org.json
 SD_ORG = {"group": "ru_org", "trustee": "Нет", "status": "Активна (A)", "fields": {
     "code": "7701234567", "kpp": "770101001", "country": "RU", "org": "Test Org LLC",
     "org_r": 'Общество с ограниченной ответственностью "Тест"', "address_r_street": "ул. Тестовая",
@@ -60,7 +60,7 @@ def test_org_name_legal_forms():
     assert same('ОАО "Ромашка"', 'ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО "РОМАШКА"') == "ok"
     assert same('ПК "Заря"', 'ПРОИЗВОДСТВЕННЫЙ КООПЕРАТИВ "ЗАРЯ"') == "ok"
     assert same('Хозяйственное товарищество "Заря"', 'ПОЛНОЕ ТОВАРИЩЕСТВО "ЗАРЯ"') == "ok"
-    assert same('АО "ТВ Центр"', 'АКЦИОНЕРНОЕ ОБЩЕСТВО "ТВ ЦЕНТР"') == "ok"   # «ТВ» в кавычках — часть названия
+    assert same('АО "ТВ Центр"', 'АКЦИОНЕРНОЕ ОБЩЕСТВО "ТВ ЦЕНТР"') == "ok"   # «ТВ» в кавычках - часть названия
     st, why = fieldnorm.same("org", "ООО «Альстром»", full)
     assert st == "fail" and "название" in why
     st, why = fieldnorm.same("org", 'ООО "Ромашка"', 'АКЦИОНЕРНОЕ ОБЩЕСТВО "РОМАШКА"')
@@ -111,7 +111,7 @@ def test_esia_org_mismatch_and_partial():
     d = org_domain(with_data(la_house="Д. 1 КОРП. 2"), {"address_r_frame": "2"}).to_dict()   # корпус в Sd отдельно
     row = next(r for r in d["esia_rows"] if r["field"] == "address_r_house")
     assert row["status"] == "ok" and row["sd"] == "1, корп. 2"
-    d = org_domain({**ESIA_PAGE, "data": ESIA_ORG}, {"kpp": ""}).to_dict()   # КПП в Sd пустой — без цвета
+    d = org_domain({**ESIA_PAGE, "data": ESIA_ORG}, {"kpp": ""}).to_dict()   # КПП в Sd пустой - без цвета
     row = next(r for r in d["esia_rows"] if r["field"] == "kpp")
     assert row["status"] == "" and row["detail"] == "нет в Sd" and d["esia_status"] == "match"
     d = org_domain(with_data(is_liquidated=True)).to_dict()
@@ -141,10 +141,10 @@ def test_domain_report_provider_column_sort_and_org_esia():
     c = org_domain(None, domain="third-org.ru", provider="").to_dict()            # нет ссылки ЕСИА на Sd
     html = domain_report.build([a, b, c])
     heads = re.findall(r'<th title="Сортировать">([^<]+)<span class="arr">', html)
-    assert heads == ["Домен", "manager", "Администратор (Sd)", "Сверка", "ЕСИА", "MO", "Provider", "Прочее"]   # MO — 0.8.4
+    assert heads == ["Домен", "manager", "Администратор (Sd)", "Сверка", "ЕСИА", "MO", "Provider", "Прочее"]   # MO - 0.8.4
     assert "<td>RU-CENTER-RU</td>" in html and "<td>cctldru</td>" in html and "provider:" not in html
     assert 'colspan="8"' in html and 'id="bygroups"' in html and "localeCompare" in html
-    # кнопка ESIA — у всех найденных доменов юрлиц, и когда сверки нет (окно объяснит почему)
+    # кнопка ESIA - у всех найденных доменов юрлиц, и когда сверки нет (окно объяснит почему)
     for dom in ("testdomain-org.ru", "second-org.ru", "third-org.ru"):
         assert f'class="esia" data-d="{dom}"' in html
     data = json.loads(html.split('id="esia-data">')[1].split("</script>")[0])

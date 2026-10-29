@@ -37,7 +37,7 @@ search:
     joined = "\n".join(errs)
     assert "search.open_in" in joined and "window_share" in joined and "url должен" in joined
     assert "сервис «Без адреса»: url должен" in joined and "сервис «Плохой»: url должен" in joined
-    assert "сервис «Форма»: fill" in joined and "search.links[2] — нет title" in joined
+    assert "сервис «Форма»: fill" in joined and "search.links[2] - нет title" in joined
     cfg = wsconfig.load(p)["search"]
     assert cfg["open_in"] == "auto" and cfg["window_share"] == 70
     assert [s["title"] for s in cfg["services"]] == ["Google", "Форма"] and cfg["services"][1]["fill"] is None
@@ -46,7 +46,7 @@ search:
 
 @pytest.fixture
 def app_ext(tmp_path, monkeypatch):
-    """Приложение с «подключённым» расширением: команды записываются, ответ — как у расширения."""
+    """Приложение с «подключённым» расширением: команды записываются, ответ - как у расширения."""
     from fastapi.testclient import TestClient
     from doctool.web import create_app
     app = create_app(str(tmp_path / "res"))
@@ -82,7 +82,7 @@ def test_site_api_commands(app_ext):
     cmd, p = calls[-1]
     assert cmd == "site_open" and p["url"].startswith("https://egrul") and p["open_in"] == "window"
     assert p["fill"] == {"kind": "egrul", "q": "7707083893"} and p["screen"]["width"] == 1920 and p["share"] == 40
-    # неизвестная форма и способ — без fill, способ из настроек; неполный экран не передаётся
+    # неизвестная форма и способ - без fill, способ из настроек; неполный экран не передаётся
     c.post("/api/site/open", json={"url": "https://www.google.com/search?q=x", "fill": "other", "open_in": "x", "screen": {"width": 5}})
     cmd, p = calls[-1]
     assert "fill" not in p and p["open_in"] == "auto" and p["screen"] is None
@@ -94,7 +94,7 @@ def test_site_api_commands(app_ext):
     ws.dir.mkdir(parents=True)
     ws.status = "ready"
     ws.save()
-    # (0.8.1) паспорт не прочитан (дело без файлов) — подсказка про строку «Поиск», расширение не вызывается
+    # (0.8.1) паспорт не прочитан (дело без файлов) - подсказка про строку «Поиск», расширение не вызывается
     n = len(calls)
     r = c.post("/api/ws/abcdef1234/gosuslugi", json={"site": {}})
     assert r.status_code == 400 and "строку «Поиск»" in r.json()["detail"] and len(calls) == n
@@ -138,7 +138,7 @@ def test_delete_cases_safely(tmp_path):
     r = c.delete("/api/ws/aaaaaa1111")
     assert r.status_code == 200, r.text
     assert not ws1.dir.exists() and not res_dir.exists()
-    # вне папки результатов, папка другого дела и сама папка результатов — не трогаются
+    # вне папки результатов, папка другого дела и сама папка результатов - не трогаются
     assert outside.exists() and other.dir.exists() and (tmp_path / "res").exists()
     assert c.delete("/api/ws/aaaaaa1111").status_code == 404
     assert c.delete("/api/ws/cccccc3333").status_code == 409          # ещё разбирается

@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import progress
+from .domain_store import key as store_key
 from .compare import STATUS_RU
 from .domains import PROBLEMS, sort_by_problem
 from .domains import unicode_name
@@ -28,25 +29,26 @@ class Job:
     cancel: threading.Event = field(default_factory=threading.Event)
     started: datetime | None = None
     finished: datetime | None = None
+    store: object = None            # (0.8.5) domain_store.DomainStore дела рабочего места: домены не загружаются повторно
 
 
 class JobManager:
     def __init__(self, manager=None):
-        """manager — manager_bridge.ManagerTasks (веб-интерфейс): загрузка данных Sd доменов из manager."""
+        """manager - manager_bridge.ManagerTasks (веб-интерфейс): загрузка данных Sd доменов из manager."""
         self.manager = manager
         self.jobs: dict[str, Job] = {}
         self.pool = ThreadPoolExecutor(max_workers=1)
         self.lock = threading.Lock()
 
-    def submit(self, inp: CaseInput, on_update=None) -> Job:
-        job = Job(id=uuid.uuid4().hex[:12], inp=inp)
+    def submit(self, inp: CaseInput, on_update=None, store=None) -> Job:
+        job = Job(id=uuid.uuid4().hex[:12], inp=inp, store=store)
         with self.lock:
             self.jobs[job.id] = job
         self.pool.submit(self._run, job, on_update)
         return job
 
     def manual(self, inp: CaseInput) -> Job:
-        """(0.7.3) Дело без файлов — данные заявления оператор вводит сам (service.manual_case). Создаётся сразу."""
+        """(0.7.3) Дело без файлов - данные заявления оператор вводит сам (service.manual_case). Создаётся сразу."""
         job = Job(id=uuid.uuid4().hex[:12], inp=inp, status="running", started=datetime.now())
         with self.lock:
             self.jobs[job.id] = job
@@ -90,20 +92,29 @@ class JobManager:
                 on_update(job)
 
     def _autoload(self, job: Job) -> None:
-        """Флажок «подгрузить данные Sd доменов из заявления»: после сверки — данные доменов из manager."""
+        """Флажок «подгрузить данные Sd доменов из заявления»: после сверки - данные доменов из manager."""
         res = job.result
         doms = case_domains(res)
+        if job.store is not None:
+            # (0.8.5) дело рабочего места: список доменов, загруженный раньше (оператор мог дописать домены),
+            # плюс домены заявления, которых в нём нет
+            cur = job.store.current()[0]
+            have = {store_key(d) for d in cur}
+            doms = cur + [d for d in doms if store_key(d) not in have]
         if not doms:
-            progress.log("[!] В заявлении не найдены домены — данные из manager не загружались")
+            progress.log("[!] В заявлении не найдены домены - данные из manager не загружались")
             return
-        if self.manager is None or not self.manager.bridge.connected():
+        # домены из сохранённого результата дела не загружаются повторно (без расширения - тоже)
+        todo = job.store.missing(doms) if job.store is not None else doms
+        if self.manager is None or (todo and not self.manager.bridge.connected()):
             msg = ("Данные Sd не загружены: расширение «PySimpleManager» не подключено "
                    "(Chrome с расширением должен быть открыт). Можно загрузить позже кнопкой.")
             progress.log("[!] " + msg)
             res.notes.append(msg)
             return
-        progress.log(f"Загружаю данные доменов из manager: {', '.join(doms)}")
-        items = self.manager.lookup(doms, log=progress.log, cancel=job.cancel)
+        if todo:
+            progress.log(f"Загружаю данные доменов из manager: {', '.join(todo)}")
+        items = self.manager.lookup_cached(doms, job.store, log=progress.log, cancel=job.cancel)
         attach_domains(res, items)
         progress.log(f"Данные доменов загружены. Итог: {res.decision.title}")
 

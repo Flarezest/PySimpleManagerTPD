@@ -1,6 +1,6 @@
 """Разбор страниц manager скриптом расширения (doctool_extension/content/manager.js) на обезличенных копиях
 страниц. Нужен Playwright с Chromium (pip install playwright && python -m playwright install chromium);
-без него тест пропускается. Если manager поменяет вёрстку — сохраните новую страницу, обезличьте её,
+без него тест пропускается. Если manager поменяет вёрстку - сохраните новую страницу, обезличьте её,
 положите в tests/fixtures/manager/ и прогоните тест."""
 import json
 from pathlib import Path
@@ -47,7 +47,7 @@ def test_sd_and_s(page):
     assert org["group"] == "ru_org" and org["fields"]["code"] == "7701234567" and "FOA_token" not in org["fields"]
     s = json.loads(run(page, "s_org.html", "M.parseS(document)"))
     assert s["provider"] == "cctldru" and s["dname"] == "testdomain-org.ru" and s["user_id"] == "2000"
-    # (0.7.6) логин аккаунта со страницы S, комментарий администратора — да, комментарий пользователя — нет
+    # (0.7.6) логин аккаунта со страницы S, комментарий администратора - да, комментарий пользователя - нет
     assert s["login"] == "org@example.com" and s["admin_comment"] == ""
     s = json.loads(run(page, "s_pp.html", "M.parseS(document)"))
     assert s["login"] == "person@example.com" and s["user_id"] == "1000"
@@ -56,14 +56,14 @@ def test_sd_and_s(page):
 
 
 def test_sd_email_and_intl(page):
-    # .RU: e-mail администратора — поле e_mail группы ru_pp/ru_org (с 0.5.0 передаётся в doctool)
+    # .RU: e-mail администратора - поле e_mail группы ru_pp/ru_org (с 0.5.0 передаётся в doctool)
     sd = json.loads(run(page, "sd_pp.html", "M.parseSd(document)"))
     assert sd["fields"]["e_mail"].splitlines()[0] == "person@example.com"
-    # международная зона: группа владельца o_deti_org (не a_/t_, хотя в них больше строк), e-mail — o_email
+    # международная зона: группа владельца o_deti_org (не a_/t_, хотя в них больше строк), e-mail - o_email
     intl = json.loads(run(page, "sd_intl.html", "M.parseSd(document)"))
     assert intl["group"] == "o_deti_org" and intl["status"] == "Активна (A)"
     assert intl["fields"]["o_email"] == "owner@example.com\nsecond@example.org"
-    # (0.8.2) телефон администратора передаётся (для доверенности), телефоны контактов a_/t_ — нет
+    # (0.8.2) телефон администратора передаётся (для доверенности), телефоны контактов a_/t_ - нет
     assert intl["fields"]["o_company"] == "Test Holding LP" and intl["fields"]["o_phone"] == "+70000000000"
     assert "a_phone" not in intl["fields"] and "t_phone" not in intl["fields"]
     assert "authinfo" not in intl["fields"] and "o_addr" not in intl["fields"]
@@ -72,7 +72,7 @@ def test_sd_email_and_intl(page):
 # ------------------------------------------------------------------ 0.6.0: ЕСИА, аккаунт, базовая анкета
 
 def test_sd_links_to_esia(page):
-    # ссылка «Идентификация через Госуслуги» берётся со страницы Sd домена: у физлица ?user_id=, у персоны — ?person_id=
+    # ссылка «Идентификация через Госуслуги» берётся со страницы Sd домена: у физлица ?user_id=, у персоны - ?person_id=
     sd = json.loads(run(page, "sd_pp.html", "M.parseSd(document)"))
     assert sd["links"]["esia"] == "https://manager.reg.ru/manager/esia_identifications?user_id=1000"
     assert sd["links"]["person"] == "https://manager.reg.ru/manager/user_details?user_id=1000"
@@ -83,7 +83,7 @@ def test_sd_links_to_esia(page):
 def test_esia_list(page):
     r = json.loads(run(page, "esia_list.html", "M.parseEsiaList(document)"))
     assert len(r["rows"]) == 2
-    latest = r["latest"]                                    # последняя попытка — по дате создания
+    latest = r["latest"]                                    # последняя попытка - по дате создания
     assert latest["state"] == "approved" and latest["creation_date"] == "2026-08-01 18:55:32"
     assert latest["file_url"] == "https://identity.reg.ru/esia/0123456789abcdef0123456789abcdef.json"
     assert latest["action"] == "fill_base_contacts" and "file" not in latest
@@ -94,12 +94,12 @@ def test_esia_list(page):
 def test_user_details(page):
     r = json.loads(run(page, "user_details_pp.html", "M.parseUserDetails(document)"))
     assert r["user_id"] == "1000" and r["login"] == "person@example.com"
-    # (0.8.1) e-mail аккаунта — поле «E-mail» (input name=email), не логин
+    # (0.8.1) e-mail аккаунта - поле «E-mail» (input name=email), не логин
     assert r["email"] == "owner.mail@example.org"
     assert "Идентификация через Госуслуги пройдена" in r["statuses"]
     assert r["servicing_org"] == 'ООО "РДХ"' and r["servicing_org_id"] == "3"
     assert r["contypes"] == "RUSURF: ru_pp" and r["is_entrepreneur"] is False
-    ba = r["ba"]                                             # базовая анкета — скрытый блок страницы
+    ba = r["ba"]                                             # базовая анкета - скрытый блок страницы
     assert ba["ru_pp.person_r_surname"] == "Тестов" and ba["ru_pp.passport_number"] == "4509123456"
     assert ba["ru_pp.passport_place"] == "ГУ МВД РОССИИ ПО Г. МОСКВЕ" and ba["ru_pp.fax"] == ""
     assert ba["ru_pp.phone"] == "+79990000000" and ba["ru_pp.birth_date"] == "15.03.1990"
@@ -113,7 +113,7 @@ def test_runic_parse(page):
     v = r["values"]
     assert v["person_r_surname"] == "Тестов" and v["person"] == "Petr Sergeevich Testov"
     assert v["passport_place"] == "ГУ МВД РОССИИ ПО Г. МОСКВЕ" and v["country"] == "RU" and v["p_addr_zip"] == "101000"
-    # страница базовой анкеты — «новая» (Bootstrap): без #content, но это страница manager
+    # страница базовой анкеты - «новая» (Bootstrap): без #content, но это страница manager
     assert page.evaluate("() => window.__doctoolManager.isManagerPage(document)")
 
 
@@ -136,7 +136,7 @@ def test_fill_runic(page):
     val = lambda n: page.evaluate(f"() => document.querySelector('#ru_pp_contacts [name={n}]').value")  # noqa: E731
     assert val("person_r_surname") == "Сидорова" and val("passport_place") == "ТП № 5 ОУФМС России"
     assert val("country") == "RU" and val("sms_security_number") == "" and val("p_addr_area") == "Москва"
-    assert val("p_addr_zip") == "101000"                    # индекс не передан — остался прежний
+    assert val("p_addr_zip") == "101000"                    # индекс не передан - остался прежний
     # форма юрлица с теми же именами полей не тронута
     assert page.evaluate("() => document.querySelector('#ru_org_contacts [name=phone]').value") == "+79990000000"
     # события страницы: поле помечено изменённым, English name пересчитан по blur
@@ -164,14 +164,14 @@ def test_fill_runic_guards(page):
 # ------------------------------------------------------------------ 0.7.2: ЕСИА у юрлиц
 
 def test_sd_org_legal_address(page):
-    # юридический адрес юрлица — для сверки с ЕСИА; (0.8.4) почтовый адрес и квартира — для сверки MO
+    # юридический адрес юрлица - для сверки с ЕСИА; (0.8.4) почтовый адрес и квартира - для сверки MO
     org = json.loads(run(page, "sd_org.html", "M.parseSd(document)"))
     f = org["fields"]
     assert f["address_r_street"] == "ул. Тестовая" and f["address_r_house"] == "1" and f["address_r_zip"] == "140000"
     assert f["address_r_frame"] == "" and f["address_r_building"] == ""
     assert f["address_r_flat"] == "41" and f["p_addr_street"] == "Садовая" and f["p_addr_house"] == "2"
     assert "address_r_district" not in f and "sms_security_number" not in f and "transfer_email" not in f
-    assert f["phone"].splitlines()[0].startswith("+7")          # (0.8.2) телефон — для доверенности
+    assert f["phone"].splitlines()[0].startswith("+7")          # (0.8.2) телефон - для доверенности
 
 
 def test_esia_fields_org_and_person(page):
@@ -215,7 +215,7 @@ def test_domain_move_fill(page):
     assert st["domains"] == "testdomain-pp.ru\nпример.рф" and st["admin"] and st["acc"] and st["loginShown"]
     assert st["login"] == "user_id:2000" and st["files"] == ["Заявление.pdf:13", "Паспорт.pdf:13"]
     assert st["untouched"] == [False, False, False, False]          # остальные флажки страницы не трогаются
-    # не та страница — ошибка, ничего не заполняется
+    # не та страница - ошибка, ничего не заполняется
     r = json.loads(run(page, "domain_move_contacts.html", f"M.domainMoveFill({json.dumps(params, ensure_ascii=False)})"))
     assert not r["ok"] and r["error"]["code"] == "bad_page"
 
@@ -244,13 +244,13 @@ def test_loa_fill(page):
         marked: document.querySelector('[name=fullname]').style.outlineStyle})""")
     assert st["vals"] == ["4000 123456", "Тестов Пётр Иванович", "person@example.com", "+79990000001", "", "", "", ""]
     assert st["type"] == "" and st["url"].endswith("loa_add.html") and st["marked"] == "solid"   # форма не отправлена
-    # идентификатор администратора, который страница соберёт для «Показать домены…» (её же функция; $ — замена jQuery)
+    # идентификатор администратора, который страница соберёт для «Показать домены…» (её же функция; $ - замена jQuery)
     rid = page.evaluate("() => { window.$ = s => ({val: () => document.querySelector(s).value}); return generate_registrant_id(); }")
     assert rid == "4000123456:ТестовПётрИванович"
-    # юрлицо: код страны и ИНН — в те же поля; пустые значения не трогают поле
+    # юрлицо: код страны и ИНН - в те же поля; пустые значения не трогают поле
     r = json.loads(run(page, "loa_add.html", 'M.loaFill({passport_inn: "RU", fullname: "7701234567", email: ""})'))
     assert r["ok"] and [x["new"] for x in r["data"]["changed"]] == ["RU", "7701234567"]
-    # не та страница — ошибка, ничего не заполняется
+    # не та страница - ошибка, ничего не заполняется
     r = json.loads(run(page, "domain_move.html", 'M.loaFill({passport_inn: "RU"})'))
     assert not r["ok"] and r["error"]["code"] == "bad_page"
 
@@ -296,7 +296,7 @@ def test_gosuslugi_fill(page):
 
 
 def test_lookup_account_email(page):
-    """(0.8.1) Загрузка домена: e-mail аккаунта — поле «E-mail» «Данных пользователя» владельца услуги (не логин);
+    """(0.8.1) Загрузка домена: e-mail аккаунта - поле «E-mail» «Данных пользователя» владельца услуги (не логин);
     страница аккаунта читается один раз на несколько доменов."""
     pages = {"/bill/bills": "bills_pp.html", "/tech/srv_details": "sd_pp.html", "/tech/service_details": "s_pp.html",
              "/manager/user_details": "user_details_pp.html"}
@@ -326,8 +326,8 @@ def test_lookup_account_email(page):
 
 
 def test_lookup_account_owner_for_mo(page):
-    """(0.8.4) MO: при загрузке домена — базовая анкета владельца аккаунта (только поля сверки) со страницы «Данные
-    пользователя» (той же, что для e-mail, — без лишних запросов); нет блока анкеты — форма /user/N/runic_details."""
+    """(0.8.4) MO: при загрузке домена - базовая анкета владельца аккаунта (только поля сверки) со страницы «Данные
+    пользователя» (той же, что для e-mail, - без лишних запросов); нет блока анкеты - форма /user/N/runic_details."""
     import re as _re
     no_block = _re.sub(r'<div class="user_contacts_block".*?</table>\s*</div>', "",
                        (FIX / "user_details_pp.html").read_text(encoding="utf-8"), flags=_re.S)
@@ -363,7 +363,7 @@ def test_lookup_account_owner_for_mo(page):
     assert "ru_pp.sms_security_number" not in o["ba"] and "ru_pp.oid_esia" not in o["ba"] and "ru_pp.person" not in o["ba"]
     assert a["data"]["account_email"] == "owner.mail@example.org"
     assert a["data"]["sd"]["fields"]["p_addr_street"] == "Тестовая" and a["data"]["sd"]["fields"]["p_addr_flat"] == "579"
-    assert runic_a == 0                                         # блок анкеты есть — форма не открывается
+    assert runic_a == 0                                         # блок анкеты есть - форма не открывается
     ob = b["data"]["account_owner"]
     assert ob["source"] == "runic" and ob["type"] == "pp" and ob["ba"]["ru_pp.passport_number"]
     assert hits.count("/user/1000/runic_details") == 1

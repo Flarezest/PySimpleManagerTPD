@@ -5,13 +5,13 @@
 
 Запускается из корня программы (рядом с папками doctool, forms, config), в окружении с пакетами
 requirements.txt, requirements-web.txt и installer/requirements-build.txt. Обычно его запускает GitHub Actions
-(.github/workflows/build.yml в корне репозитория); подробно — docs/RELEASE.md.
+(.github/workflows/build.yml в корне репозитория); подробно - docs/RELEASE.md.
 
-Результат — в installer/_out/:
+Результат - в installer/_out/:
   Windows  PySimpleManager-<версия>-windows-x64-setup.exe   (Inno Setup; Tesseract внутри)
-  Linux    pysimplemanager_<версия>_amd64.deb                 (Tesseract — зависимость пакета)
+  Linux    pysimplemanager_<версия>_amd64.deb                 (Tesseract - зависимость пакета)
   macOS    PySimpleManager-<версия>-macos-<arch>.dmg          (Tesseract внутри; сборка пробная)
-Промежуточные файлы — installer/_build/ (кэш скачанного Tesseract там же).
+Промежуточные файлы - installer/_build/ (кэш скачанного Tesseract там же).
 """
 from __future__ import annotations
 
@@ -34,11 +34,11 @@ OUT = HERE / "_out"
 DIST = BUILD / "dist" / "PySimpleManager"
 APP = "PySimpleManager"
 
-# Tesseract для Windows: сборка UB Mannheim (её же ставят по README). Файл проверяется по SHA-256.
+# Tesseract для Windows: сборка UB Mannheim (её же ставят по docs/USAGE.md, раздел 0.2). Файл проверяется по SHA-256.
 WIN_TESSERACT = ("https://github.com/UB-Mannheim/tesseract/releases/download/v5.4.0.20240606/"
                  "tesseract-ocr-w64-setup-5.4.0.20240606.exe",
                  "c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9")
-# Языки — tesseract-ocr/tessdata 4.1.0 (README советует брать rus.traineddata оттуда).
+# Языки - tesseract-ocr/tessdata 4.1.0 (docs/USAGE.md советует брать rus.traineddata оттуда).
 TESSDATA = {
     "rus": "681be2c2bead1bc7bd235df88c44e8e60ae73ae866840c0ad4e3b4c247bd37c2",
     "eng": "daa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047",
@@ -112,7 +112,7 @@ def seven_zip() -> str:
 
 
 def dll_closure(folder: Path, exe: str) -> list[str]:
-    """DLL из папки, которые нужны exe (по таблицам импорта, рекурсивно). Остальное в установщике Tesseract —
+    """DLL из папки, которые нужны exe (по таблицам импорта, рекурсивно). Остальное в установщике Tesseract -
     программы и библиотеки для обучения моделей."""
     import pefile
     avail = {f.name.lower(): f.name for f in folder.glob("*.dll")}
@@ -181,7 +181,7 @@ def tesseract_macos() -> Path:
     exe = dest / "tesseract"
     shutil.copy2((prefix / "bin" / "tesseract").resolve(), exe)
     exe.chmod(0o755)
-    # если библиотека не найдётся, dylibbundler спрашивает папку — отвечаем quit: ошибка вместо ожидания
+    # если библиотека не найдётся, dylibbundler спрашивает папку - отвечаем quit: ошибка вместо ожидания
     sh("dylibbundler", "-of", "-b", "-x", exe, "-d", dest / "libs", "-p", "@executable_path/libs/",
        "-s", brew() / "lib", input="quit\n", text=True, timeout=900)
     for f in [exe, *sorted((dest / "libs").glob("*.dylib"))]:
@@ -239,7 +239,7 @@ def pyinstaller(tess: Path | None, ico: Path | None, sevenzip: Path | None = Non
 
 
 EXT_README = """\
-Расширение Chrome «PySimpleManager» — загрузка данных доменов и аккаунтов из manager
+Расширение Chrome «PySimpleManager» - загрузка данных доменов и аккаунтов из manager
 ====================================================================================
 
 Ставится один раз:
@@ -248,17 +248,17 @@ EXT_README = """\
 2. Включите «Режим разработчика» (переключатель справа вверху).
 3. Нажмите «Загрузить распакованное расширение» и выберите ЭТУ папку:
    {path}
-4. Запустите PySimpleManager — в окне расширения (значок на панели Chrome) появится «PySimpleManager подключён».
+4. Запустите PySimpleManager - в окне расширения (значок на панели Chrome) появится «PySimpleManager подключён».
 
 После обновления программы нажмите на карточке расширения в chrome://extensions кнопку «Обновить» (круглая стрелка).
 Папку не перемещайте и не удаляйте: Chrome загружает расширение из неё.
 
-Подробно — docs/MANAGER.md (в папке программы).
+Подробно - docs/MANAGER.md (в папке программы).
 """
 
 
 def extras() -> None:
-    """Рядом с программой: расширение Chrome, документация, README, CHANGELOG."""
+    """Рядом с программой: расширение Chrome, документация (docs/), CHANGELOG."""
     ext = DIST / "chrome_extension"
     shutil.copytree(ROOT / "doctool_extension", ext, ignore=shutil.ignore_patterns("__pycache__"))
     if os.name == "nt":
@@ -273,9 +273,8 @@ def extras() -> None:
     for f in ("USAGE.md", "MANAGER.md", "RELEASE.md"):
         if (ROOT / "docs" / f).exists():
             shutil.copy2(ROOT / "docs" / f, DIST / "docs" / f)
-    for f in ("README.md", "CHANGELOG.md"):
-        if (ROOT / f).exists():
-            shutil.copy2(ROOT / f, DIST / f)
+    if (ROOT / "CHANGELOG.md").exists():
+        shutil.copy2(ROOT / "CHANGELOG.md", DIST / "CHANGELOG.md")
 
 
 def iscc() -> str:
@@ -324,7 +323,7 @@ Description: PySimpleManager - проверка заявлений и паспо
  /opt/pysimplemanager/chrome_extension).
  .
  Архивы zip распаковываются самой программой; для rar и 7z нужен 7-Zip
- (пакет 7zip или p7zip-full), для rar — ещё unrar или 7zip-rar.
+ (пакет 7zip или p7zip-full), для rar - ещё unrar или 7zip-rar.
 """
 
 
@@ -354,9 +353,9 @@ def package_linux(v: str) -> Path:
 
 COMMAND = """\
 #!/bin/bash
-# Запуск PySimpleManager в окне Терминала. Закройте окно — программа остановится.
+# Запуск PySimpleManager в окне Терминала. Закройте окно - программа остановится.
 cd "$(dirname "$0")" || exit 1
-# Первый запуск: macOS разрешил этот файл («Конфиденциальность и безопасность → Всё равно открыть») —
+# Первый запуск: macOS разрешил этот файл («Конфиденциальность и безопасность → Всё равно открыть») -
 # снимаем карантин с остальных файлов программы, иначе система спросит про каждый.
 xattr -dr com.apple.quarantine . 2>/dev/null
 exec ./PySimpleManager "$@"

@@ -4,8 +4,8 @@
     res = run_case(CaseInput(...))         # распознать, сверить, вынести вердикт, сохранить отчёты
     recompute(res, overrides, confirmed)   # применить правки оператора и пересчитать
 
-Какие проверки выполнять, задаёт тип заявления (`checks:` в config/case_types.yaml), сами проверки —
-в реестре checks.py. Строки таблицы — BASE_ROWS + `rows:` бланка; поля заявления берутся по ролям
+Какие проверки выполнять, задаёт тип заявления (`checks:` в config/case_types.yaml), сами проверки -
+в реестре checks.py. Строки таблицы - BASE_ROWS + `rows:` бланка; поля заявления берутся по ролям
 (formspec.Fields), поэтому для нового бланка этот модуль менять не нужно.
 """
 from __future__ import annotations
@@ -49,14 +49,14 @@ class CaseInput:
     vlm_model: str | None = None           # напр. qwen3-vl:4b-instruct
     ollama: str = "http://127.0.0.1:11434"
     admin: object = None                   # AdminData или AdminDataProvider (данные администратора из системы)
-    check_date: str | None = None          # ДД.ММ.ГГГГ — на какую дату проверять срок действия
+    check_date: str | None = None          # ДД.ММ.ГГГГ - на какую дату проверять срок действия
     case_id: str | None = None
     out_root: str = "results"
     manager_autoload: bool = False         # после проверки загрузить данные Sd доменов заявления из manager
     llm_fields: bool = False               # (0.7.0) поля заявления читает нейросеть, а не регулярки бланка
     llm_model: str | None = None           # модель Ollama для полей (по умолчанию llm_extract.DEFAULT_MODEL, qwen3:8b)
-    llm_think: bool | None = True          # модель «рассуждает» перед ответом (qwen3); None — как у модели
-    # (0.7.6) рабочее место: страницы из разных файлов, разложенные оператором/программой. Элемент —
+    llm_think: bool | None = True          # модель «рассуждает» перед ответом (qwen3); None - как у модели
+    # (0.7.6) рабочее место: страницы из разных файлов, разложенные оператором/программой. Элемент -
     # {"path": файл, "index": № страницы с 0, "rotate": 0/90/180/270, "crop": [x, y, w, h] в пикселях страницы}.
     # Если задано, application/passport/combined не используются.
     app_sources: list | None = None
@@ -81,16 +81,16 @@ class CaseResult:
     confirmed: set = field(default_factory=set)
     notes: list = field(default_factory=list)
     admin: AdminData | None = None
-    domains_sd: list = field(default_factory=list)   # domains.DomainInfo — данные доменов из manager
+    domains_sd: list = field(default_factory=list)   # domains.DomainInfo - данные доменов из manager
     manual: bool = False                   # (0.7.3) данные заявления вводятся вручную, без файла (manual_case)
     registered: bool = False               # строка дела уже записана в реестр проверок (Excel)
 
 
 # ------------------------------------------------------------------ строки таблицы (общие для веб-интерфейса и выгрузки)
 
-# Стандартные строки. app — роли полей заявления (formspec.ROLES; подполе через точку), первое непустое
-# значение показывается в таблице; pas — поле паспорта («@fio» — фамилия, имя, отчество); edit — куда
-# записывается правка оператора (по умолчанию — первая роль из app; «?» — только если поле есть в заявлении).
+# Стандартные строки. app - роли полей заявления (formspec.ROLES; подполе через точку), первое непустое
+# значение показывается в таблице; pas - поле паспорта («@fio» - фамилия, имя, отчество); edit - куда
+# записывается правка оператора (по умолчанию - первая роль из app; «?» - только если поле есть в заявлении).
 # Проверки строки берутся из реестра (checks.py: names), бланк может добавить свои строки (`rows:` в YAML).
 BASE_ROWS = [
     {"id": "fio", "title": "ФИО", "app": ["applicant_fio", "applicant_header"], "pas": "@fio",
@@ -114,7 +114,7 @@ BASE_ROWS = [
 
 
 def rows_for(form: dict | None) -> list[dict]:
-    """Строки таблицы для бланка: стандартные + `rows:` из YAML; у каждой — названия её проверок (checks)."""
+    """Строки таблицы для бланка: стандартные + `rows:` из YAML; у каждой - названия её проверок (checks)."""
     out = []
     for r in BASE_ROWS + extra_rows(form):
         r = {"app": [], "pas": None, **r}
@@ -196,7 +196,7 @@ def classify_pages(pages: list[Page], forms: list[dict]) -> dict[int, str]:
             roles[p.index] = "passport"
         else:
             roles[p.index] = "unknown"
-    # неизвестные страницы после первой страницы паспорта — тоже паспорт (прописка, ранее выданные и т. п.)
+    # неизвестные страницы после первой страницы паспорта - тоже паспорт (прописка, ранее выданные и т. п.)
     seen_pas = False
     for i in sorted(roles):
         if roles[i] == "passport":
@@ -214,13 +214,13 @@ def _vlm(inp: CaseInput) -> OllamaVLM | None:
     v = OllamaVLM(model=inp.vlm_model, host=inp.ollama)
     log(f"Проверяю локальную модель {inp.vlm_model}…")
     if not v.available():
-        log(f"[!] Модель {inp.vlm_model} недоступна в Ollama ({inp.ollama}) — продолжаю без неё")
+        log(f"[!] Модель {inp.vlm_model} недоступна в Ollama ({inp.ollama}) - продолжаю без неё")
         return None
     return v
 
 
 def _llm(inp: CaseInput, res: "CaseResult") -> llm_extract.LLMConfig | None:
-    """Галка «Поля заявления — нейросетью»: настройки модели для этого дела (None — регулярки бланка)."""
+    """Галка «Поля заявления - нейросетью»: настройки модели для этого дела (None - регулярки бланка)."""
     if not inp.llm_fields:
         return None
     cfg = llm_extract.make_config(inp.llm_model, host=inp.ollama, think=inp.llm_think,
@@ -228,8 +228,8 @@ def _llm(inp: CaseInput, res: "CaseResult") -> llm_extract.LLMConfig | None:
     log(f"Поля заявления читает нейросеть {cfg.model}" + (" (с рассуждением)" if cfg.think else ""))
     why = llm_extract.available(cfg)
     if why:
-        log(f"[!] {why} — поля заявления будут прочитаны регулярками бланка")
-        res.notes.append(f"Поля заявления: нейросеть недоступна ({why}) — прочитаны регулярками бланка.")
+        log(f"[!] {why} - поля заявления будут прочитаны регулярками бланка")
+        res.notes.append(f"Поля заявления: нейросеть недоступна ({why}) - прочитаны регулярками бланка.")
         return None
     return cfg
 
@@ -262,7 +262,7 @@ def _safe_name(s: str) -> str:
 
 def load_sources(sources: list, cache: dict | None = None) -> list[Page]:
     """(0.7.6) Страницы рабочего места → Page по порядку: из файла берётся страница index, поворачивается на rotate
-    (по часовой стрелке) и обрезается по crop. Номера страниц (Page.index) — сквозные по списку."""
+    (по часовой стрелке) и обрезается по crop. Номера страниц (Page.index) - сквозные по списку."""
     from .ocr import rotate as rot_img
     cache = {} if cache is None else cache
     out: list[Page] = []
@@ -310,7 +310,7 @@ def run_case(inp: CaseInput) -> CaseResult:
         cache: dict = {}
         app_pages = load_sources(inp.app_sources or [], cache)
         pas_pages = load_sources(inp.pas_sources or [], cache)
-        log(f"Страницы: заявление — {len(app_pages)}, паспорт — {len(pas_pages)}")
+        log(f"Страницы: заявление - {len(app_pages)}, паспорт - {len(pas_pages)}")
     elif inp.combined:
         log("Общий файл: читаю страницы…")
         pages = load_document(inp.application or inp.passport)
@@ -318,7 +318,7 @@ def run_case(inp: CaseInput) -> CaseResult:
         res.page_roles = roles
         app_pages = [p for p in pages if roles.get(p.index) == "application"]
         pas_pages = [p for p in pages if roles.get(p.index) == "passport"]
-        log(f"Страницы: заявление — {[p.index + 1 for p in app_pages]}, паспорт — {[p.index + 1 for p in pas_pages]}")
+        log(f"Страницы: заявление - {[p.index + 1 for p in app_pages]}, паспорт - {[p.index + 1 for p in pas_pages]}")
     else:
         if inp.application:
             app_pages = load_document(inp.application)
@@ -336,12 +336,12 @@ def run_case(inp: CaseInput) -> CaseResult:
     else:
         res.app = Extraction(doc_type="none", source_file=inp.application or "")
         if app_pages and not ct.get("form"):
-            res.notes.append("Для этого типа заявления бланк ещё не настроен — проверяется только паспорт.")
+            res.notes.append("Для этого типа заявления бланк ещё не настроен - проверяется только паспорт.")
     # --- паспорт
     if pas_pages:
         res.pas = extract_passport(pas_pages, vlm, mode=inp.pas_mode)
     elif ct.get("needs_passport"):
-        res.notes.append("Паспорт не загружен — сверка с паспортом не выполнялась.")
+        res.notes.append("Паспорт не загружен - сверка с паспортом не выполнялась.")
 
     # --- ранее выданные паспорта: ищем, только если номера не совпали
     F = Fields(res.app)
@@ -373,7 +373,7 @@ def run_case(inp: CaseInput) -> CaseResult:
 
 def manual_case(inp: CaseInput) -> CaseResult:
     """(0.7.3) Дело без файлов: данные заявления оператор вписывает в таблицу сам и нажимает «Пересчитать»
-    (recompute). Проверки — те же, что у типа заявления; сверка с паспортом не выполняется (паспорта нет),
+    (recompute). Проверки - те же, что у типа заявления; сверка с паспортом не выполняется (паспорта нет),
     данные доменов из manager сверяются с введёнными данными заявления (domains.reference).
     В реестр проверок дело попадает при первом пересчёте с данными."""
     ct = load_case_types()[inp.case_type]
@@ -385,7 +385,7 @@ def manual_case(inp: CaseInput) -> CaseResult:
     res.app.debug["mode"] = "manual"
     res.notes.append("Данные заявления вводятся вручную (без файла заявления).")
     if ct.get("needs_passport"):
-        res.notes.append("Паспорт не загружен — сверка с паспортом не выполнялась.")
+        res.notes.append("Паспорт не загружен - сверка с паспортом не выполнялась.")
     _evaluate(res)
     save_outputs(res, registry=False)
     log("Ручной ввод данных заявления: дело создано")
@@ -397,7 +397,7 @@ def _evaluate(res: CaseResult) -> None:
     on = parsers.parse_date(inp.check_date) if inp.check_date else None
     ctx = checklib.Ctx(res.app, res.pas, on=on, previous=res.previous_passports, admin=res.admin,
                        domains_sd=res.domains_sd)
-    # проверки типа заявления (checks: в case_types.yaml; тип без бланка — только паспорт и данные из системы)
+    # проверки типа заявления (checks: в case_types.yaml; тип без бланка - только паспорт и данные из системы)
     checks, flags = checklib.run(checklib.ids_for(res.case_type), ctx)
     # подтверждения оператора: «нужна ручная проверка»/«проверить» по подтверждённой строке → в порядке
     for r in rows_for(ctx.form):
@@ -426,7 +426,7 @@ def case_domains(res: CaseResult) -> list[str]:
 # ------------------------------------------------------------------ правки оператора
 
 def _field_types(form: dict | None) -> dict[str, str]:
-    """{поле: type} бланка заявления; без бланка — всех бланков."""
+    """{поле: type} бланка заявления; без бланка - всех бланков."""
     out = {}
     for f in ([form] if form else load_forms()):
         for k, spec in f["fields"].items():
@@ -457,7 +457,7 @@ def recompute(res: CaseResult, overrides: dict | None = None, confirmed: set | l
                 old = res.app.fields.get(key)
                 if not v:
                     # значение стёрто: поле и его подполя пустые (фрагмент скана остаётся). Подполя, у которых
-                    # своя строка таблицы (дата рождения, дата выдачи), не трогаем — их правят в своей строке.
+                    # своя строка таблицы (дата рождения, дата выдачи), не трогаем - их правят в своей строке.
                     for k in [k for k in res.app.fields if (k == key or k.startswith(key + ".")) and k not in own_rows]:
                         del res.app.fields[k]
                     if old is not None and old.crop:
@@ -481,7 +481,7 @@ def recompute(res: CaseResult, overrides: dict | None = None, confirmed: set | l
     if confirmed is not None:
         res.confirmed = set(confirmed)
     _evaluate(res)
-    # ручной ввод: в реестр проверок — при первом пересчёте, когда уже есть данные
+    # ручной ввод: в реестр проверок - при первом пересчёте, когда уже есть данные
     register = res.manual and not res.registered and res.app is not None and any(f.value for f in res.app.fields.values())
     save_outputs(res, registry=register)
     res.registered = res.registered or register
@@ -492,7 +492,7 @@ def recompute(res: CaseResult, overrides: dict | None = None, confirmed: set | l
 
 def build_record(res: CaseResult) -> dict:
     """Запись для автозаполнения формы во внутренней системе (схема doctool.case.v1).
-    Личные данные берутся из паспорта (если он есть), остальное — из заявления."""
+    Личные данные берутся из паспорта (если он есть), остальное - из заявления."""
     a, p = res.app, res.pas
     F = Fields(a)
     ag = F.get if a is not None else (lambda k, d=None: d)
@@ -547,7 +547,7 @@ def build_record(res: CaseResult) -> dict:
         },
         "contract": ag("contract"),
         "application_date": ag("application_date"),
-        # все поля бланка как есть (ключи — имена полей из forms/<id>/form.yaml): новый бланк попадает
+        # все поля бланка как есть (ключи - имена полей из forms/<id>/form.yaml): новый бланк попадает
         # в выгрузку без изменений кода
         "application_form": a.doc_type if a is not None else None,
         "application_fields_reader": _fields_reader(res),      # regex | reference (0.7.3) | manual | llm:<модель>
@@ -561,7 +561,7 @@ def build_record(res: CaseResult) -> dict:
         "checks": [c.to_dict() for c in res.checks],
         "files": {"application": res.inp.application, "passport": res.inp.passport,
                   "combined": res.inp.combined, "page_roles": {str(k): v for k, v in res.page_roles.items()},
-                  # (0.7.6) рабочее место: какие страницы каких файлов — заявление и паспорт
+                  # (0.7.6) рабочее место: какие страницы каких файлов - заявление и паспорт
                   **({"app_sources": res.inp.app_sources or [], "pas_sources": res.inp.pas_sources or []}
                      if res.inp.app_sources is not None or res.inp.pas_sources is not None else {})},
     }
@@ -598,7 +598,7 @@ def save_outputs(res: CaseResult, registry: bool = True) -> None:
     (d / "result.json").write_text(json.dumps(full, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     (d / "export.json").write_text(json.dumps(res.record, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     if res.app is not None and any(k in res.app.debug for k in ("llm", "llm_error")):
-        # (0.7.0-dev) режим модели: что модель получила и ответила, время — для разбора и сравнения с регулярками
+        # (0.7.0-dev) режим модели: что модель получила и ответила, время - для разбора и сравнения с регулярками
         dbg = {k: res.app.debug[k] for k in ("mode", "llm", "llm_error", "page_text", "application_pages")
                if k in res.app.debug}
         (d / "llm_debug.json").write_text(json.dumps(dbg, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
@@ -615,5 +615,5 @@ def save_outputs(res: CaseResult, registry: bool = True) -> None:
             append_excel(xlsx, res.case_id, res.app, res.pas, res.checks, decision=res.decision)
         except PermissionError:
             alt = Path(res.inp.out_root) / f"реестр_проверок_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
-            log(f"[!] Реестр открыт в Excel — записываю в {alt.name}")
+            log(f"[!] Реестр открыт в Excel - записываю в {alt.name}")
             append_excel(alt, res.case_id, res.app, res.pas, res.checks, decision=res.decision)

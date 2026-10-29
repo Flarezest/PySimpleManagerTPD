@@ -2,7 +2,7 @@
 ;   ISCC /DAppVersion=0.7.5 /DSourceDir=<папка PyInstaller> /DOutDir=<куда> [/DIconFile=<.ico>] pysimplemanager.iss
 ; Ставится для текущего пользователя (без прав администратора) в %LOCALAPPDATA%\Programs\PySimpleManager.
 ; Данные пользователя (Документы\PySimpleManager) установка, обновление и удаление не трогают.
-; Файл в UTF-8 с BOM — иначе Inno Setup прочитает русский текст в кодировке ANSI.
+; Файл в UTF-8 с BOM - иначе Inno Setup прочитает русский текст в кодировке ANSI.
 
 #define AppName "PySimpleManager"
 #ifndef AppVersion

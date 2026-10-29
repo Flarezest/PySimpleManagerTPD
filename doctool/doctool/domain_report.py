@@ -1,14 +1,14 @@
-"""Выгрузка по доменам из manager — отдельный HTML-файл (кнопка «Выгрузка по доменам» в веб-интерфейсе).
+"""Выгрузка по доменам из manager - отдельный HTML-файл (кнопка «Выгрузка по доменам» в веб-интерфейсе).
 
-На входе — домены в виде DomainInfo.to_dict() (как в таблице интерфейса и в export.json), на выходе — одна
+На входе - домены в виде DomainInfo.to_dict() (как в таблице интерфейса и в export.json), на выходе - одна
 самодостаточная страница: итог по группам «проблемности», проверки, администраторы найденных доменов,
-замечания «к сведению» и таблица доменов с фильтром. Внешних ресурсов нет — файл можно переслать.
+замечания «к сведению» и таблица доменов с фильтром. Внешних ресурсов нет - файл можно переслать.
 
-С 0.6.0 у доменов физлиц — колонка «ЕСИА» (идентификация через Госуслуги) и кнопка ESIA рядом с Sd / S:
-окно сверки Sd ↔ ЕСИА встроено в файл (данные — в блоке <script type="application/json" id="esia-data">).
-С 0.7.2 — то же у доменов юрлиц; provider — отдельная колонка; таблицу доменов можно сортировать щелчком
-по заголовку колонки (повторный щелчок — обратный порядок, «По группам» — исходный вид).
-С 0.8.4 — колонка «MO» и кнопка MO: сверка Sd домена с базовой анкетой владельца аккаунта (данные — в блоке
+С 0.6.0 у доменов физлиц - колонка «ЕСИА» (идентификация через Госуслуги) и кнопка ESIA рядом с Sd / S:
+окно сверки Sd ↔ ЕСИА встроено в файл (данные - в блоке <script type="application/json" id="esia-data">).
+С 0.7.2 - то же у доменов юрлиц; provider - отдельная колонка; таблицу доменов можно сортировать щелчком
+по заголовку колонки (повторный щелчок - обратный порядок, «По группам» - исходный вид).
+С 0.8.4 - колонка «MO» и кнопка MO: сверка Sd домена с базовой анкетой владельца аккаунта (данные - в блоке
 <script type="application/json" id="mo-data">).
 """
 from __future__ import annotations
@@ -38,8 +38,8 @@ def _link(url: str, text: str) -> str:
 
 
 def admin_key(d: dict) -> tuple:
-    """Кто администратор (как в проверке «Администратор у доменов один»): физлицо — по паспорту или ФИО,
-    юрлицо — по ИНН или названию, остальные зоны — по названию/ФИО."""
+    """Кто администратор (как в проверке «Администратор у доменов один»): физлицо - по паспорту или ФИО,
+    юрлицо - по ИНН или названию, остальные зоны - по названию/ФИО."""
     sd = d.get("sd") or {}
     if d.get("kind") == "person":
         return ("person", _digits(d.get("passport")) or (d.get("fio") or "").upper())
@@ -71,22 +71,22 @@ def _services(d: dict) -> list[tuple[str, str]]:
 
 
 def notes(items: list[dict]) -> list[str]:
-    """Замечания «к сведению» — то, что видно только по всему списку сразу."""
+    """Замечания «к сведению» - то, что видно только по всему списку сразу."""
     out: list[str] = []
     found = [d for d in items if d.get("status") == FOUND]
-    st = Counter(d.get("service_status") or "—" for d in found)
+    st = Counter(d.get("service_status") or "-" for d in found)
     if found and any(not k.startswith("Активна") for k in st):
-        out.append("Статусы услуг найденных доменов: " + ", ".join(f"{_e(k)} — {v}" for k, v in st.most_common()) + ".")
+        out.append("Статусы услуг найденных доменов: " + ", ".join(f"{_e(k)} - {v}" for k, v in st.most_common()) + ".")
     if found and not any(d.get("verdict") for d in found):
         out.append("Сверка с заявлением и паспортом не выполнялась: данные загружены без проверки дела. "
-                   "Проверки «Заявитель — администратор доменов (Sd)» и «Паспорт в Sd» не выполнены.")
+                   "Проверки «Заявитель - администратор доменов (Sd)» и «Паспорт в Sd» не выполнены.")
     by_acc: dict[str, OrderedDict] = {}
     for d in found:
-        by_acc.setdefault(d.get("account") or "—", OrderedDict()).setdefault(admin_key(d), []).append(d)
+        by_acc.setdefault(d.get("account") or "-", OrderedDict()).setdefault(admin_key(d), []).append(d)
     for acc, admins in by_acc.items():
         if len(admins) > 1:
             out.append(f"В аккаунте {_e(acc)} домены разных администраторов: "
-                       + "; ".join(f"{_e(v[0].get('holder') or '(не заполнено)')} — {len(v)}" for v in admins.values()) + ".")
+                       + "; ".join(f"{_e(v[0].get('holder') or '(не заполнено)')} - {len(v)}" for v in admins.values()) + ".")
     by_pas: dict[str, list] = {}
     for d in found:
         if d.get("kind") == "person" and _digits(d.get("passport")):
@@ -105,17 +105,17 @@ def notes(items: list[dict]) -> list[str]:
     sim = similar_known(items)
     if sim:
         st_of = {d["domain"]: d.get("service_status") or "" for d in found}
-        out.append("Не найдены в manager, но похожи на домены из списка (возможна ошибка распознавания заявления — "
+        out.append("Не найдены в manager, но похожи на домены из списка (возможна ошибка распознавания заявления - "
                    "сверьте со сканом): " + "; ".join(
                        f"{_e(a)} → {_e(b)}" + (f" ({_e(st_of[b])})" if st_of.get(b) else "") for a, b in sim.items()) + ".")
     werr = [d for d in items if (d.get("whois") or {}).get("status") == "error"]
     if werr:
-        out.append("WHOIS не дал ответа: " + "; ".join(f"{_e(d['domain'])} — {_e((d.get('whois') or {}).get('error', ''))}"
+        out.append("WHOIS не дал ответа: " + "; ".join(f"{_e(d['domain'])} - {_e((d.get('whois') or {}).get('error', ''))}"
                                                        for d in werr[:10]) + ".")
     amb = [d for d in items if d.get("error_code") == "ambiguous"]
     if amb:
         all_d = [d["domain"] for d in amb if _services(d) and all(s == "D" for _, s in _services(d))]
-        out.append(f"«Найдено несколько услуг» — {len(amb)}: активной (A) услуги нет, расширение не выбирает услугу само. "
+        out.append(f"«Найдено несколько услуг» - {len(amb)}: активной (A) услуги нет, расширение не выбирает услугу само. "
                    "Откройте Sd по ссылкам в таблице" + (f"; все услуги удалены (D): {', '.join(map(_e, all_d))}" if all_d else "")
                    + ".")
     esia = [d for d in found if d.get("esia_status")]
@@ -123,18 +123,18 @@ def notes(items: list[dict]) -> list[str]:
         st = Counter(d.get("esia_state") or {"none": "не проходил", "no_link": "нет ссылки на Sd", "error": "ошибка"}
                      .get(d.get("esia_status"), "без state") for d in esia)
         bad = [d["domain"] for d in esia if d.get("esia_status") == "mismatch"]
-        out.append("Идентификация через Госуслуги (ЕСИА) по Sd доменов (физлица и юрлица): " + ", ".join(f"{_e(k)} — {v}" for k, v in st.most_common())
+        out.append("Идентификация через Госуслуги (ЕСИА) по Sd доменов (физлица и юрлица): " + ", ".join(f"{_e(k)} - {v}" for k, v in st.most_common())
                    + (f"; данные Sd не совпадают с ЕСИА: {', '.join(map(_e, bad[:15]))}{' и др.' if len(bad) > 15 else ''}" if bad else "")
-                   + ". На вердикт не влияет — кнопка ESIA у домена открывает сверку.")
+                   + ". На вердикт не влияет - кнопка ESIA у домена открывает сверку.")
     mo_bad = [d["domain"] for d in found if d.get("mo_status") == "mismatch"]
     if mo_bad:
         out.append("Администратор домена (Sd) не совпадает с владельцем аккаунта (базовая анкета, MO): "
                    + ", ".join(map(_e, mo_bad[:15])) + (" и др." if len(mo_bad) > 15 else "")
-                   + ". На вердикт не влияет — кнопка MO у домена открывает сверку.")
+                   + ". На вердикт не влияет - кнопка MO у домена открывает сверку.")
     other = Counter(d.get("group") or "?" for d in found if d.get("kind") not in ("person", "org"))
     if other:
-        out.append("Домены с другим типом контактов (не ru_pp/ru_org) — сверка только вручную: "
-                   + ", ".join(f"{_e(k)} — {v}" for k, v in other.items()) + ".")
+        out.append("Домены с другим типом контактов (не ru_pp/ru_org) - сверка только вручную: "
+                   + ", ".join(f"{_e(k)} - {v}" for k, v in other.items()) + ".")
     return out
 
 
@@ -154,20 +154,20 @@ def _admins_table(found: list[dict]) -> str:
         d0, sd = lst[0], lst[0].get("sd") or {}
         if d0.get("kind") == "person":
             who = _e(d0.get("fio") or "") or "<i>ФИО в Sd не заполнено</i>"
-            doc = (f"{_e(d0.get('passport') or '—')}<br><span class=src>д. р. {_e(sd.get('birth_date') or '—')}"
+            doc = (f"{_e(d0.get('passport') or '-')}<br><span class=src>д. р. {_e(sd.get('birth_date') or '-')}"
                    + (f", выдан {_e(sd['passport_date'])}" if sd.get("passport_date") else "") + "</span>")
         elif d0.get("kind") == "org":
-            who, doc = _e(d0.get("holder") or ""), f"ИНН {_e(sd.get('code') or '—')}"
+            who, doc = _e(d0.get("holder") or ""), f"ИНН {_e(sd.get('code') or '-')}"
         else:
-            who, doc = _e(d0.get("holder") or "—"), "—"
+            who, doc = _e(d0.get("holder") or "-"), "-"
         mails = sorted({m for d in lst for m in d.get("emails") or []})
-        st = Counter(d.get("service_status") or "—" for d in lst)
-        accs = sorted({d.get("account") or "—" for d in lst})
+        st = Counter(d.get("service_status") or "-" for d in lst)
+        accs = sorted({d.get("account") or "-" for d in lst})
         doms = ", ".join(_e(d["domain"]) for d in lst)
         cell = doms if len(lst) <= 3 else f"<details><summary>{len(lst)} доменов</summary>{doms}</details>"
         rows.append(f"<tr><td>{who}<br><span class=src>{_e(d0.get('kind_ru') or d0.get('group') or '')}</span></td>"
-                    f"<td>{doc}</td><td>{'<br>'.join(map(_e, mails)) or '—'}</td>"
-                    f"<td>{'<br>'.join(f'{_e(k)} — {v}' for k, v in st.items())}</td><td>{', '.join(map(_e, accs))}</td>"
+                    f"<td>{doc}</td><td>{'<br>'.join(map(_e, mails)) or '-'}</td>"
+                    f"<td>{'<br>'.join(f'{_e(k)} - {v}' for k, v in st.items())}</td><td>{', '.join(map(_e, accs))}</td>"
                     f"<td class=num>{len(lst)}</td><td>{cell}</td></tr>")
     return ("<table><tr><th>Администратор (Sd)</th><th>Паспорт / ИНН</th><th>E-mail</th><th>Статус услуги</th>"
             "<th>Аккаунт</th><th>Доменов</th><th>Домены</th></tr>" + "".join(rows) + "</table>")
@@ -184,7 +184,7 @@ def _domain_row(d: dict, similar: dict[str, str]) -> str:
     esia_btn = f' <button class="esia" data-d="{_e(dom)}">ESIA</button>' if d.get("esia") or d.get("esia_status") else ""
     if d.get("mo_status"):
         esia_btn += f' <button class="esia mo" data-d="{_e(dom)}" title="MO: Sd ↔ базовая анкета владельца аккаунта">MO</button>'
-    kb = (f' <button class="kb" data-c="{_e(d["admin_comment"])}" title="Комментарий администратора в S — показать">К</button>'
+    kb = (f' <button class="kb" data-c="{_e(d["admin_comment"])}" title="Комментарий администратора в S - показать">К</button>'
           if d.get("admin_comment") else "")
     head = f'<td data-k="{_e(dom)}"><b>{_e(dom)}</b>{kb}<br><span class=src>{" ".join(links)}</span>{esia_btn}</td>'
     if d.get("status") == NOT_FOUND:
@@ -213,37 +213,37 @@ def _domain_row(d: dict, similar: dict[str, str]) -> str:
     mail = (f"<br>e-mail: {', '.join(map(_e, d['emails']))}" if d.get("emails") else "")
     if d.get("kind") == "person":
         who = _e(d.get("fio") or "") or "<i>ФИО в Sd не заполнено</i>"
-        data = (f"{who}<br><span class=src>физлицо, паспорт {_e(d.get('passport') or '—')} от "
-                f"{_e(sd.get('passport_date') or '—')}" + (f", д. р. {_e(sd['birth_date'])}" if sd.get("birth_date") else "")
+        data = (f"{who}<br><span class=src>физлицо, паспорт {_e(d.get('passport') or '-')} от "
+                f"{_e(sd.get('passport_date') or '-')}" + (f", д. р. {_e(sd['birth_date'])}" if sd.get("birth_date") else "")
                 + (f"<br>кем выдан (Sd): {_e(sd['passport_place'])}" if sd.get("passport_place") else "") + mail + "</span>")
         q = f"{dom} {d.get('fio', '')} {d.get('passport', '')} {' '.join(d.get('emails') or [])}"
     elif d.get("kind") == "org":
-        data = f"{_e(d.get('holder') or '')}<br><span class=src>юрлицо, ИНН {_e(sd.get('code') or '—')}{mail}</span>"
+        data = f"{_e(d.get('holder') or '')}<br><span class=src>юрлицо, ИНН {_e(sd.get('code') or '-')}{mail}</span>"
         q = f"{dom} {d.get('holder', '')} {sd.get('code', '')} {' '.join(d.get('emails') or [])}"
     else:
-        data = (f"{_e(d.get('holder') or '—')}<br><span class=src>контакты {_e(d.get('group') or '?')}{mail}</span>")
+        data = (f"{_e(d.get('holder') or '-')}<br><span class=src>контакты {_e(d.get('group') or '?')}{mail}</span>")
         q = f"{dom} {d.get('holder', '')} {' '.join(d.get('emails') or [])}"
     cmp_rows = [r for r in d.get("compare") or [] if r.get("status") != "ok"]
     if d.get("verdict"):
         cmp_ = (f"<b>{STATUS_RU.get(d['verdict'], d['verdict'])}</b>" + "".join(
-            f"<br>{_e(r['title'])}: {STATUS_RU[r['status']]}" + (f" — {_e(r['detail'])}" if r.get("detail") else "")
+            f"<br>{_e(r['title'])}: {STATUS_RU[r['status']]}" + (f" - {_e(r['detail'])}" if r.get("detail") else "")
             for r in cmp_rows))
     else:
-        cmp_ = "<span class=src>не выполнялась — нет заявления и паспорта</span>"
+        cmp_ = "<span class=src>не выполнялась - нет заявления и паспорта</span>"
     flags = d.get("flags") or []
     if flags:
         cmp_ += "".join(f'<br><span class="tag {_FLAG_CLS.get(f["level"], "info")}">{_FLAG_RU.get(f["level"], f["level"])}</span> '
                         f'{_e(f["text"])}' for f in flags)
-    extra = (f"аккаунт: {_e(d.get('account') or '—')}" + (f" <span class=src>(логин {_e(d['login'])})</span>" if d.get("login") else "")
+    extra = (f"аккаунт: {_e(d.get('account') or '-')}" + (f" <span class=src>(логин {_e(d['login'])})</span>" if d.get("login") else "")
              + (f"<br>e-mail аккаунта: {_e(d['account_email'])}" if d.get("account_email") else "")
              + "<br>"
-             f"смена админа: {_e(d.get('last_admin_change') or '—')}<br>"
-             f"страна: {_e(sd.get('country') or sd.get('o_country_code') or '—')}")
+             f"смена админа: {_e(d.get('last_admin_change') or '-')}<br>"
+             f"страна: {_e(sd.get('country') or sd.get('o_country_code') or '-')}")
     cls = d.get("verdict") or ""
     q += f" {d.get('esia_ru', '')} {d.get('mo_ru', '')} {d.get('provider', '')} {d.get('login', '')} {d.get('account_email', '')} {d.get('admin_comment', '')}"
     return (f'<tr class="{cls}" data-q="{_e(q)}">{head}<td>найден<br><span{"" if sst.startswith("Активна") else " class=bad"}>'
             f"{_e(sst)}</span></td><td>{data}</td><td>{cmp_}</td><td>{_esia_cell(d)}</td><td>{_mo_cell(d)}</td>"
-            f"<td>{_e(d.get('provider') or '—')}</td><td>{extra}</td></tr>")
+            f"<td>{_e(d.get('provider') or '-')}</td><td>{extra}</td></tr>")
 
 
 _FLAG_RU = {"stop": "стоп", "warn": "внимание", "info": "к сведению"}
@@ -255,7 +255,7 @@ _ESIA_CLS = {"match": "ok", "warn": "warn", "mismatch": "fail", "none": "info", 
 
 def _esia_cell(d: dict) -> str:
     if not d.get("esia_status"):
-        return "<span class=src>—</span>"
+        return "<span class=src>-</span>"
     state = d.get("esia_state") or ""
     text = (d.get("esia_ru") or "").replace(f"{state} · ", "", 1) if state else d.get("esia_ru") or ""
     return ((f"<b>{_e(state)}</b><br>" if state else "")
@@ -267,12 +267,12 @@ _MO_CLS = {"match": "ok", "warn": "warn", "mismatch": "fail", "no_data": "review
 
 def _mo_cell(d: dict) -> str:
     if not d.get("mo_status"):
-        return "<span class=src>—</span>"
+        return "<span class=src>-</span>"
     return f'<span class="tag {_MO_CLS.get(d["mo_status"], "info")}">{_e(d.get("mo_ru") or "")}</span>'
 
 
 def _mo_data(items: list[dict]) -> str:
-    """(0.8.4) Данные для окна MO: по домену — аккаунт, тип анкеты, строки сверки Sd ↔ базовая анкета."""
+    """(0.8.4) Данные для окна MO: по домену - аккаунт, тип анкеты, строки сверки Sd ↔ базовая анкета."""
     out = {}
     for d in items:
         if not d.get("mo_status"):
@@ -290,7 +290,7 @@ def _mo_data(items: list[dict]) -> str:
 
 
 def _esia_data(items: list[dict]) -> str:
-    """Данные для окна ESIA (JSON внутри страницы): по домену — шапка, строки сверки, история попыток."""
+    """Данные для окна ESIA (JSON внутри страницы): по домену - шапка, строки сверки, история попыток."""
     out = {}
     for d in items:
         e = d.get("esia") or {}
@@ -314,7 +314,7 @@ def _esia_data(items: list[dict]) -> str:
 
 _JS = """
 (function(){
-  // (0.7.6) «К» — комментарий администратора в S: окошко с текстом
+  // (0.7.6) «К» - комментарий администратора в S: окошко с текстом
   var pop=null;
   document.addEventListener('click', function(e){
     var b=e.target.closest && e.target.closest('button.kb');
@@ -341,7 +341,7 @@ _JS = """
     fin(head); shown.textContent=t?('показано '+n+' из '+total):'';
   }
   q.addEventListener('input', apply);
-  // сортировка щелчком по заголовку: повторный щелчок — обратный порядок; «По группам» — исходный вид
+  // сортировка щелчком по заголовку: повторный щелчок - обратный порядок; «По группам» - исходный вид
   var heads=[].slice.call(document.querySelectorAll('#dom thead th')), reset=document.getElementById('bygroups');
   function key(r, i){ var c=r.cells[i]; if(!c) return ''; var k=c.getAttribute('data-k');
     return (k!==null?k:c.textContent).replace(/\\s+/g,' ').trim().toLowerCase(); }
@@ -350,8 +350,8 @@ _JS = """
   heads.forEach(function(h, i){ h.addEventListener('click', function(){
     var dir = sorted && sorted.col===i ? -sorted.dir : 1; sorted={col:i, dir:dir};
     var data=rows.filter(function(r){ return r.dataset.q; });
-    data.sort(function(a, b){ var x=key(a,i), y=key(b,i), ex=!x||x==='—', ey=!y||y==='—';
-      if(ex!==ey) return ex?1:-1;                       // пустые — всегда в конце
+    data.sort(function(a, b){ var x=key(a,i), y=key(b,i), ex=!x||x==='-', ey=!y||y==='-';
+      if(ex!==ey) return ex?1:-1;                       // пустые - всегда в конце
       return dir*x.localeCompare(y, 'ru', {numeric:true}); });
     data.forEach(function(r){ tb.appendChild(r); }); mark(); apply(); }); });
   reset.addEventListener('click', function(){ sorted=null; rows.forEach(function(r){ tb.appendChild(r); }); mark(); apply(); });
@@ -372,10 +372,10 @@ _ESIA_JS = """
     var b = ev.target.closest ? ev.target.closest('button.esia:not(.mo)') : null;
     if (!b) return;
     var x = data[b.getAttribute('data-d')]; if (!x) return;
-    document.getElementById('esiaTitle').textContent = 'ЕСИА ↔ Sd — ' + b.getAttribute('data-d');
-    var h = '<table class="kv"><tr><th>state</th><td>' + e(x.state || '—') + '</td><th>создано / обработано</th><td>' + e(x.created || '—')
-      + ' / ' + e(x.processed || '—') + '</td></tr><tr><th>action</th><td>' + e(x.action || '—') + (x.reason ? '<br>reason: ' + e(x.reason) : '')
-      + (x.comment ? '<br>' + e(x.comment) : '') + '</td><th>данные ЕСИА</th><td>' + (x.trusted === undefined || x.trusted === null ? '—'
+    document.getElementById('esiaTitle').textContent = 'ЕСИА ↔ Sd - ' + b.getAttribute('data-d');
+    var h = '<table class="kv"><tr><th>state</th><td>' + e(x.state || '-') + '</td><th>создано / обработано</th><td>' + e(x.created || '-')
+      + ' / ' + e(x.processed || '-') + '</td></tr><tr><th>action</th><td>' + e(x.action || '-') + (x.reason ? '<br>reason: ' + e(x.reason) : '')
+      + (x.comment ? '<br>' + e(x.comment) : '') + '</td><th>данные ЕСИА</th><td>' + (x.trusted === undefined || x.trusted === null ? '-'
       : 'trusted: ' + (x.trusted ? 'да' : 'нет')) + (x.vrf ? ' · паспорт: ' + e(x.vrf) : '')
       + (x.ogrn ? '<br>ОГРН ' + e(x.ogrn) : '') + (x.liquidated === true ? '<br><b class=bad>ликвидирована</b>' : x.liquidated === false ? ' · действует' : '')
       + '</td></tr>' + (x.address ? '<tr><th>юр. адрес (ЕСИА)</th><td colspan="3">' + e(x.address) + '</td></tr>' : '')
@@ -390,8 +390,8 @@ _ESIA_JS = """
         h += '<tr><td>' + e(r.title) + '</td><td' + c + '>' + e(r.sd) + '<br><span class=src>' + e(r.field) + '</span></td><td' + c + '>'
           + e(r.esia) + '<br><span class=src>' + e(r.esia_field) + '</span></td><td class=src>' + e(r.detail) + '</td></tr>';
       });
-      h += '</table><p class=src>Зелёный — совпадает, красный — расходится, жёлтый — написано по-разному (кем выдан, тип улицы, корпус, '
-        + 'форма организации указана с одной стороны); без цвета — значения нет с одной из сторон. ООО = «Общество с ограниченной '
+      h += '</table><p class=src>Зелёный - совпадает, красный - расходится, жёлтый - написано по-разному (кем выдан, тип улицы, корпус, '
+        + 'форма организации указана с одной стороны); без цвета - значения нет с одной из сторон. ООО = «Общество с ограниченной '
         + 'ответственностью», АО/НПАО = «(Непубличное) акционерное общество» и т. п.</p>';
     }
     if (x.history.length) {
@@ -416,11 +416,11 @@ _MO_JS = """
     var b = ev.target.closest ? ev.target.closest('button.mo') : null;
     if (!b) return;
     var x = data[b.getAttribute('data-d')]; if (!x) return;
-    document.getElementById('moTitle').textContent = 'MO · Sd ↔ владелец аккаунта — ' + b.getAttribute('data-d');
-    var h = '<table class="kv"><tr><th>итог</th><td colspan="3">' + e(x.text) + '</td></tr><tr><th>аккаунт</th><td>#' + e(x.account || '—')
+    document.getElementById('moTitle').textContent = 'MO · Sd ↔ владелец аккаунта - ' + b.getAttribute('data-d');
+    var h = '<table class="kv"><tr><th>итог</th><td colspan="3">' + e(x.text) + '</td></tr><tr><th>аккаунт</th><td>#' + e(x.account || '-')
       + (x.login ? ' · ' + e(x.login) : '') + (x.email ? '<br>e-mail: ' + e(x.email) : '') + '</td><th>базовая анкета</th><td>'
-      + e(x.type || '—') + '</td></tr><tr><th>matches_user_contacts (Sd)</th><td>' + e(x.mu === '' ? '—' : x.mu)
-      + ' <span class=src>— поле manager, для справки</span></td><th>ссылки</th><td>'
+      + e(x.type || '-') + '</td></tr><tr><th>matches_user_contacts (Sd)</th><td>' + e(x.mu === '' ? '-' : x.mu)
+      + ' <span class=src>- поле manager, для справки</span></td><th>ссылки</th><td>'
       + [a(x.ud_url, 'Данные пользователя'), a(x.runic_url, 'Базовая анкета'), a(x.sd_url, 'Sd')].filter(Boolean).join(' · ') + '</td></tr></table>';
     if (x.rows.length) {
       h += '<table><tr><th>Поле</th><th>Sd (' + e(x.group || 'ru_pp') + ')</th><th>Базовая анкета</th><th></th></tr>';
@@ -429,7 +429,7 @@ _MO_JS = """
         h += '<tr><td>' + e(r.title) + '</td><td' + c + '>' + e(r.sd) + '<br><span class=src>' + e(r.field) + '</span></td><td' + c + '>'
           + e(r.ba) + '<br><span class=src>' + e(r.ba_field) + '</span></td><td class=src>' + e(r.detail) + '</td></tr>';
       });
-      h += '</table><p class=src>Зелёный — совпадает, красный — расходится, жёлтый — написано по-разному; без цвета — значения '
+      h += '</table><p class=src>Зелёный - совпадает, красный - расходится, жёлтый - написано по-разному; без цвета - значения '
         + 'нет с одной из сторон. Телефоны и e-mail совпадают, если есть общий. На вердикт MO не влияет.</p>';
     }
     document.getElementById('moBody').innerHTML = h;
@@ -468,7 +468,7 @@ button.mo{border-color:#6b46c1;color:#6b46c1}
 
 
 def build(domains: list[dict], case_id: str = "", case_title: str = "", checks: list[Check] | None = None) -> str:
-    """HTML-выгрузка по доменам. checks — проверки дела (если домены загружены после проверки заявления);
+    """HTML-выгрузка по доменам. checks - проверки дела (если домены загружены после проверки заявления);
     без них считаются проверки, которым документы не нужны («Домены в manager», «Администратор у доменов один»)."""
     items = [d if isinstance(d, dict) else d.to_dict() for d in domains]
     items = sort_by_problem(items)
@@ -484,7 +484,7 @@ def build(domains: list[dict], case_id: str = "", case_title: str = "", checks: 
     for d in items:
         if d.get("problem") != group:
             group = d.get("problem")
-            rows.append(f'<tr class="grp" id="g-{_e(group or "")}"><td colspan="8">{_e(titles.get(group, group or ""))} — '
+            rows.append(f'<tr class="grp" id="g-{_e(group or "")}"><td colspan="8">{_e(titles.get(group, group or ""))} - '
                         f'<span class="cnt" data-total="{counts[group]}">{counts[group]}</span></td></tr>')
         rows.append(_domain_row(d, sim))
     summary = " · ".join(f'<a href="#g-{code}">{_e(title)}: <b>{counts[code]}</b></a>'
@@ -493,13 +493,13 @@ def build(domains: list[dict], case_id: str = "", case_title: str = "", checks: 
     vcls = {"free": "fail", "mismatch": "fail", "not_found": "fail", "error": "review", "review": "review",
             "warn": "warn", "info": "info", "unchecked": "warn", "ok": "ok"}[worst]
     nts = notes(items)
-    head = f"Домены в manager{' — ' + _e(case_id) if case_id else ''}"
+    head = f"Домены в manager{' - ' + _e(case_id) if case_id else ''}"
     return f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{head} ({len(items)})</title>
 <style>{_CSS}</style></head><body>
 <h1>{head}</h1>
 {f'<div class="src">{_e(case_title)}</div>' if case_title else ''}
-<div class="src">Сформировано {datetime.now():%d.%m.%Y %H:%M}. Доменов: {len(items)}. Данные Sd и S — из manager через расширение
+<div class="src">Сформировано {datetime.now():%d.%m.%Y %H:%M}. Доменов: {len(items)}. Данные Sd и S - из manager через расширение
 «PySimpleManager»; все данные обработаны локально.</div>
 <div class="verdict {vcls}">{summary or 'нет доменов'}</div>
 <h2>Сверка</h2>
@@ -508,7 +508,7 @@ def build(domains: list[dict], case_id: str = "", case_title: str = "", checks: 
 {('<h2>К сведению</h2><ul class="notes">' + ''.join(f'<li>{n}</li>' for n in nts) + '</ul>') if nts else ''}
 <h2>Домены</h2>
 <div class="tools"><input type="search" id="q" placeholder="Фильтр: домен, ФИО, паспорт, ИНН, e-mail, provider">
-<span class="src" id="shown"></span><span class="src">Сортировка — щелчок по заголовку колонки</span>
+<span class="src" id="shown"></span><span class="src">Сортировка - щелчок по заголовку колонки</span>
 <button type="button" id="bygroups" style="display:none">По группам</button></div>
 <table id="dom"><thead><tr>{''.join(f'<th title="Сортировать">{h}<span class="arr"></span></th>' for h in
     ("Домен", "manager", "Администратор (Sd)", "Сверка", "ЕСИА", "MO", "Provider", "Прочее"))}</tr></thead>

@@ -27,7 +27,7 @@ def test_empty_case_then_add_files(tmp_path):
     from fastapi.testclient import TestClient
     from doctool.web import create_app
     c = TestClient(create_app(str(tmp_path / "res")))
-    # дело без файлов — сразу готово, проверки нет
+    # дело без файлов - сразу готово, проверки нет
     r = c.post("/api/ws", data={"state": json.dumps({"ticket": "#2026101400000002", "operation": "Смена администратора"})})
     assert r.status_code == 200, r.text
     ws_id = r.json()["id"]
@@ -41,7 +41,7 @@ def test_empty_case_then_add_files(tmp_path):
     d = _wait(c, ws_id)
     assert d["job"]["status"] == "done" and [p["cls"] for p in d["pages"]] == ["application", "application"]
     first_job = d["job"]["id"]
-    # оператор переложил страницу — при следующем добавлении её группа не меняется, разбираются только новые
+    # оператор переложил страницу - при следующем добавлении её группа не меняется, разбираются только новые
     c.post(f"/api/ws/{ws_id}/pages", json={"action": "move", "pid": "p2", "cls": "other"})
     with (SAMPLES / "docx_reference.docx").open("rb") as f:
         r = c.post(f"/api/ws/{ws_id}/files", files=[("files", ("Заявление.docx", f, "application/octet-stream"))])
@@ -58,7 +58,7 @@ def test_empty_case_then_add_files(tmp_path):
     assert by_id["p3"]["kind"] == "docx" and by_id["p3"]["cls"] == "application"
     assert [f["name"] for f in d["files"]][:2] == ["Заявление.pdf", "Заявление.docx"]
     assert c.post("/api/ws/0123456789/files", files=[("files", ("a.pdf", b"x", "application/pdf"))]).status_code == 404
-    # текстовый слой: слова страницы PDF с местами на превью; у DOCX — пусто
+    # текстовый слой: слова страницы PDF с местами на превью; у DOCX - пусто
     t = c.get(f"/api/ws/{ws_id}/text/p1").json()
     words = [w for line in t["lines"] for w in line]
     assert t["rot"] == 0 and len(words) > 100 and words[0][4] == "Заявление"
@@ -99,7 +99,7 @@ def test_text_layer_rotated_pages(tmp_path):
         t = ws.text_layer(p.id)
         x, y, w, h, word = t["lines"][0][0]
         assert t["rot"] == rot and word == "CHECK"
-        # прямоугольник слова на превью: от (x, y) вдоль строки на w, поперёк — на h (как поворачивает CSS)
+        # прямоугольник слова на превью: от (x, y) вдоль строки на w, поперёк - на h (как поворачивает CSS)
         corners = {0: [(x, y), (x + w, y + h)], 90: [(x - h, y), (x, y + w)],
                    180: [(x - w, y - h), (x, y)], 270: [(x, y - w), (x + h, y)]}[rot]
         (x0, y0), (x1, y1) = corners

@@ -1,5 +1,5 @@
 """Заявления, у которых OCR потерял подписи бланка, и заявления в свободной форме (наборы 8–19, 07.10.2026).
-Тексты — синтетические, по образцу OCR реальных сканов (ФИО, номера и адреса вымышлены)."""
+Тексты - синтетические, по образцу OCR реальных сканов (ФИО, номера и адреса вымышлены)."""
 import sys
 from pathlib import Path
 
@@ -12,7 +12,7 @@ from doctool.application import extract_from_text  # noqa: E402
 from doctool.ocr import Page  # noqa: E402
 
 FORM = formspec.form_by_id("regru_transfer_person")
-# раздел «новому Администратору» — логика модуля заявления REG.RU (forms/regru_transfer_person/hooks.py, с 0.7.3)
+# раздел «новому Администратору» - логика модуля заявления REG.RU (forms/regru_transfer_person/hooks.py, с 0.7.3)
 parse_new_admin_block = formspec.hooks(FORM).parse_new_admin_block
 TOP = ("Заявление в ООО «Регистратор доменных имен РЕГ.РУ» от\nАдминистратора домена - физического лица о передаче права\n"
        "администрирования домена другому лицу\nГенеральному директору\nООО «Регистратор доменных имен РЕГ.РУ»\n")
@@ -25,7 +25,7 @@ def _ex(text):
 # ------------------------------------------------------------------ шапка: ФИО и дата рождения
 
 def test_header_after_stamp_and_year_suffix():
-    # перед «от» — оттиск штампа «ПОЛУЧЕНО», после даты — «г.»
+    # перед «от» - оттиск штампа «ПОЛУЧЕНО», после даты - «г.»
     ex = _ex(TOP + "ПОЛУЧЕ но от Крайнева Виктора Николаевича,\n23.04.1985 г.\n(ФИО, дата рождения)\n"
              "45 11 500159 29.02.2012\n(серия, номер паспорта, когда выдан)\nОтделом УФМС России по гор. Москве\n(кем выдан)\n")
     assert ex.get("applicant_header") == "КРАЙНЕВ ВИКТОР НИКОЛАЕВИЧ"
@@ -62,7 +62,7 @@ def test_notary_style_header_with_month_words():
     assert ex.get("inn") == "672403040674"
     assert ex.get("domains.list") == ["test100.ru"]
     assert ex.get("new_admin_fio") == "СИДОРОВ ОЛЕГ ИВАНОВИЧ" and ex.get("new_admin_fio.kind") == "ip"
-    assert ex.get("new_admin_contact.emails") == ["sidorov@example.ru"]   # ИНН ИП — не телефон
+    assert ex.get("new_admin_contact.emails") == ["sidorov@example.ru"]   # ИНН ИП - не телефон
     assert ex.get("contract") == "16103009"
 
 
@@ -113,7 +113,7 @@ def test_domains_free_form_endings():
 # ------------------------------------------------------------------ новый администратор
 
 def test_new_admin_table_without_labels():
-    # OCR потерял «Для физ.лиц и ИП:» и «ФИО», контакты — в строке без подписи
+    # OCR потерял «Для физ.лиц и ИП:» и «ФИО», контакты - в строке без подписи
     ex = _ex(TOP + "новому Администратору:\nДля юр.лиц:\nНаименование юр.лица\ne-mail/Ten.\nя cu3.nuy uv ИП:\n"
              "Антонова Елена Александровна\nantonova@example.com / 8(985) 282-11-30\nе-та!/тел.\n"
              "Номер договора (название аккаунта) нового администратора / партнера (с указанием\nпрофиля): 1234567\n")
@@ -146,7 +146,7 @@ def test_new_admin_org_with_translit_and_inn():
              "info@example.net/ +7 (925) 033-87-16\n")
     assert ex.get("new_admin_org") == "Общество с ограниченной ответственностью \"Тест\""
     assert ex.get("new_admin_org_contact.emails") == ["info@example.net"]
-    assert ex.get("passport") is None                                   # ИНН организации — не паспорт
+    assert ex.get("passport") is None                                   # ИНН организации - не паспорт
 
 
 def test_names_helpers():
@@ -154,7 +154,7 @@ def test_names_helpers():
     assert names.extract_fio("ШЕЙКО ЮРИЙ БОРИСОВИЧ АПРЕЛЯ ГОДА") == ["ШЕЙКО", "ЮРИЙ", "БОРИСОВИЧ"]
     assert names.to_nominative("Дымовой Кристины Михайловны") == "ДЫМОВА КРИСТИНА МИХАЙЛОВНА"
     assert names.fio_similarity("Виктор Дмитриевич Андреев", "АНДРЕЕВ ВИКТОР ДМИТРИЕВИЧ")[0] == 100
-    # стоп-слова — целые слова: фамилии «Годунов», «Мартынов», «Рождественский» и инициалы не обрезаются
+    # стоп-слова - целые слова: фамилии «Годунов», «Мартынов», «Рождественский» и инициалы не обрезаются
     for fio in ("Годунов Борис Фёдорович", "Мартынов Илья Петрович", "Рождественский Олег Ильич"):
         assert names.extract_fio(fio) == fio.split()
     assert names.extract_fio("Иванов Р.А.") == ["Иванов", "Р", "А"]
@@ -174,5 +174,5 @@ def test_application_pages_found_after_envelope(monkeypatch):
     pages = [Page(image=np.full((50, 50, 3), 255, np.uint8), source="f.pdf", index=i) for i in texts]
     monkeypatch.setattr(application, "_quick_text", lambda p: texts[p.index])
     groups, passport = application._application_groups(pages, FORM, texts[0])
-    assert [[p.index + 1 for p in g] for g in groups] == [[3, 5], [6]]   # конверт и нотариус — мимо
+    assert [[p.index + 1 for p in g] for g in groups] == [[3, 5], [6]]   # конверт и нотариус - мимо
     assert passport == [7]

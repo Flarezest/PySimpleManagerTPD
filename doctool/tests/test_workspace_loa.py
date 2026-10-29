@@ -46,7 +46,7 @@ def app_ext(tmp_path, monkeypatch):
 
 
 def test_domain_move_without_domains(app_ext):
-    # пустой список доменов — не ошибка: расширение открывает страницу, поле «Домены» не трогает
+    # пустой список доменов - не ошибка: расширение открывает страницу, поле «Домены» не трогает
     c, wsm, calls = app_ext
     r = c.post("/api/ws/10a0000001/manager/fill", json={"domains": [], "change_admin": True, "files": []})
     assert r.status_code == 200 and r.json()["ok"], r.text
@@ -58,7 +58,7 @@ def test_loa_fill_api(app_ext):
     c, wsm, calls = app_ext
     meta = c.get("/api/ws/meta").json()
     assert any(o["title"] == "Безбумажные операции" and o["manager_page"] == "loa_add" for o in meta["operations"])
-    # нечего вписывать — 400, расширение не вызывается
+    # нечего вписывать - 400, расширение не вызывается
     n = len(calls)
     r = c.post("/api/ws/10a0000001/manager/loa_fill", json={"fields": {"passport_inn": "  ", "other": "x"}})
     assert r.status_code == 400 and len(calls) == n

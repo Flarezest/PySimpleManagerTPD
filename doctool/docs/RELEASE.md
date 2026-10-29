@@ -1,11 +1,11 @@
 # Выпуск версии и установщики (с 0.7.5)
 
-Установщики для Windows, Linux и macOS собирает **GitHub Actions** — автоматизация GitHub. По тегу версии GitHub
+Установщики для Windows, Linux и macOS собирает **GitHub Actions** - автоматизация GitHub. По тегу версии GitHub
 запускает свои временные компьютеры (Windows, Ubuntu, macOS), собирает на них программу, проверяет её и выкладывает
 установщики на страницу **Releases** репозитория. Для публичного репозитория это бесплатно.
 
-Инструкция для GitHub — файл `.github/workflows/build.yml` **в корне репозитория** (рядом с папкой `doctool`;
-в другом месте GitHub его не увидит). Всё остальное — в папке программы, `installer/`.
+Инструкция для GitHub - файл `.github/workflows/build.yml` **в корне репозитория** (рядом с папкой `doctool`;
+в другом месте GitHub его не увидит). Всё остальное - в папке программы, `installer/`.
 
 ## Как выпустить версию
 
@@ -18,22 +18,22 @@
    git push origin v0.7.5
    ```
 
-   Если тег не совпадает с версией программы, сборка остановится с ошибкой — так в Releases не попадёт
+   Если тег не совпадает с версией программы, сборка остановится с ошибкой - так в Releases не попадёт
    установщик с чужим номером версии.
-4. Откройте вкладку **Actions** репозитория: там запуск «Сборка установщиков» с тремя задачами — Windows, Linux,
-   macOS. У каждого шага — зелёная галка или красный крест; щелчок по шагу показывает его вывод.
-5. Когда Windows и Linux готовы, появится задача «Выпуск (Releases)», а на странице **Releases** — выпуск
+4. Откройте вкладку **Actions** репозитория: там запуск «Сборка установщиков» с тремя задачами - Windows, Linux,
+   macOS. У каждого шага - зелёная галка или красный крест; щелчок по шагу показывает его вывод.
+5. Когда Windows и Linux готовы, появится задача «Выпуск (Releases)», а на странице **Releases** - выпуск
    «PySimpleManager v0.7.6» с файлами:
 
    | Файл | Для чего |
    |---|---|
    | `PySimpleManager-0.7.6-windows-x64-setup.exe` | Windows 10/11, Tesseract и 7-Zip внутри |
    | `pysimplemanager_0.7.6_amd64.deb` | Ubuntu 22.04+ / Debian 12, Tesseract ставится зависимостью |
-   | `PySimpleManager-0.7.6-macos-arm64.dmg` | macOS на Apple Silicon — пробная сборка, может отсутствовать |
+   | `PySimpleManager-0.7.6-macos-arm64.dmg` | macOS на Apple Silicon - пробная сборка, может отсутствовать |
 
-   Текст выпуска (как установить) — `installer/release_notes.md`.
+   Текст выпуска (как установить) - `installer/release_notes.md`.
 
-Сборка идёт несколько минут на каждую систему, все три — одновременно. Ссылку на файл из Releases можно давать
+Сборка идёт несколько минут на каждую систему, все три - одновременно. Ссылку на файл из Releases можно давать
 коллегам.
 
 **Пробная сборка без выпуска:** Actions → «Сборка установщиков» → **Run workflow** (кнопка справа) → выбрать ветку
@@ -48,26 +48,26 @@
 
 На каждой системе (`installer/build.py`):
 
-1. **Tesseract.** Windows — установщик UB Mannheim 5.4.0 (тот же, что в README), распаковывается 7-Zip без
-   установки; берутся `tesseract.exe` и только нужные ему DLL (по таблицам импорта) — без программ обучения моделей.
-   macOS — Tesseract из Homebrew с библиотеками рядом. Языки `rus`, `eng`, `osd` — из tesseract-ocr/tessdata 4.1.0.
-   Все скачанные файлы сверяются по SHA-256 (суммы — в начале `build.py`). Linux — Tesseract из системы
+1. **Tesseract.** Windows - установщик UB Mannheim 5.4.0 (тот же, что в docs/USAGE.md, раздел 0.2), распаковывается 7-Zip без
+   установки; берутся `tesseract.exe` и только нужные ему DLL (по таблицам импорта) - без программ обучения моделей.
+   macOS - Tesseract из Homebrew с библиотеками рядом. Языки `rus`, `eng`, `osd` - из tesseract-ocr/tessdata 4.1.0.
+   Все скачанные файлы сверяются по SHA-256 (суммы - в начале `build.py`). Linux - Tesseract из системы
    (зависимость пакета `tesseract-ocr-rus`).
 
    **7-Zip (с 0.7.6, Windows).** Установщик 7-Zip 24.09 распаковывается без установки; берутся `7z.exe` и `7z.dll`
-   (в нём и rar) — архивы rar и 7z из тикетницы рабочее место распаковывает без установленного 7-Zip. Linux и
-   macOS — 7-Zip из системы (`.deb` рекомендует пакет `7zip` или `p7zip-full`; для rar — `unrar`), zip программа
+   (в нём и rar) - архивы rar и 7z из тикетницы рабочее место распаковывает без установленного 7-Zip. Linux и
+   macOS - 7-Zip из системы (`.deb` рекомендует пакет `7zip` или `p7zip-full`; для rar - `unrar`), zip программа
    распаковывает сама.
-2. **PyInstaller** (`installer/pysimplemanager.spec`) — Python и все пакеты внутри, одна папка `PySimpleManager`
-   с `PySimpleManager[.exe]` и `_internal/` (встроенные `forms/`, `config/`, Tesseract, на Windows — `7zip/`).
-3. Рядом с программой: `chrome_extension/` (расширение + `КАК_УСТАНОВИТЬ.txt`), `docs/`, `README.md`, `CHANGELOG.md`.
+2. **PyInstaller** (`installer/pysimplemanager.spec`) - Python и все пакеты внутри, одна папка `PySimpleManager`
+   с `PySimpleManager[.exe]` и `_internal/` (встроенные `forms/`, `config/`, Tesseract, на Windows - `7zip/`).
+3. Рядом с программой: `chrome_extension/` (расширение + `КАК_УСТАНОВИТЬ.txt`), `docs/`, `CHANGELOG.md`.
 4. **Проверка собранной программы** (`installer/smoke_test.py`): версия; `validate`; папка данных
-   «Документы/PySimpleManager»; `check` по образцам модулей (поля = `*.expected.json`); `check` по картинке —
+   «Документы/PySimpleManager»; `check` по образцам модулей (поля = `*.expected.json`); `check` по картинке -
    работает Tesseract из состава программы; веб-интерфейс отвечает; (0.7.6) дело рабочего места из zip
-   разбирается на страницы и проверяется, на Windows — ещё из 7z через 7-Zip из состава программы; повторный запуск
+   разбирается на страницы и проверяется, на Windows - ещё из 7z через 7-Zip из состава программы; повторный запуск
    видит запущенную программу.
-5. **Установщик:** Windows — Inno Setup (`installer/windows/pysimplemanager.iss`), Linux — `.deb`, macOS — `.dmg`.
-6. GitHub ставит готовый установщик (Windows — тихая установка, Linux — `apt install`) и ещё раз запускает
+5. **Установщик:** Windows - Inno Setup (`installer/windows/pysimplemanager.iss`), Linux - `.deb`, macOS - `.dmg`.
+6. GitHub ставит готовый установщик (Windows - тихая установка, Linux - `apt install`) и ещё раз запускает
    проверку уже **установленной** программы. Тесты (`pytest`) идут перед сборкой на Linux.
 
 ## Установленная программа
@@ -78,19 +78,19 @@
 | Запуск | ярлык «PySimpleManager» (Пуск, рабочий стол) | «PySimpleManager» в меню приложений | `Запустить PySimpleManager.command` |
 | Расширение Chrome | Пуск → PySimpleManager → «Расширение Chrome (папка)» | `/opt/pysimplemanager/chrome_extension` | `chrome_extension` в папке программы |
 
-- Запуск открывает браузер и окно консоли; закрыли окно — программа остановилась. Повторный запуск, пока программа
+- Запуск открывает браузер и окно консоли; закрыли окно - программа остановилась. Повторный запуск, пока программа
   работает, просто открывает её страницу. При ошибке окно не закрывается, пока не нажать Enter.
-- Данные — «Документы/PySimpleManager»: `results/` (дела и реестр), свои модули заявлений `forms/` и правила
+- Данные - «Документы/PySimpleManager»: `results/` (дела и реестр), свои модули заявлений `forms/` и правила
   `config/case_types.yaml` поверх встроенных (`ПРОЧТИ.txt` там же). Обновление и удаление программы их не трогают.
 - Командная строка та же, что `python -m doctool`: `PySimpleManager.exe check -a заявление.pdf`, `… validate`.
-- Обновление — новый установщик поверх старого. Расширение Chrome после обновления — кнопка ⟳ на его карточке.
+- Обновление - новый установщик поверх старого. Расширение Chrome после обновления - кнопка ⟳ на его карточке.
 - Windows без сертификата подписи: «Система Windows защитила ваш компьютер» → «Подробнее» → «Выполнить в любом
   случае». macOS без нотаризации Apple: при первом запуске «Системные настройки → Конфиденциальность и
   безопасность → Всё равно открыть»; дальше `.command` сам снимает карантин с файлов программы.
 
 ## Собрать у себя
 
-Нужны Python 3.12 и пакеты; на Windows ещё 7-Zip и Inno Setup 6, на Linux — `dpkg-deb` и Tesseract, на macOS —
+Нужны Python 3.12 и пакеты; на Windows ещё 7-Zip и Inno Setup 6, на Linux - `dpkg-deb` и Tesseract, на macOS -
 `brew install tesseract dylibbundler`. Из папки программы:
 
 ```
@@ -98,14 +98,14 @@ pip install -r requirements.txt -r requirements-web.txt -r installer/requirement
 python installer/build.py
 ```
 
-Результат — `installer/_out/`, промежуточные файлы — `installer/_build/` (обе папки в `installer/.gitignore`).
-`--no-package` — только папка программы, `--no-smoke` — без проверки.
+Результат - `installer/_out/`, промежуточные файлы - `installer/_build/` (обе папки в `installer/.gitignore`).
+`--no-package` - только папка программы, `--no-smoke` - без проверки.
 
 ## Обновить Tesseract или 7-Zip
 
 В `installer/build.py`: `WIN_TESSERACT` (адрес установщика UB Mannheim и его SHA-256), `TESSDATA` (суммы файлов
 языков). SHA-256 файла: `certutil -hashfile файл SHA256` (Windows) или `sha256sum файл`. После смены версии
-Tesseract прочтения сканов могут немного измениться — прогоните наборы (`check_all.bat`).
+Tesseract прочтения сканов могут немного измениться - прогоните наборы (`check_all.bat`).
 
-7-Zip — `WIN_7ZIP` (адрес `7zXXXX-x64.exe` со страницы выпусков 7-Zip на GitHub и его SHA-256). Сборка проверяет,
+7-Zip - `WIN_7ZIP` (адрес `7zXXXX-x64.exe` со страницы выпусков 7-Zip на GitHub и его SHA-256). Сборка проверяет,
 что `7z.exe i` знает формат Rar.

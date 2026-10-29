@@ -1,6 +1,6 @@
-# Сборка установщика (installer/build.py) — в дополнение к requirements.txt и requirements-web.txt
+# Сборка установщика (installer/build.py) - в дополнение к requirements.txt и requirements-web.txt
 pyinstaller==6.22.3
 pefile>=2023.2.7        # Windows: какие DLL нужны tesseract.exe
 pytest>=8               # тесты перед сборкой (GitHub Actions)
-httpx2                  # starlette.testclient в тестах веб-интерфейса (starlette 1.x; раньше — httpx)
+httpx2                  # starlette.testclient в тестах веб-интерфейса (starlette 1.x; раньше - httpx)
 httpx

@@ -1,16 +1,16 @@
 """Модули заявлений (forms/): загрузка с кэшем, роли полей, подписи бланка, хуки бланка, проверка конфигов.
 
-Модуль заявления (с 0.7.3) — папка forms/<id>/:
+Модуль заявления (с 0.7.3) - папка forms/<id>/:
   form.yaml   описание бланка: поля (type, role), подписи бланка для чтения эталона (reference:), регулярки (text:),
               области на скане (scan:), detect, labels_re, strip_prefixes, rows;
-  hooks.py    (необязательно) особая логика бланка — функции с известными именами (HOOKS ниже), например раздел
+  hooks.py    (необязательно) особая логика бланка - функции с известными именами (HOOKS ниже), например раздел
               «новому Администратору» у REG.RU. Ядро вызывает их через call_hook(); без hooks.py ничего не вызывается;
-  samples/    (необязательно) образцы заявлений (DOCX, PDF с текстом) и рядом <имя>.expected.json — ожидаемые
+  samples/    (необязательно) образцы заявлений (DOCX, PDF с текстом) и рядом <имя>.expected.json - ожидаемые
               значения полей. tests/test_form_samples.py проверяет образцы всех модулей сам.
 Описание в одном файле forms/<id>.yaml (как до 0.7.3) тоже читается. Если для одного id есть и папка, и файл,
-берётся папка (файл — устаревшая копия; validate напомнит его удалить).
+берётся папка (файл - устаревшая копия; validate напомнит его удалить).
 
-Роль поля — его смысл для проверок: «ФИО в тексте», «домены», «новый администратор» (словарь ROLES ниже).
+Роль поля - его смысл для проверок: «ФИО в тексте», «домены», «новый администратор» (словарь ROLES ниже).
 Проверки (compare.py, domains.py), таблица интерфейса, выгрузка и отчёт обращаются к полю заявления
 по роли, а не по имени поля в YAML. Поэтому новый бланк может называть поля как угодно: роль задаётся
 ключом `role:` у поля (без него роль = имя поля). Для бланка regru_transfer_person имена полей и роли
@@ -41,9 +41,9 @@ ROLES = {
     "domains": "домены (подполя list, punycode, joined, fragments, mixed, stated_count, uncertain)",
     "services": "дополнительные услуги",
     "new_admin_inline": "новый администратор в тексте («новому Администратору: …»)",
-    "new_admin_org": "новый администратор — юрлицо",
+    "new_admin_org": "новый администратор - юрлицо",
     "new_admin_org_contact": "контакты нового администратора-юрлица",
-    "new_admin_fio": "новый администратор — физлицо / ИП",
+    "new_admin_fio": "новый администратор - физлицо / ИП",
     "new_admin_contact": "контакты нового администратора",
     "contract": "договор / аккаунт нового администратора",
     "application_date": "дата заявления",
@@ -65,9 +65,9 @@ def forms_dirs() -> list[Path]:
 
 
 def load_forms(forms_dir: Path | str | None = None) -> list[dict]:
-    """Все бланки из папки (по умолчанию — из forms_dirs(): свой модуль с тем же id заменяет встроенный).
+    """Все бланки из папки (по умолчанию - из forms_dirs(): свой модуль с тем же id заменяет встроенный).
     Перечитываются, только если файлы изменились. Результат не изменять.
-    У бланка-модуля есть ключ `_module` — путь к его папке (hooks.py, samples/)."""
+    У бланка-модуля есть ключ `_module` - путь к его папке (hooks.py, samples/)."""
     if forms_dir is not None:
         return _load_dir(Path(forms_dir))[1]
     dirs = forms_dirs()
@@ -92,7 +92,7 @@ def _load_dir(d: Path) -> tuple:
             f = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
             if p.name == MODULE_FILE:
                 f["_module"] = str(p.parent)
-            elif f.get("id") in seen:          # папка-модуль с тем же id уже есть: файл — устаревшая копия
+            elif f.get("id") in seen:          # папка-модуль с тем же id уже есть: файл - устаревшая копия
                 dups.append(str(p.relative_to(d)))
                 continue
             seen.add(f.get("id"))
@@ -104,7 +104,7 @@ def _load_dir(d: Path) -> tuple:
 
 def stale_files(forms_dir: Path | str | None = None) -> list[str]:
     """forms/<id>.yaml, у которых есть папка-модуль с тем же id (файлы не читаются). Для своих модулей из папки
-    данных пользователя — с полным путём."""
+    данных пользователя - с полным путём."""
     if forms_dir is not None:
         return list(_load_dir(Path(forms_dir))[2])
     out = []
@@ -121,11 +121,11 @@ def module_dir(form: dict | None) -> Path | None:
 
 # ------------------------------------------------------------------ хуки бланка (forms/<id>/hooks.py)
 
-# Точки, в которых ядро вызывает особую логику бланка. Хук — функция с этим именем в hooks.py модуля.
+# Точки, в которых ядро вызывает особую логику бланка. Хук - функция с этим именем в hooks.py модуля.
 HOOKS = {
-    "after_text": "after_text(ex, text, form, conf, source) -> bool — после чтения полей из текста (текстовый слой "
-                  "или OCR страницы); True — хук что-то нашёл",
-    "scan_page": "scan_page(page, lines, page_text, form, prefer) — скан: после чтения полей из текста страницы "
+    "after_text": "after_text(ex, text, form, conf, source) -> bool - после чтения полей из текста (текстовый слой "
+                  "или OCR страницы); True - хук что-то нашёл",
+    "scan_page": "scan_page(page, lines, page_text, form, prefer) - скан: после чтения полей из текста страницы "
                  "(можно перечитать часть страницы)",
 }
 _hooks_cache: dict[str, tuple] = {}
@@ -190,7 +190,7 @@ def role_map(form: dict | None) -> dict[str, str]:
 
 
 class Fields:
-    """Поля заявления по ролям: Fields(app).get("applicant_header.birth_date") — значение подполя birth_date
+    """Поля заявления по ролям: Fields(app).get("applicant_header.birth_date") - значение подполя birth_date
     поля с ролью applicant_header, как бы это поле ни называлось в бланке."""
 
     def __init__(self, ex, form: dict | None = None):
@@ -214,7 +214,7 @@ class Fields:
 # ------------------------------------------------------------------ подписи бланка и префиксы значений
 
 # До 0.4.0 подписи и префиксы были зашиты в application.py. Бланк без ключа labels_re / strip_prefixes
-# (например, свой YAML от 0.3.x) получает прежний список; пустой список в YAML — «ничего не вырезать».
+# (например, свой YAML от 0.3.x) получает прежний список; пустой список в YAML - «ничего не вырезать».
 LEGACY_LABELS = ["ФИО", "кем выдан", "адрес регистрации", "серия, номер паспорта, когда (?:и кем )?выдан",
                  r"ИНН ИП \(при наличии статуса ИП\)", r"наименование домена\(ов\)?", "Primary, Secondary DNS",
                  r"номер договора с компанией РЕГ\.РУ", "фамилия, имя, отчество", "подпись", "дата прописью"]
@@ -241,13 +241,13 @@ def _all_forms_list(key: str) -> list[str]:
 def _labels_rx(patterns: tuple[str, ...]) -> re.Pattern | None:
     if not patterns:
         return None
-    # скобка — любая: OCR читает «(» как «{» или «[» («{кем выдан)»)
+    # скобка - любая: OCR читает «(» как «{» или «[» («{кем выдан)»)
     return re.compile(r"[({\[]\s*(?:" + "|".join(patterns) + r")[^)}\]]*[)}\]]?", re.I)
 
 
 def labels_regex(form: dict | None = None) -> re.Pattern | None:
     """Печатные подписи бланка в скобках («(кем выдан)», «(ФИО, дата рождения)»), которые вычищаются из
-    значений. Берутся из `labels_re` бланка; без бланка — из всех бланков."""
+    значений. Берутся из `labels_re` бланка; без бланка - из всех бланков."""
     pats = _form_list(form, "labels_re") if form else _all_forms_list("labels_re")
     return _labels_rx(tuple(pats or ()))
 
@@ -260,7 +260,7 @@ def _prefix_rx(patterns: tuple[str, ...]) -> re.Pattern | None:
 
 
 def prefix_regex(form: dict | None = None) -> re.Pattern | None:
-    """Печатные слова перед значением на скане («от», «Я,», «профиля):») — `strip_prefixes` бланка."""
+    """Печатные слова перед значением на скане («от», «Я,», «профиля):») - `strip_prefixes` бланка."""
     pats = _form_list(form, "strip_prefixes") if form else _all_forms_list("strip_prefixes")
     return _prefix_rx(tuple(pats or ()))
 
@@ -278,7 +278,7 @@ def field_title(form: dict | None, key: str) -> str | None:
 # ------------------------------------------------------------------ проверка конфигов
 
 def _validate_module(f: dict, fid: str) -> list[str]:
-    """Модуль заявления: раздел reference:, hooks.py, образцы; подписи reference: — по пустому бланку blank.docx."""
+    """Модуль заявления: раздел reference:, hooks.py, образцы; подписи reference: - по пустому бланку blank.docx."""
     import json
     out: list[str] = []
     fields = f.get("fields") or {}
@@ -290,7 +290,7 @@ def _validate_module(f: dict, fid: str) -> list[str]:
             out.append(f"{where}: нужен словарь fields: {{поле: {{before: …, after: …}}}}")
         else:
             if not isinstance(mf, (int, float)) or not 0 < mf <= 1:
-                out.append(f"{where}: min_found — доля от 0 до 1")
+                out.append(f"{where}: min_found - доля от 0 до 1")
             for key, spec in ref["fields"].items():
                 if key not in fields:
                     out.append(f"{where}: поля {key!r} нет в fields бланка")
@@ -299,7 +299,7 @@ def _validate_module(f: dict, fid: str) -> list[str]:
                     continue
                 a = spec.get("after")
                 if a is not None and not (isinstance(a, str) or (isinstance(a, list) and all(isinstance(x, str) for x in a))):
-                    out.append(f"{where}, поле {key}: after — строка или список строк")
+                    out.append(f"{where}, поле {key}: after - строка или список строк")
     d = module_dir(f)
     if d is None:
         return out
@@ -340,8 +340,8 @@ REGION_KEYS = {"dy0", "dy1", "x0", "x1"}
 
 def validate_config(forms_dir: Path | str | None = None, case_types: dict | None = None) -> list[str]:
     """Проблемы в модулях заявлений forms/ и config/case_types.yaml: неизвестные типы полей, роли, проверки, бланки,
-    флаги, ошибки в регулярных выражениях. Пустой список — всё в порядке.
-    Запуск: python -m doctool validate; в тестах — tests/test_config.py."""
+    флаги, ошибки в регулярных выражениях. Пустой список - всё в порядке.
+    Запуск: python -m doctool validate; в тестах - tests/test_config.py."""
     from . import checks as checklib
     from .application import FIELD_PARSERS
     from .verdict import load_case_types
@@ -361,12 +361,12 @@ def validate_config(forms_dir: Path | str | None = None, case_types: dict | None
             problems.append(f"{where}: ошибка в регулярном выражении {pat!r}: {e}")
             return
         if need_group and c.groups < 1:
-            problems.append(f"{where}: в выражении {pat!r} нет группы (значение — группа 1)")
+            problems.append(f"{where}: в выражении {pat!r} нет группы (значение - группа 1)")
 
     for f in forms:
         fid = f.get("id", "?")
         if not (f.get("detect") or {}).get("keywords"):
-            problems.append(f"бланк {fid}: нет detect.keywords — бланк не будет узнаваться")
+            problems.append(f"бланк {fid}: нет detect.keywords - бланк не будет узнаваться")
         roles_seen: dict[str, str] = {}
         for key, spec in (f.get("fields") or {}).items():
             spec = spec or {}
@@ -381,14 +381,14 @@ def validate_config(forms_dir: Path | str | None = None, case_types: dict | None
             roles_seen[role] = key
             for pat in spec.get("text") or []:
                 rx(where, pat, need_group=True)
-            # (0.7.0) нейросеть: llm — описание поля (строка) или false; digits — допустимое число цифр
+            # (0.7.0) нейросеть: llm - описание поля (строка) или false; digits - допустимое число цифр
             if "llm" in spec and not (isinstance(spec["llm"], str) and spec["llm"].strip() or spec["llm"] is False):
-                problems.append(f"{where}: llm — описание поля строкой или false")
+                problems.append(f"{where}: llm - описание поля строкой или false")
             dg = spec.get("digits")
             if dg is not None and not all(isinstance(x, int) and x > 0 for x in (dg if isinstance(dg, list) else [dg])):
-                problems.append(f"{where}: digits — число или список чисел (сколько цифр в значении)")
+                problems.append(f"{where}: digits - число или список чисел (сколько цифр в значении)")
             if not spec.get("text") and spec.get("llm") is False and not spec.get("scan"):
-                problems.append(f"{where}: поле нечем читать — нет text:, scan:, а llm: false")
+                problems.append(f"{where}: поле нечем читать - нет text:, scan:, а llm: false")
             sc = spec.get("scan")
             if sc:
                 if not sc.get("anchor"):
@@ -443,7 +443,7 @@ def validate_config(forms_dir: Path | str | None = None, case_types: dict | None
                         problems.append(f"{where}, правило «{rule.get('reason')}»: проверки «{cond['check']}» нет")
                     elif cond["check"] not in produced:
                         problems.append(f"{where}, правило «{rule.get('reason')}»: проверка «{cond['check']}» "
-                                        "не включена в checks этого типа — правило не сработает")
+                                        "не включена в checks этого типа - правило не сработает")
                 for st in (cond.get("status") or []) + (cond.get("any_status") or []):
                     if st not in STATUSES:
                         problems.append(f"{where}, правило «{rule.get('reason')}»: неизвестный статус {st!r}")

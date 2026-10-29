@@ -2,33 +2,33 @@
  *
  * 1) Держит WebSocket-соединение с doctool на этом компьютере: ws://127.0.0.1:<порт>/ext.
  * 2) Получает команды и выполняет их по очереди:
- *    lookup      — данные домена (счета, Sd, S, с 0.6.0 — идентификация через Госуслуги и JSON ЕСИА;
- *                  с 0.7.2 — и у юрлиц; с 0.8.4 — базовая анкета владельца аккаунта для сверки MO);
- *    account     — данные аккаунта и базовая анкета (0.6.0);
- *    fill_runic  — заполнить поля базовой анкеты во вкладке оператора (0.6.0; ИП и юрлица — 0.7.3).
+ *    lookup      - данные домена (счета, Sd, S, с 0.6.0 - идентификация через Госуслуги и JSON ЕСИА;
+ *                  с 0.7.2 - и у юрлиц; с 0.8.4 - базовая анкета владельца аккаунта для сверки MO);
+ *    account     - данные аккаунта и базовая анкета (0.6.0);
+ *    fill_runic  - заполнить поля базовой анкеты во вкладке оператора (0.6.0; ИП и юрлица - 0.7.3).
  *    (0.7.6, рабочее место программы)
- *    gosuslugi_fill   — вписать серию, номер, фамилию и имя на странице «Проверка действительности паспорта»
+ *    gosuslugi_fill   - вписать серию, номер, фамилию и имя на странице «Проверка действительности паспорта»
  *                       (Госуслуги, вкладка оператора; «Продолжить» нажимает оператор);
- *    domain_move_fill — шаг 1 смены администратора в manager: домены, флажки операции, принимающий аккаунт,
+ *    domain_move_fill - шаг 1 смены администратора в manager: домены, флажки операции, принимающий аккаунт,
  *                       документы в «Загрузить документы»;
- *    domain_move_read / domain_move_mark / domain_move_fill_contacts — шаг 2 («данные нового администратора»):
+ *    domain_move_read / domain_move_mark / domain_move_fill_contacts - шаг 2 («данные нового администратора»):
  *                       прочитать, подсветить итог сверки, вписать ФИО и контакты при «заполнить вручную».
  *    (0.8.0, строка «Поиск» рабочего места)
- *    site_open / site_hide — сайт рядом с рабочим местом: вторая половина окна Chrome (разделённый экран), окно
- *                       справа или вкладка; site_open с fill — вписать запрос в поле поиска (ЕГРЮЛ). Страница
+ *    site_open / site_hide - сайт рядом с рабочим местом: вторая половина окна Chrome (разделённый экран), окно
+ *                       справа или вкладка; site_open с fill - вписать запрос в поле поиска (ЕГРЮЛ). Страница
  *                       «Проверка действительности паспорта» (gosuslugi_fill) открывается там же.
  *    site_open, site_hide и gosuslugi_fill выполняются сразу, не дожидаясь очереди запросов к manager.
- *    (0.8.2) loa_fill — безбумажные операции: «Добавить новый документ от пользователя» (доверенность,
+ *    (0.8.2) loa_fill - безбумажные операции: «Добавить новый документ от пользователя» (доверенность,
  *                       /userdocs/loa_add): номер паспорта / код страны компании, ФИО / ИНН, e-mail, телефон.
- *    content/drop.js — файлы дела, перетащенные из рабочего места на страницы проверки ЭП (Госуслуги),
+ *    content/drop.js - файлы дела, перетащенные из рабочего места на страницы проверки ЭП (Госуслуги),
  *                       Контур.Крипто и Nextcloud: расширение берёт файл у программы и кладёт его на страницу.
  *    lookup и account читают страницы в отдельной фоновой вкладке manager.
  * 3) Если manager просит вход (окно «Войти»), показывает вкладку и сообщает doctool.
  *
  * Расширение читает страницы manager. Меняет оно только значения полей форм во вкладках, которые видит оператор,
- * и только по кнопке в программе: базовая анкета (с 0.7.3 — и переключатель «Физик / ИП / Юрик»), с 0.7.6 —
- * страницы смены администратора и форма проверки паспорта на Госуслугах, с 0.8.0 — поле поиска ЕГРЮЛ и файлы,
- * перетащенные оператором на страницы проверки ЭП, Контур.Крипто и Nextcloud, с 0.8.2 — форма доверенности
+ * и только по кнопке в программе: базовая анкета (с 0.7.3 - и переключатель «Физик / ИП / Юрик»), с 0.7.6 -
+ * страницы смены администратора и форма проверки паспорта на Госуслугах, с 0.8.0 - поле поиска ЕГРЮЛ и файлы,
+ * перетащенные оператором на страницы проверки ЭП, Контур.Крипто и Nextcloud, с 0.8.2 - форма доверенности
  * (безбумажные операции). Кнопки («Сохранить», «Далее», «Продолжить», «Найти», «Изменить», «Удалить», «Добавить
  * документ» и т. п.) оно не нажимает и формы не отправляет.
  */
@@ -103,7 +103,7 @@ async function connect() {
     let m;
     try { m = JSON.parse(e.data); } catch { return; }
     if (m.type === 'request') {
-      if (FAST.has(m.cmd)) handleFast(m);      // (0.8.0) сайт рядом — не ждёт загрузки доменов из manager
+      if (FAST.has(m.cmd)) handleFast(m);      // (0.8.0) сайт рядом - не ждёт загрузки доменов из manager
       else enqueue(m);
     }
   };
@@ -189,7 +189,7 @@ async function runInTab(tabId, fn, args) {
   return (res && res.result) || { ok: false, error: { code: 'error', message: 'Скрипт во вкладке manager не вернул результат' } };
 }
 
-// То же в фоновой вкладке manager; если вход истёк посреди работы — обновляем вкладку (появится окно «Войти»),
+// То же в фоновой вкладке manager; если вход истёк посреди работы - обновляем вкладку (появится окно «Войти»),
 // ждём вход и пробуем ещё раз.
 async function runWithLogin(fn, args) {
   const tabId = await ensureManagerTab();
@@ -274,7 +274,7 @@ async function esiaJson(url, task) {
   } catch (e) {
     why = e.message || String(e);
   }
-  if (!j) j = await esiaJsonViaTab(url, why);   // напр. сайт требует вход — открываем файл как оператор по ссылке
+  if (!j) j = await esiaJsonViaTab(url, why);   // напр. сайт требует вход - открываем файл как оператор по ссылке
   const data = esiaFields(j);
   if (esiaJsonCache.size > 500) esiaJsonCache.clear();
   esiaJsonCache.set(key, { t: Date.now(), data });
@@ -285,7 +285,7 @@ async function esiaJsonViaTab(url, why) {
   const tab = await chrome.tabs.create({ url, active: false });
   try {
     await waitLoaded(tab.id, 30000, 60000);
-    // JSON в Chrome показывается внутри <pre> (рядом может быть флажок «Автоформатирование» — его текст не берём)
+    // JSON в Chrome показывается внутри <pre> (рядом может быть флажок «Автоформатирование» - его текст не берём)
     const [res] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: () => { const pre = document.querySelector('pre'); return pre ? pre.textContent : (document.body ? document.body.innerText : ''); },
@@ -295,7 +295,7 @@ async function esiaJsonViaTab(url, why) {
       const a = textBody.indexOf('{'), b = textBody.lastIndexOf('}');
       return JSON.parse(a >= 0 && b > a ? textBody.slice(a, b + 1) : textBody);
     } catch {
-      throw fail('esia_json', `Файл ЕСИА не открылся${why ? ` (${why})` : ''}: вместо JSON — «${textBody.slice(0, 80)}»`);
+      throw fail('esia_json', `Файл ЕСИА не открылся${why ? ` (${why})` : ''}: вместо JSON - «${textBody.slice(0, 80)}»`);
     }
   } finally {
     chrome.tabs.remove(tab.id).catch(() => {});
@@ -334,8 +334,8 @@ async function runicTab(userId) {
   return { tabId: tab.id, opened };
 }
 
-// type (0.7.3) — тип нового владельца: pp / ip / org; страница переключается на него, если там другой.
-// back_type — при restore: вернуть и прежний тип анкеты.
+// type (0.7.3) - тип нового владельца: pp / ip / org; страница переключается на него, если там другой.
+// back_type - при restore: вернуть и прежний тип анкеты.
 async function fillRunic(reqId, { user_id, fields, restore, type, back_type }) {
   if (!/^\d+$/.test(String(user_id || ''))) throw fail('bad_request', 'Не указан номер аккаунта');
   note(`Базовая анкета #${user_id}: ${restore ? 'возврат прежних значений' : 'заполнение'}`);
@@ -473,7 +473,7 @@ function fillGosuslugiForm(p) {
     const got = typeInto(el, p[key]);
     filled[key] = got;
     const norm = s => String(s || '').replace(/[\s_-]/g, '').toLowerCase();
-    if (norm(got) !== norm(p[key])) problems.push(`«${label}»: поле приняло «${got}» вместо «${p[key]}» — поправьте вручную`);
+    if (norm(got) !== norm(p[key])) problems.push(`«${label}»: поле приняло «${got}» вместо «${p[key]}» - поправьте вручную`);
   }
   const btn = [...document.querySelectorAll('button')].find(b => /Продолжить/i.test(b.textContent || ''));
   return { ok: true, data: { filled, problems, button_enabled: !!(btn && !btn.disabled && !btn.classList.contains('disabled')) } };
@@ -496,7 +496,7 @@ async function gosuslugiFill(reqId, p) {
     await focusTab(tab.id);
   }
   await waitLoaded(tab.id, 60000, 60000);
-  // страница — приложение Angular: форма появляется после загрузки скриптов; без входа Госуслуги покажут вход
+  // страница - приложение Angular: форма появляется после загрузки скриптов; без входа Госуслуги покажут вход
   const has = () => !!document.querySelector('#series') && !!document.querySelector('#number');
   let ready = false;
   for (let i = 0; i < 90 && !ready; i++) {
@@ -504,7 +504,7 @@ async function gosuslugiFill(reqId, p) {
     if (!ready) await sleep(1000);
   }
   if (!ready) {
-    throw fail('gosuslugi_form', 'На странице Госуслуг нет формы «Паспорт РФ» (серия, номер). Если Госуслуги просят вход — войдите во вкладке и нажмите кнопку в программе ещё раз.');
+    throw fail('gosuslugi_form', 'На странице Госуслуг нет формы «Паспорт РФ» (серия, номер). Если Госуслуги просят вход - войдите во вкладке и нажмите кнопку в программе ещё раз.');
   }
   progressTo(reqId, 'fill', 'вписываю серию, номер, фамилию и имя');
   const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: fillGosuslugiForm, args: [p] });
@@ -528,14 +528,14 @@ async function checkManager() {
 // ------------------------------------------------------------------ (0.8.0) сайт рядом с рабочим местом
 //
 // Строка «Поиск» рабочего места открывает сайт (Google, Яндекс, ЕГРЮЛ, быстрые ссылки, Госуслуги):
-//   split  — во второй половине окна Chrome рядом со вкладкой программы (разделённый экран). Chrome 155+:
-//            tabs.create({splitWithTabId}); в Chrome 145–154 — если пару вкладок один раз собрали вручную, сайт
-//            открывается во второй вкладке пары. Не получилось — окном (window).
-//   window — отдельное окно Chrome (тип popup) на правой части экрана, окно программы сдвигается влево.
-//   tab    — обычная вкладка рядом с вкладкой программы.
-//   auto   — split, иначе window.
-// Следующий запрос открывается там же — одна вкладка (или одно окно) сайта. «Убрать» (site_hide): вкладка выходит из
-// разделённого экрана и остаётся обычной вкладкой (Chrome 155+; в старых версиях — закрывается), окно сворачивается,
+//   split  - во второй половине окна Chrome рядом со вкладкой программы (разделённый экран). Chrome 155+:
+//            tabs.create({splitWithTabId}); в Chrome 145–154 - если пару вкладок один раз собрали вручную, сайт
+//            открывается во второй вкладке пары. Не получилось - окном (window).
+//   window - отдельное окно Chrome (тип popup) на правой части экрана, окно программы сдвигается влево.
+//   tab    - обычная вкладка рядом с вкладкой программы.
+//   auto   - split, иначе window.
+// Следующий запрос открывается там же - одна вкладка (или одно окно) сайта. «Убрать» (site_hide): вкладка выходит из
+// разделённого экрана и остаётся обычной вкладкой (Chrome 155+; в старых версиях - закрывается), окно сворачивается,
 // окно программы возвращается на прежнее место. Кнопок на сайтах расширение не нажимает и формы не отправляет.
 const SITE_DEFAULT = { tabId: null, windowId: null, mode: '', manual: false, progWindowId: null, prevBounds: null };
 const DROP_HOSTS = ['e-trust.gosuslugi.ru', 'crypto.kontur.ru', 'nextcloud-ms.runity.ru'];   // content/drop.js
@@ -570,7 +570,7 @@ async function getWin(id) {
 }
 
 // Вкладка программы (рабочее место): http://127.0.0.1:<порт>/ или http://localhost:<порт>/;
-// активная в последнем окне — в первую очередь.
+// активная в последнем окне - в первую очередь.
 async function programTab() {
   const { port } = await settings();
   const tabs = (await chrome.tabs.query({ url: ['http://127.0.0.1/*', 'http://localhost/*'] }))
@@ -581,7 +581,7 @@ async function programTab() {
   return tabs.find(t => t.active && win && t.windowId === win.id) || tabs.find(t => t.active) || tabs[0];
 }
 
-// Ждать окончания загрузки вкладки (status complete) — не дольше ms.
+// Ждать окончания загрузки вкладки (status complete) - не дольше ms.
 function waitComplete(tabId, ms) {
   return new Promise(resolve => {
     let timer = null;
@@ -645,22 +645,22 @@ async function goTo(tabId, url, keepPrefix) {
   return t;
 }
 
-// Открыть адрес рядом с рабочим местом. opts: {open_in, screen, share, keep}. keep — не перезагружать сайт, если он
-// уже открыт (показать снова после «убрать»); keepPrefix — не уходить со страницы, адрес которой так начинается.
+// Открыть адрес рядом с рабочим местом. opts: {open_in, screen, share, keep}. keep - не перезагружать сайт, если он
+// уже открыт (показать снова после «убрать»); keepPrefix - не уходить со страницы, адрес которой так начинается.
 async function siteOpenTab(url, opts = {}, keepPrefix = '') {
   const want = ['split', 'window', 'tab'].includes(opts.open_in) ? opts.open_in : 'auto';
   const prog = await programTab();
   let st = await siteLoad();
   const notes = [];
   const nav = opts.keep ? '' : url;
-  // сайт закрыли руками — забываем его (окно программы — на прежнее место)
+  // сайт закрыли руками - забываем его (окно программы - на прежнее место)
   const alive = st.mode === 'window' ? !!(await getWin(st.windowId)) : !!(st.mode && await getTab(st.tabId));
   if (st.mode && !alive) {
     if (st.mode === 'window') await restoreProgram();
     await siteSave({}, true);
     st = await siteLoad();
   }
-  // auto — разделённый экран; если сайт уже открыт окном (разделённый экран не получился) — то же окно
+  // auto - разделённый экран; если сайт уже открыт окном (разделённый экран не получился) - то же окно
   let mode = want === 'auto' ? (st.mode === 'window' ? 'window' : 'split') : want;
   if (st.mode && st.mode !== mode) { await siteDrop(st); st = await siteLoad(); }
 
@@ -674,7 +674,7 @@ async function siteOpenTab(url, opts = {}, keepPrefix = '') {
       }
       if (!inSplit(t) && !inSplit(prog) && splitApi()) {
         try {
-          // вкладка сайта вышла из пары («убрать») — ставим рядом и собираем пару снова
+          // вкладка сайта вышла из пары («убрать») - ставим рядом и собираем пару снова
           if (t.windowId !== prog.windowId || t.index !== prog.index + 1) {
             await chrome.tabs.move(t.id, { windowId: prog.windowId, index: prog.index + 1 });
           }
@@ -682,13 +682,13 @@ async function siteOpenTab(url, opts = {}, keepPrefix = '') {
           await goTo(t.id, nav, keepPrefix);
           await chrome.tabs.update(t.id, { active: true }).catch(() => {});
           return { tabId: t.id, mode: 'split', notes };
-        } catch (e) { notes.push(`пара вкладок не собралась (${e.message || e}) — открываю заново`); }
+        } catch (e) { notes.push(`пара вкладок не собралась (${e.message || e}) - открываю заново`); }
       }
       if (!st.manual) await chrome.tabs.remove(t.id).catch(() => {});
       await siteSave({}, true);
     }
     if (prog && inSplit(prog)) {
-      // вкладка программы уже в разделённом экране (пару собрали вручную) — сайт открывается во второй вкладке пары
+      // вкладка программы уже в разделённом экране (пару собрали вручную) - сайт открывается во второй вкладке пары
       const pair = (await chrome.tabs.query({ windowId: prog.windowId })).find(x => x.id !== prog.id && x.splitViewId === prog.splitViewId);
       if (pair) {
         await goTo(pair.id, nav, keepPrefix);
@@ -747,7 +747,7 @@ function fillSearchField(q, selectors) {
   let el = null;
   for (const s of selectors || []) { const x = document.querySelector(s); if (vis(x)) { el = x; break; } }
   if (!el) el = [...document.querySelectorAll('input[type="text"], input[type="search"], input:not([type])')].find(vis) || null;
-  if (!el) return { ok: false, error: { code: 'no_field', message: 'На странице не найдено поле поиска — вставьте запрос вручную' } };
+  if (!el) return { ok: false, error: { code: 'no_field', message: 'На странице не найдено поле поиска - вставьте запрос вручную' } };
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
   el.focus();
   setter.call(el, q);
@@ -770,7 +770,7 @@ async function siteOpen(reqId, p) {
   progressTo(reqId, 'site', `открываю ${url}`);
   const r = await siteOpenTab(url, p);
   const data = { mode: r.mode, notes: r.notes, chrome: chromeMajor(), split_api: splitApi() };
-  note(`Сайт (${r.mode}): ${url}${r.notes.length ? ' — ' + r.notes.join('; ') : ''}`);
+  note(`Сайт (${r.mode}): ${url}${r.notes.length ? ' - ' + r.notes.join('; ') : ''}`);
   if (r.tabId === null) return { ok: true, data };
   const fill = p.fill && FILLERS[p.fill.kind];
   if (!fill) {
@@ -831,7 +831,7 @@ async function siteFile(msg, sender) {
   const r = await fetch(u.href, { cache: 'no-store' });
   if (!r.ok) throw fail('http', `программа ответила HTTP ${r.status}`);
   const buf = new Uint8Array(await r.arrayBuffer());
-  if (buf.length > 40 * 1024 * 1024) throw fail('too_big', 'Файл больше 40 МБ — выберите его на сайте вручную');
+  if (buf.length > 40 * 1024 * 1024) throw fail('too_big', 'Файл больше 40 МБ - выберите его на сайте вручную');
   let bin = '';
   for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
   note(`Файл дела → ${host}: ${msg.name || u.pathname.split('/').pop()}`);
@@ -919,7 +919,7 @@ async function waitForLogin(tabId) {
   if (await pageOk(tabId)) return;
   const { authWaitSec } = await settings();
   const msg = 'manager просит вход: введите логин и пароль во вкладке manager в Chrome '
-    + '(если окна «Войти» нет — обновите вкладку, F5)';
+    + '(если окна «Войти» нет - обновите вкладку, F5)';
   note(msg);
   if (currentReq) send({ type: 'progress', id: currentReq, step: 'auth_required', message: msg });
   try {

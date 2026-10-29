@@ -1,6 +1,6 @@
 """Сверка заявления с паспортом и формальные проверки заявления.
 
-Каждая проверка — функция с @register (реестр и порядок запуска — checks.py). compare() и extra_checks()
+Каждая проверка - функция с @register (реестр и порядок запуска - checks.py). compare() и extra_checks()
 оставлены для совместимости: они запускают те же проверки из реестра."""
 from __future__ import annotations
 
@@ -100,10 +100,10 @@ def _value_check(title, a, p, alternatives=(), app_field=None, pas_field=None) -
 
 def _fio_check0(title: str, app_val: str, pass_fio: str, field) -> Check:
     if not pass_fio:
-        return Check(title, REVIEW, app_val or "", "", "в паспорте ФИО не распознано — сверьте вручную")
+        return Check(title, REVIEW, app_val or "", "", "в паспорте ФИО не распознано - сверьте вручную")
     if not app_val:
         if field is not None and field.crop:
-            return Check(title, REVIEW, "", pass_fio, "рукописное поле — сверьте фрагмент с паспортом")
+            return Check(title, REVIEW, "", pass_fio, "рукописное поле - сверьте фрагмент с паспортом")
         return Check(title, WARN, "", pass_fio, "в заявлении не заполнено/не найдено")
     score, notes = names.fio_similarity(app_val, pass_fio)
     st = OK if score >= 97 else WARN if score >= 85 else FAIL
@@ -118,10 +118,10 @@ def _fio_check0(title: str, app_val: str, pass_fio: str, field) -> Check:
 def _value_check0(title: str, a: str | None, p: str | None, alternatives=(), app_field=None) -> Check:
     if not a:
         if app_field is not None and app_field.crop:
-            return Check(title, REVIEW, "", p or "", "рукописное поле — сверьте фрагмент с паспортом")
+            return Check(title, REVIEW, "", p or "", "рукописное поле - сверьте фрагмент с паспортом")
         return Check(title, WARN, "", p or "", "в заявлении не заполнено/не найдено")
     if not p:
-        return Check(title, REVIEW, a, "", "в паспорте не распознано — сверьте вручную")
+        return Check(title, REVIEW, a, "", "в паспорте не распознано - сверьте вручную")
     na, np_ = re.sub(r"\D", "", a), re.sub(r"\D", "", p)
     if na == np_:
         return Check(title, OK, a, p)
@@ -142,43 +142,43 @@ def issuer_reading_check(pas: Extraction) -> Check:
     f = pas.fields.get("issued_by")
     p_iss = pas.get("issued_by") or ""
     if not p_iss:
-        return Check("Кем выдан", REVIEW, "", "", "в паспорте не распознано — введите вручную по паспорту")
+        return Check("Кем выдан", REVIEW, "", "", "в паспорте не распознано - введите вручную по паспорту")
     notes = []
     fixes = pas.debug.get("issued_by_fixes") if isinstance(pas.debug, dict) else None
     if fixes and f is not None and f.source == "ocr":
         notes.append("исправлены опечатки OCR: " + ", ".join(fixes))
     if not issuerlib.looks_like_authority(p_iss):
         return Check("Кем выдан", REVIEW, "", p_iss,
-                     "не похоже на название органа (нет МВД/ОВД/УФМС/отдела…) — сверьте с паспортом")
+                     "не похоже на название органа (нет МВД/ОВД/УФМС/отдела…) - сверьте с паспортом")
     if _uncertain(f):
         src = "локальной моделью" if f.source.startswith("vlm") else f"OCR, уверенность {f.confidence:.2f}"
         return Check("Кем выдан", REVIEW, "", p_iss,
-                     "; ".join([f"прочитано ненадёжно ({src}) — сверьте с паспортом"] + notes))
+                     "; ".join([f"прочитано ненадёжно ({src}) - сверьте с паспортом"] + notes))
     src = {"mrz": "MRZ", "manual": "введено оператором"}.get(f.source, f"OCR, уверенность {f.confidence:.2f}")
     return Check("Кем выдан", OK, "", p_iss, "; ".join([f"прочитано ({src})"] + notes))
 
 
 def issuer_region_check(pas: Extraction) -> Check | None:
-    """Регион в «кем выдан» ↔ регион по коду подразделения (первые две цифры — код субъекта)."""
+    """Регион в «кем выдан» ↔ регион по коду подразделения (первые две цифры - код субъекта)."""
     p_iss, dept = pas.get("issued_by"), pas.get("department_code")
     if not p_iss or not dept:
         return None
     code = issuerlib.department_region(dept)
     if code is None:
         return Check("Кем выдан ↔ код подразделения", INFO, "", f"{p_iss} / {dept}",
-                     f"регион для кода {dept} не известен — не сверялось")
+                     f"регион для кода {dept} не известен - не сверялось")
     found = issuerlib.regions_in_text(p_iss)
     reg = f"{issuerlib.region_name(code)} ({code})"
     if not found:
         return Check("Кем выдан ↔ код подразделения", INFO, "", f"{p_iss} / {dept}",
-                     f"регион в названии органа не указан; по коду — {reg}")
+                     f"регион в названии органа не указан; по коду - {reg}")
     if code in found:
         return Check("Кем выдан ↔ код подразделения", OK, "", f"{p_iss} / {dept}",
                      f"регион совпадает: {reg}")
     names_found = ", ".join(f"{issuerlib.region_name(c)} ({c})" for c in sorted(found))
     unreliable = _uncertain(pas.fields.get("issued_by")) or _uncertain(pas.fields.get("department_code"))
     return Check("Кем выдан ↔ код подразделения", REVIEW if unreliable else WARN, "", f"{p_iss} / {dept}",
-                 f"в названии органа — {names_found}, а по коду подразделения — {reg}"
+                 f"в названии органа - {names_found}, а по коду подразделения - {reg}"
                  + ("; значения прочитаны ненадёжно" if unreliable else ""))
 
 
@@ -217,7 +217,7 @@ def _domains_check(app: Extraction, doms: list[str], f: Fields | None = None) ->
     return Check("Домен(ы)", REVIEW if problems else OK, ", ".join(doms), "", "; ".join(problems + notes))
 
 
-# ------------------------------------------------------------------ проверки (реестр — checks.py)
+# ------------------------------------------------------------------ проверки (реестр - checks.py)
 #
 # Порядок функций ниже = порядок проверок в отчёте. Поля заявления берутся по ролям (ctx.f.get("роль")),
 # поэтому проверки работают с любым бланком, где поля сопоставлены этим ролям (formspec.ROLES).
@@ -280,11 +280,11 @@ def _chk_passport_issue_date(ctx: Ctx):
 
 @register("issued_by", {"Кем выдан": "issued_by"}, crop="issued_by", needs="passport")
 def _chk_issued_by(ctx: Ctx):
-    """«Кем выдан» в заявлении ↔ паспорт; без заявления — оценка самого прочтения."""
+    """«Кем выдан» в заявлении ↔ паспорт; без заявления - оценка самого прочтения."""
     f, pas = ctx.f, ctx.pas
     a_iss, p_iss = f.get("issued_by"), pas.get("issued_by")
     if ctx.app.doc_type == "none" and not a_iss:
-        # проверка только паспорта: сверять не с чем — оцениваем само прочтение
+        # проверка только паспорта: сверять не с чем - оцениваем само прочтение
         return issuer_reading_check(pas)
     if a_iss and p_iss:
         sim = issuer_similarity(a_iss, p_iss)
@@ -314,7 +314,7 @@ def _pick_date(ctx: Ctx, pas_key: str, app_role: str, app_field_role: str):
 
 @register("series_year", {"Серия ↔ год выдачи": "issue_date"}, needs="passport")
 def _chk_series_year(ctx: Ctx):
-    """Год бланка в серии ↔ год выдачи (бланки печатают с опережением: «46 19» при выдаче в 2018 г. — норма)."""
+    """Год бланка в серии ↔ год выдачи (бланки печатают с опережением: «46 19» при выдаче в 2018 г. - норма)."""
     s = re.sub(r"\D", "", ctx.pas.get("series_number") or ctx.f.get("passport") or "")
     i, _ = _pick_date(ctx, "issue_date", "passport.issue_date", "passport")
     if not (len(s) >= 4 and i):
@@ -322,14 +322,14 @@ def _chk_series_year(ctx: Ctx):
     yy = int(s[2:4]); blank_year = 2000 + yy if yy < 90 else 1900 + yy
     lead = blank_year - i.year
     if lead > SERIES_YEAR_LEAD:
-        return Check("Серия ↔ год выдачи", WARN, "", s[:4], f"бланк {blank_year} г., а выдан в {i.year} г. — так не бывает")
+        return Check("Серия ↔ год выдачи", WARN, "", s[:4], f"бланк {blank_year} г., а выдан в {i.year} г. - так не бывает")
     if lead > 1:
         return Check("Серия ↔ год выдачи", WARN, "", s[:4],
-                     f"бланк {blank_year} г., выдан в {i.year} г. — опережение {lead} г., "
+                     f"бланк {blank_year} г., выдан в {i.year} г. - опережение {lead} г., "
                      "встречается редко, проверьте дату выдачи")
     if lead == 1:
         return Check("Серия ↔ год выдачи", INFO, "", s[:4],
-                     f"бланк {blank_year} г., выдан в {i.year} г. — бланки печатают с опережением, допустимо")
+                     f"бланк {blank_year} г., выдан в {i.year} г. - бланки печатают с опережением, допустимо")
     if i.year - blank_year > 5:
         return Check("Серия ↔ год выдачи", INFO, "", s[:4], f"бланк {blank_year} г., выдан в {i.year} г. (старый бланк)")
     return None
@@ -348,16 +348,16 @@ def _chk_mrz(ctx: Ctx):
 
 @register("passport_loaded", {"Паспорт приложен": "passport"})
 def _chk_passport_loaded(ctx: Ctx):
-    """Паспорт не загружен — заявление сверить не с чем (без этой проверки такое дело получало «Принять»)."""
+    """Паспорт не загружен - заявление сверить не с чем (без этой проверки такое дело получало «Принять»)."""
     if ctx.pas is not None:
         return None
     return Check("Паспорт приложен", REVIEW, ctx.f.get("passport") or "", "",
-                 "паспорт не загружен — сверка заявления с паспортом не выполнялась")
+                 "паспорт не загружен - сверка заявления с паспортом не выполнялась")
 
 
 @register("address", {"Адрес регистрации": "address"}, crop="address", needs="passport")
 def _chk_address(ctx: Ctx):
-    """Адрес регистрации — к сведению (с отметкой в паспорте не сверяется)."""
+    """Адрес регистрации - к сведению (с отметкой в паспорте не сверяется)."""
     return Check("Адрес регистрации", INFO, ctx.f.get("address") or "", "",
                  "с отметкой о регистрации в паспорте автоматически не сверяется")
 
@@ -375,7 +375,7 @@ def _chk_fio_header_vs_text(ctx: Ctx):
     hand = any("рукопись" in (f.field(k).source or "") for k in ("applicant_header", "applicant_fio"))
     if sc < 97:
         return Check("ФИО: шапка ↔ «Я, …»", REVIEW if hand else WARN if sc >= 85 else FAIL, hdr, me,
-                     f"сходство {sc:.0f}%" + ("; рукопись — сверьте по фрагментам" if hand else ""))
+                     f"сходство {sc:.0f}%" + ("; рукопись - сверьте по фрагментам" if hand else ""))
     return None
 
 
@@ -451,10 +451,10 @@ def _chk_contract(ctx: Ctx):
     val = ctx.f.get("contract")
     fld = ctx.f.field("contract")
     if val and not re.search(r"\d{4,}|@|[A-Za-zА-Яа-яЁё]{3,}", val):
-        # «1 © >» — обрывок рукописи, прочитанный OCR: значения по сути нет
-        return Check("Договор/аккаунт нового администратора", REVIEW, val, "", "прочитано неразборчиво — сверьте фрагмент")
+        # «1 © >» - обрывок рукописи, прочитанный OCR: значения по сути нет
+        return Check("Договор/аккаунт нового администратора", REVIEW, val, "", "прочитано неразборчиво - сверьте фрагмент")
     if val and _uncertain(fld):
-        return Check("Договор/аккаунт нового администратора", REVIEW, val, "", "прочитано ненадёжно — сверьте фрагмент")
+        return Check("Договор/аккаунт нового администратора", REVIEW, val, "", "прочитано ненадёжно - сверьте фрагмент")
     return Check("Договор/аккаунт нового администратора", OK if val else (REVIEW if fld and fld.crop else WARN),
                  val or "", "", "" if val else "не указан/не распознан")
 
@@ -506,7 +506,7 @@ def _chk_old_passport(ctx: Ctx):
     if same_person and (older or not uncertain):
         st = REVIEW if uncertain else FAIL
         why = "дата выдачи в заявлении раньше, чем у предъявленного паспорта" if older else \
-              "ФИО/дата рождения совпадают, а серия и номер — нет"
+              "ФИО/дата рождения совпадают, а серия и номер - нет"
         if st == FAIL:
             ctx.flags.add("old_passport")
         return Check("Указан прежний паспорт", st, f.get("passport"), pas.get("series_number"),
@@ -514,7 +514,7 @@ def _chk_old_passport(ctx: Ctx):
     return None
 
 
-@register("system_admin", {"Заявитель — текущий администратор": "fio", "Паспорт в системе устарел": "passport",
+@register("system_admin", {"Заявитель - текущий администратор": "fio", "Паспорт в системе устарел": "passport",
                            "Кем выдан ↔ данные системы": "issued_by", "Домены администратора": "domains"},
           flags=("admin_mismatch",))
 def _chk_system_admin(ctx: Ctx):
@@ -528,13 +528,13 @@ def _chk_system_admin(ctx: Ctx):
     sc = names.fio_similarity(admin.fio, cur_fio)[0] if admin.fio and cur_fio else 0
     bd_ok = not admin.birth_date or not pf("birth_date") or admin.birth_date == pf("birth_date")
     if sc >= 90 and bd_ok:
-        out.append(Check("Заявитель — текущий администратор", OK, cur_fio, admin.fio,
+        out.append(Check("Заявитель - текущий администратор", OK, cur_fio, admin.fio,
                          f"по данным системы ({admin.source or 'введено вручную'})"))
         cur_sn = pf("series_number") or f.get("passport")
         if admin.passport and cur_sn and _digits(admin.passport) != _digits(cur_sn):
             out.append(Check("Паспорт в системе устарел", INFO, cur_sn, admin.passport,
-                             "в системе другой паспорт — при автозаполнении будет обновлён"))
-        # «кем выдан» в системе — сверяем, только если в системе тот же паспорт
+                             "в системе другой паспорт - при автозаполнении будет обновлён"))
+        # «кем выдан» в системе - сверяем, только если в системе тот же паспорт
         cur_iss = pf("issued_by") or f.get("issued_by")
         sys_iss = getattr(admin, "passport_issued_by", "")
         same_pas = not admin.passport or not cur_sn or _digits(admin.passport) == _digits(cur_sn)
@@ -544,7 +544,7 @@ def _chk_system_admin(ctx: Ctx):
             st = OK if sim >= 85 else (REVIEW if _uncertain(fld) else WARN)
             out.append(Check("Кем выдан ↔ данные системы", st, cur_iss, sys_iss, f"сходство {sim:.0f}% (с учётом сокращений)"))
     else:
-        out.append(Check("Заявитель — текущий администратор", FAIL, cur_fio, admin.fio,
+        out.append(Check("Заявитель - текущий администратор", FAIL, cur_fio, admin.fio,
                          f"сходство ФИО {sc:.0f}%" + ("" if bd_ok else "; дата рождения отличается")))
         ctx.flags.add("admin_mismatch")
     doms = f.get("domains.list") or []

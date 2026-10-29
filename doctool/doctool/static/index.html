@@ -4,26 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PySimpleManager</title>
+<script>/* (0.8.5) тема до отрисовки страницы: pysm.theme - light / dark, иначе как в системе */
+try { const t = localStorage.getItem('pysm.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
 <link rel="stylesheet" href="/static/workspace.css">
 <style>
 :root{
   --bg:#f5f6f8;--card:#fff;--text:#1d1f23;--muted:#667085;--line:#dfe3e8;--accent:#2b6cb0;--accent-text:#fff;
   --ok:#e5f4ea;--ok-t:#1e6b3a;--warn:#fff3cd;--warn-t:#7a5b00;--fail:#fde4e2;--fail-t:#9b1c1c;
-  --review:#e3eefb;--review-t:#1c4f8a;--info:#efefef;--info-t:#555;--input:#fff;
+  --review:#e3eefb;--review-t:#1c4f8a;--info:#efefef;--info-t:#555;--input:#fff;color-scheme:light;
 }
-@media (prefers-color-scheme: dark){:root{
+/* тёмная тема: выбрана в шапке («Тема») или «как в системе» при тёмной теме Windows */
+:root[data-theme=dark]{
   --bg:#15171a;--card:#1f2226;--text:#e6e8eb;--muted:#9aa3ad;--line:#33383e;--accent:#5b9bd5;--accent-text:#0d1116;
   --ok:#183a26;--ok-t:#8fd6a8;--warn:#3d3214;--warn-t:#f0d27a;--fail:#43201e;--fail-t:#f3a29b;
-  --review:#1c2f45;--review-t:#9cc3f0;--info:#2a2d31;--info-t:#b9bec4;--input:#16181b;}}
+  --review:#1c2f45;--review-t:#9cc3f0;--info:#2a2d31;--info-t:#b9bec4;--input:#16181b;color-scheme:dark;}
+@media (prefers-color-scheme: dark){:root:not([data-theme=light]){
+  --bg:#15171a;--card:#1f2226;--text:#e6e8eb;--muted:#9aa3ad;--line:#33383e;--accent:#5b9bd5;--accent-text:#0d1116;
+  --ok:#183a26;--ok-t:#8fd6a8;--warn:#3d3214;--warn-t:#f0d27a;--fail:#43201e;--fail-t:#f3a29b;
+  --review:#1c2f45;--review-t:#9cc3f0;--info:#2a2d31;--info-t:#b9bec4;--input:#16181b;color-scheme:dark;}}
 *{box-sizing:border-box}
 body{margin:0;font:14px/1.45 "Segoe UI",system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
 header{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--line);background:var(--card)}
 header h1{font-size:18px;margin:0}
 header h1 .ver{font-size:12px;font-weight:400;color:var(--muted)}
 header .meta{margin-left:auto;color:var(--muted);font-size:13px}
+header .theme{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+header .theme select{min-width:0;padding:3px 6px;font-size:13px}
 main{margin:0 auto;padding:20px 16px 60px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:0 auto 18px;max-width:1280px}
-/* (0.7.3) «Домены в manager» — во всю ширину окна: таблица из 10 колонок без прокрутки вбок */
+/* (0.7.3) «Домены в manager» - во всю ширину окна: таблица из 10 колонок без прокрутки вбок */
 #domCard{max-width:none}
 .card h2{font-size:16px;margin:0 0 14px}
 .row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end}
@@ -52,7 +62,7 @@ td input[type=text]{width:100%;min-width:120px}
 textarea{font:inherit;color:var(--text);background:var(--input);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-height:64px}
 #domLog{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;max-height:150px;overflow:auto;font:12.5px/1.5 Consolas,monospace;white-space:pre-wrap;margin-top:10px}
 #domTable td{font-size:13px}
-/* длинные имена доменов, e-mail, «кем выдан» переносятся в любом месте — таблица не шире окна */
+/* длинные имена доменов, e-mail, «кем выдан» переносятся в любом месте - таблица не шире окна */
 #domTable td b,#domTable td small,#domTable td li{overflow-wrap:anywhere}
 #domTable .badge{white-space:normal}
 #domTable td small{color:var(--muted)}
@@ -82,13 +92,22 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 dialog .hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
 dialog .hd h3{margin:0;font-size:16px}
 dialog .bd{padding:14px 18px;max-height:75vh;overflow:auto}
-/* (0.7.6) «К» — комментарий администратора в S; маленькое окошко с текстом */
+/* (0.7.6) «К» - комментарий администратора в S; маленькое окошко с текстом */
 .kbtn{display:inline-block;min-width:20px;padding:0 5px;margin-left:4px;border-radius:5px;background:#c2410c;color:#fff;font-weight:700;font-size:12px;line-height:19px;text-align:center;border:0;cursor:pointer;vertical-align:1px}
 .kbtn:hover{filter:brightness(1.12)}
 .kpop{position:fixed;z-index:1000;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 28px rgba(16,24,40,.22);padding:10px 12px;max-width:360px;font-size:13px}
 .kpop h4{margin:0 0 6px;font-size:13px}
 .kpop .tx{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-bottom:8px;overflow-wrap:anywhere}
 .kpop .ft{display:flex;gap:8px;align-items:center}
+/* (0.8.5) «Смена владельца ЛК» в окне рабочего места: те же разделы, компактнее; разделы 2-3 - после поиска аккаунта */
+.own-wshint{display:none;margin:8px 0 0}
+.ws-own{padding:8px 10px}
+.ws-own .own-wshint{display:block}
+.ws-own #ownBox.acc .own-wshint,.ws-own #ownBox:not(.acc) .own-after{display:none}
+.ws-own .card{max-width:none;margin:0 0 10px;padding:10px 12px;border-radius:8px}
+.ws-own .card h2{font-size:14px;margin:0 0 8px}
+.ws-own .row{gap:8px}
+.ws-own .row>label.f{min-width:200px!important}
 ul.flags{margin:4px 0 0 16px;padding:0}
 ul.flags li{margin:2px 0}
 </style>
@@ -98,6 +117,8 @@ ul.flags li{margin:2px 0}
 <header>
   <h1>PySimpleManager <span class="ver" id="appVer"></span></h1>
   <span class="meta" id="meta">загрузка…</span>
+  <label class="theme" title="Оформление программы: светлое, тёмное или как в системе (Windows). Запоминается в браузере">Тема
+    <select id="themeSel"><option value="auto">как в системе</option><option value="light">светлая</option><option value="dark">тёмная</option></select></label>
   <span class="ext" id="extState" title="Расширение Chrome «PySimpleManager»"><span class="dot"></span><span>manager: …</span></span>
 </header>
 <nav class="tabs">
@@ -112,7 +133,7 @@ ul.flags li{margin:2px 0}
   <section id="wsIntake" class="ws-intake">
     <h2 style="margin:0 0 4px;font-size:18px">Новое дело</h2>
     <p class="hint" style="margin:0 0 6px">Архив из тикетницы раскладывается по страницам: заявление, паспорт, прочее. Программа сразу читает
-      поля, загружает Sd, S и ЕСИА доменов из manager и показывает всё рядом. Можно начать и без файлов — добавить их потом.</p>
+      поля, загружает Sd, S и ЕСИА доменов из manager и показывает всё рядом. Можно начать и без файлов - добавить их потом.</p>
     <div class="ws-row">
       <label class="f">Номер тикета <span style="display:flex;gap:4px"><input type="text" id="wsTicketNew" placeholder="#20261012373031821">
         <button class="sm" data-wspaste="wsTicketNew" title="Вставить из буфера обмена">Вставить</button></span></label>
@@ -120,9 +141,9 @@ ul.flags li{margin:2px 0}
       <label class="f">Способ получения <select id="wsViaNew"></select></label>
     </div>
     <div class="ws-drop" id="wsDrop"><b>Перетащите сюда архив из тикетницы</b><br>
-      <span class="hint">zip или rar — или сами файлы: заявление, паспорт (PDF, JPG, PNG, TIFF, DOCX), подпись .sig</span><br><br>
+      <span class="hint">zip или rar - или сами файлы: заявление, паспорт (PDF, JPG, PNG, TIFF, DOCX), подпись .sig</span><br><br>
       <button id="wsPick" type="button">Выбрать файлы…</button><input type="file" id="wsFiles" multiple class="hidden"></div>
-    <div style="margin-top:8px"><button id="wsEmpty" type="button" title="Открыть окна рабочего места (домены, «Поиск», строка таблицы, manager) без заявления; файлы можно перетащить в дело потом">Без файлов — открыть рабочее место</button></div>
+    <div style="margin-top:8px"><button id="wsEmpty" type="button" title="Открыть окна рабочего места (домены, «Поиск», строка таблицы, manager) без заявления; файлы можно перетащить в дело потом">Без файлов - открыть рабочее место</button></div>
     <div class="msg hidden" id="wsIntakeMsg"></div>
     <div class="ws-recent" id="wsRecent"></div>
   </section>
@@ -138,42 +159,42 @@ ul.flags li{margin:2px 0}
     </div>
     <div class="ws-strip" id="wsStrip"></div>
     <div class="ws-tbar">
-      <button id="wsSearchBtn" title="Строка поиска: Google, ЕГРЮЛ, Госуслуги, быстрые ссылки — сайт открывается рядом (Ctrl+K)"><svg class="ws-si" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4L14 14"/></svg> Поиск<span class="ws-kbd">Ctrl+K</span></button>
+      <button id="wsSearchBtn" title="Строка поиска: Google, ЕГРЮЛ, Госуслуги, быстрые ссылки - сайт открывается рядом (Ctrl+K)"><svg class="ws-si" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4L14 14"/></svg> Поиск<span class="ws-kbd">Ctrl+K</span></button>
       <button id="wsWinBtn" title="Все окна рабочего места: открыть любое, показать все свёрнутые">Окна ▾</button>
-      <label class="ws-tsel" title="Зажмите левую кнопку мыши и обведите печатный текст на странице рамкой — он попадёт в буфер обмена. Рукопись не распознаётся. Страница при этом прокручивается колесом мыши"><input type="checkbox" id="wsTsel" data-tsel><span>Ручное выделение<br class="ws-br"> текста</span></label>
+      <label class="ws-tsel" title="Зажмите левую кнопку мыши и обведите печатный текст на странице рамкой - он попадёт в буфер обмена. Рукопись не распознаётся. Страница при этом прокручивается колесом мыши"><input type="checkbox" id="wsTsel" data-tsel><span>Ручное выделение<br class="ws-br"> текста</span></label>
       <button id="wsStripT" title="Лента страниц: миниатюры / одной строкой">Лента ▴</button>
       <span class="ws-lbl">Раскладка:</span>
       <button data-wspreset="cols3">3 колонки</button>
       <button data-wspreset="docs">Документы крупно</button>
       <button data-wspreset="grid">Сетка 2×2</button>
       <button data-wspreset="cascade">Каскад</button>
-      <label><input type="checkbox" id="wsSnapOn" checked> прилипание</label>
       <button id="wsSaveLayout" title="Запомнить расположение окон для этого типа операции">Запомнить мою</button>
       <button data-wspreset="mine">Моя</button>
       <button id="wsJoin" class="hidden">Собрать страницы</button>
-      <button id="wsRecheck" class="hidden" title="Страницы переложены — прочитать документы заново">Перепроверить</button>
+      <button id="wsRecheck" class="hidden" title="Страницы переложены - прочитать документы заново">Перепроверить</button>
       <div class="ws-dock" id="wsDock"></div>
-      <button id="wsTopHide" title="Убрать верхнюю панель наверх — больше места для документов (Ctrl+Shift+↑)">▴ Убрать панель</button>
+      <button id="wsTopHide" title="Убрать верхнюю панель наверх - больше места для документов (Ctrl+Shift+↑)">▴ Убрать панель</button>
     </div>
     </div>
-    <!-- (0.8.3) верхняя панель убрана: тонкая полоса — вернуть панель, дело, шаги, «Поиск», «Окна», свёрнутые окна -->
+    <!-- (0.8.3) верхняя панель убрана: тонкая полоса - вернуть панель, дело, шаги, «Поиск», «Окна», свёрнутые окна -->
     <div class="ws-mini" id="wsMini">
       <button id="wsTopShow" title="Вернуть верхнюю панель со всеми кнопками (Ctrl+Shift+↓)">▾ Панель</button>
       <span class="ws-mini-info" id="wsMiniInfo"></span>
-      <button id="wsMiniRecheck" class="primary hidden" title="Страницы переложены — прочитать документы заново">Перепроверить</button>
+      <button id="wsMiniRecheck" class="primary hidden" title="Страницы переложены - прочитать документы заново">Перепроверить</button>
       <div class="ws-steps" id="wsMiniSteps"></div>
       <button id="wsMiniSearch" title="Строка поиска (Ctrl+K)">Поиск</button>
       <button id="wsMiniWin" title="Все окна рабочего места">Окна ▾</button>
-      <label class="ws-tsel" title="Зажмите левую кнопку мыши и обведите печатный текст на странице рамкой — он попадёт в буфер обмена. Рукопись не распознаётся. Страница при этом прокручивается колесом мыши"><input type="checkbox" id="wsMiniTsel" data-tsel> Ручное выделение текста</label>
+      <label class="ws-tsel" title="Зажмите левую кнопку мыши и обведите печатный текст на странице рамкой - он попадёт в буфер обмена. Рукопись не распознаётся. Страница при этом прокручивается колесом мыши"><input type="checkbox" id="wsMiniTsel" data-tsel> Ручное выделение текста</label>
       <div class="ws-mini-dock" id="wsMiniDock"></div>
     </div>
     <div class="ws-sbar hidden" id="wsSbar"></div>
-    <div class="ws-desk" id="wsDesk"><div class="ws-snap" id="wsSnap"></div></div>
+    <div class="ws-desk" id="wsDesk"></div>
     <div class="ws-abar">
       <div class="chips" id="wsGate"></div>
       <div class="act">
-        <button id="wsOpenMgr" title="Окно «manager · смена администратора»: расширение откроет «Перенос доменов между аккаунтами» и впишет домены и документы; «Далее» — вы">Смена админа через manager</button>
-        <button id="wsOpenLoa" title="Окно доверенности: расширение откроет «Документы → Доверенности → Добавить» и впишет паспорт и ФИО (у юрлица — код страны и ИНН), e-mail и телефон; «Добавить документ» — вы">Безбумажные операции</button>
+        <button id="wsOpenMgr" title="Окно «manager · смена администратора»: расширение откроет «Перенос доменов между аккаунтами» и впишет домены и документы; «Далее» - вы">Смена админа через manager</button>
+        <button id="wsOpenLoa" title="Окно доверенности: расширение откроет «Документы → Доверенности → Добавить» и впишет паспорт и ФИО (у юрлица - код страны и ИНН), e-mail и телефон; «Добавить документ» - вы">Безбумажные операции</button>
+        <button id="wsOpenOwn" title="Окно «Смена владельца ЛК»: найти аккаунт, сверить базовую анкету с заявлением и заполнить её данными нового владельца в manager; «Сохранить» - вы">Смена владельца ЛК</button>
         <button id="wsCopyRow2">Копировать строку таблицы</button>
       </div>
     </div>
@@ -183,7 +204,7 @@ ul.flags li{margin:2px 0}
 <main>
 <div id="tabCheck">
 <section class="card" id="domCard">
-  <h2>Домены в manager <span class="hint">— данные Sd, S, ЕСИА (Госуслуги) и MO (владелец аккаунта) через расширение Chrome</span></h2>
+  <h2>Домены в manager <span class="hint">- данные Sd, S, ЕСИА (Госуслуги) и MO (владелец аккаунта) через расширение Chrome</span></h2>
   <div class="row">
     <label class="f" style="flex:1;min-width:280px">Домены (через пробел, запятую или с новой строки)
       <textarea id="domList" placeholder="example.ru&#10;пример.рф"></textarea></label>
@@ -192,12 +213,13 @@ ul.flags li{margin:2px 0}
     <button class="primary" id="domLoad">Загрузить данные из manager</button>
     <button id="domCancel" disabled>Остановить</button>
     <button id="domReport" disabled title="Отдельный HTML-файл: итог по группам, администраторы, e-mail, замечания и таблица доменов с фильтром">Выгрузка по доменам (HTML)</button>
+    <button id="domReset" disabled title="Стереть сохранённый результат: следующая загрузка запросит все домены из manager заново">Сбросить результат</button>
     <span class="hint" id="domHint"></span>
   </div>
   <div id="domLog" class="hidden"></div>
   <div class="wrap"><table id="domTable" class="hidden"><thead><tr>
     <th>Домен</th><th>manager</th><th>Администратор (Sd)</th><th>Паспорт / ИНН</th><th>ЕСИА</th>
-    <th title="matches account owner contacts — совпадает ли администратор домена (Sd) с владельцем аккаунта (базовая анкета)">MO</th><th>Страна</th>
+    <th title="matches account owner contacts - совпадает ли администратор домена (Sd) с владельцем аккаунта (базовая анкета)">MO</th><th>Страна</th>
     <th>Смена админа</th><th>Provider</th><th>Аккаунт</th><th>Проверки</th></tr></thead><tbody></tbody></table></div>
 </section>
 
@@ -205,10 +227,12 @@ ul.flags li{margin:2px 0}
 
 <!-- ================================================================ смена владельца ЛК -->
 <div id="tabOwner" class="hidden">
+<!-- (0.8.5) содержимое вкладки переносится в окно «Смена владельца ЛК» рабочего места и обратно (одно состояние) -->
+<div id="ownBox">
 <section class="card">
   <h2>1. Аккаунт</h2>
   <p class="hint">Номер аккаунта, «Данные пользователя #…» или «Базовая анкета пользователя #…», ссылка из manager, «договор № …»,
-    логин (e-mail аккаунта с логином может не совпадать — поиск идёт по логину), домен (аккаунт — владелец услуги домена). Физлица, ИП и юрлица.</p>
+    логин (e-mail аккаунта с логином может не совпадать - поиск идёт по логину), домен (аккаунт - владелец услуги домена). Физлица, ИП и юрлица.</p>
   <div class="row">
     <label class="f" style="flex:1;min-width:280px">Пользователь <input type="text" id="ownQuery" placeholder="15904265 / Данные пользователя #15904265 / login@example.com / example.ru"></label>
     <button class="primary" id="ownLoad">Загрузить из manager</button>
@@ -216,9 +240,11 @@ ul.flags li{margin:2px 0}
   <div class="hint" id="ownParsed" style="margin-top:6px"></div>
   <div id="ownInfo" class="kv hidden"></div>
   <div id="ownNotes"></div>
+  <p class="hint own-wshint">Найдите аккаунт: ниже появятся текущие данные (базовая анкета ↔ заявление) и поля нового владельца
+    с «Заполнить автоматически».</p>
 </section>
 
-<section class="card">
+<section class="card own-after">
   <h2>2. Текущий владелец: базовая анкета ↔ заявление</h2>
   <div class="row" style="margin-bottom:8px">
     <span class="hint">Тип базовой анкеты:</span>
@@ -227,7 +253,7 @@ ul.flags li{margin:2px 0}
       <label><input type="radio" name="ownCmpKind" value="ip"> ИП</label>
       <label><input type="radio" name="ownCmpKind" value="org"> юрлицо</label>
     </div>
-    <span class="hint">— выбирается сам по загруженному аккаунту</span>
+    <span class="hint">- выбирается сам по загруженному аккаунту</span>
   </div>
   <p class="hint" id="ownCmpHint"></p>
   <div class="wrap"><table id="ownCmp"><thead><tr><th>Поле</th><th>Базовая анкета (manager)</th><th style="width:38%">Заявление</th><th>Итог</th></tr></thead><tbody></tbody></table></div>
@@ -235,7 +261,7 @@ ul.flags li{margin:2px 0}
   <details><summary>Все поля базовой анкеты</summary><table><tbody id="ownBaAll"></tbody></table></details>
 </section>
 
-<section class="card">
+<section class="card own-after">
   <h2>3. Новый владелец → базовая анкета в manager</h2>
   <div class="row" style="margin-bottom:10px">
     <span class="hint">Новый владелец:</span>
@@ -247,7 +273,7 @@ ul.flags li{margin:2px 0}
   </div>
   <p class="hint">«Заполнить автоматически» можно нажать в любой момент: программа откроет (или найдёт) вкладку manager «Базовая анкета пользователя #…»
     этого аккаунта и заменит в ней поля, которые заполнены здесь; пустые поля не трогает. Если тип анкеты в manager другой
-    (например, «Физик», а новый владелец — юрлицо), программа сама переключит его на странице («Физик / ИП / Юрик»).
+    (например, «Физик», а новый владелец - юрлицо), программа сама переключит его на странице («Физик / ИП / Юрик»).
     <b>«Сохранить» в manager нажимаете вы.</b> <span id="ownKindHint"></span></p>
   <div class="ownGrid" id="ownForm">
     <label class="f" data-for="org" style="grid-column:span 2">Название организации <span class="hint">(→ «Название»; English name пересчитает страница)</span>
@@ -259,21 +285,21 @@ ul.flags li{margin:2px 0}
     <label class="f" data-for="ip org"><span id="ownInnTitle">ИНН</span> <input type="text" data-k="inn" placeholder="12 цифр"></label>
     <label class="f" data-for="org">КПП <input type="text" data-k="kpp" placeholder="9 цифр"></label>
     <label class="f" data-for="pp ip">Серия и номер паспорта <input type="text" data-k="passport" placeholder="4021 925790"></label>
-    <label class="f wide" data-for="pp ip">Кем и когда выдан документ <span class="hint">(как в заявлении — дата и «кем выдан» разделятся сами)</span>
+    <label class="f wide" data-for="pp ip">Кем и когда выдан документ <span class="hint">(как в заявлении - дата и «кем выдан» разделятся сами)</span>
       <input type="text" data-k="issued" placeholder="ГУ МВД России по г. Санкт-Петербургу и Ленинградской области, 24.08.2021"></label>
     <label class="f" data-for="pp ip">Дата выдачи <span class="hint">(если не из строки выше)</span> <input type="text" data-k="passport_date" placeholder="ДД.ММ.ГГГГ"></label>
     <label class="f" data-for="pp ip" style="grid-column:span 2">Кем выдан <span class="hint">(если не из строки выше)</span> <input type="text" data-k="passport_place"></label>
-    <label class="f wide" data-for="pp ip">Адрес регистрации <span class="hint" id="ownAddrHint">(→ «Почтовый адрес» 1 в 1, город — из адреса)</span>
+    <label class="f wide" data-for="pp ip">Адрес регистрации <span class="hint" id="ownAddrHint">(→ «Почтовый адрес» 1 в 1, город - из адреса)</span>
       <textarea data-k="address" rows="2"></textarea></label>
-    <label class="f wide" data-for="org">Физический адрес <span class="hint">(→ «Юр. адрес», город — из адреса)</span>
+    <label class="f wide" data-for="org">Физический адрес <span class="hint">(→ «Юр. адрес», город - из адреса)</span>
       <textarea data-k="legal_address" rows="2"></textarea></label>
-    <label class="f" data-for="org">Индекс (юр. адрес) <span class="hint">(пусто — останется прежний)</span> <input type="text" data-k="legal_zip"></label>
-    <label class="f" data-for="org">Город (юр. адрес) <span class="hint">(пусто — из адреса)</span> <input type="text" data-k="legal_city"></label>
-    <label class="f wide" data-for="org">Почтовый адрес <span class="hint">(пусто — как физический)</span>
+    <label class="f" data-for="org">Индекс (юр. адрес) <span class="hint">(пусто - останется прежний)</span> <input type="text" data-k="legal_zip"></label>
+    <label class="f" data-for="org">Город (юр. адрес) <span class="hint">(пусто - из адреса)</span> <input type="text" data-k="legal_city"></label>
+    <label class="f wide" data-for="org">Почтовый адрес <span class="hint">(пусто - как физический)</span>
       <textarea data-k="postal_address" rows="2"></textarea></label>
-    <label class="f" data-for="pp ip org">Город <span class="hint">(пусто — из адреса)</span> <input type="text" data-k="city"></label>
-    <label class="f" data-for="pp ip org">Индекс <span class="hint">(пусто — останется прежний)</span> <input type="text" data-k="zip"></label>
-    <label class="f" data-for="pp ip org">Получатель <span class="hint" id="ownRecHint">(пусто — ФИО)</span> <input type="text" data-k="recipient"></label>
+    <label class="f" data-for="pp ip org">Город <span class="hint">(пусто - из адреса)</span> <input type="text" data-k="city"></label>
+    <label class="f" data-for="pp ip org">Индекс <span class="hint">(пусто - останется прежний)</span> <input type="text" data-k="zip"></label>
+    <label class="f" data-for="pp ip org">Получатель <span class="hint" id="ownRecHint">(пусто - ФИО)</span> <input type="text" data-k="recipient"></label>
     <label class="f" data-for="pp ip org">Телефон <input type="text" data-k="phone"></label>
     <label class="f" data-for="pp ip org">Email <input type="text" data-k="email"></label>
     <label class="f" data-for="org">Email для бухгалтерии <input type="text" data-k="acct_email"></label>
@@ -288,6 +314,7 @@ ul.flags li{margin:2px 0}
   </div>
   <div id="ownFillMsg"></div>
 </section>
+</div>
 </div>
 </main>
 
@@ -305,6 +332,15 @@ const $ = s => document.querySelector(s);
 const ST = {ok:'в порядке', warn:'проверить', fail:'расхождение', review:'нужна ручная проверка', info:'к сведению'};
 const esc = s => (s ?? '').toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+// (0.8.5) тема оформления: светлая / тёмная / как в системе
+function applyTheme(t){
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+}
+try { $('#themeSel').value = localStorage.getItem('pysm.theme') || 'auto'; } catch (e) {}
+$('#themeSel').addEventListener('change', e => {
+  try { localStorage.setItem('pysm.theme', e.target.value); } catch (x) {}
+  applyTheme(e.target.value);
+});
 async function loadMeta(){
   const m = await (await fetch('/api/meta')).json();
   $('#appVer').textContent = m.version ? 'v' + m.version : '';
@@ -317,14 +353,14 @@ function renderDomains(items){
   dom.items = {};
   items.forEach(d => dom.items[d.domain] = d);
   $('#domTable').classList.toggle('hidden', !items.length);
-  // сервер присылает домены по проблемности (свободные → данные не сходятся → …); здесь — заголовки групп
+  // сервер присылает домены по проблемности (свободные → данные не сходятся → …); здесь - заголовки групп
   items = [...items].sort((a, b) => (a.problem_rank ?? 99) - (b.problem_rank ?? 99));
   const cnt = {};
   items.forEach(d => cnt[d.problem] = (cnt[d.problem] || 0) + 1);
   let grp = null;
   $('#domTable tbody').innerHTML = items.map(d => {
     const head = d.problem && d.problem !== grp
-      ? (grp = d.problem, `<tr class="grp"><td colspan="11">${esc(d.problem_ru || d.problem)} — ${cnt[d.problem]}</td></tr>`) : '';
+      ? (grp = d.problem, `<tr class="grp"><td colspan="11">${esc(d.problem_ru || d.problem)} - ${cnt[d.problem]}</td></tr>`) : '';
     return head + domainRow(d);
   }).join('');
 }
@@ -342,21 +378,21 @@ function domainRow(d){
   }
   const person = d.kind === 'person', org = d.kind === 'org';
   const mail = (d.emails||[]).length ? `<br><small>e-mail: ${d.emails.map(esc).join(', ')}</small>` : '';
-  const who = (person ? `${esc(d.fio)}<br><small>д. р. ${esc(sd.birth_date||'—')}</small>`
-              : org ? `${esc(sd.org_r || sd.org || '—')}<br><small>юрлицо</small>`
-              : `${esc(d.holder || '—')}<br><small>контакты ${esc(d.group || '?')}</small>`) + mail;
-  const doc = person ? `${esc(d.passport||'—')}<br><small>выдан ${esc(sd.passport_date||'—')}<br>${esc(sd.passport_place||'')}</small>`
-              : org ? `ИНН ${esc(sd.code||'—')}` : '—';
+  const who = (person ? `${esc(d.fio)}<br><small>д. р. ${esc(sd.birth_date||'-')}</small>`
+              : org ? `${esc(sd.org_r || sd.org || '-')}<br><small>юрлицо</small>`
+              : `${esc(d.holder || '-')}<br><small>контакты ${esc(d.group || '?')}</small>`) + mail;
+  const doc = person ? `${esc(d.passport||'-')}<br><small>выдан ${esc(sd.passport_date||'-')}<br>${esc(sd.passport_place||'')}</small>`
+              : org ? `ИНН ${esc(sd.code||'-')}` : '-';
   const esiaBtn = d.esia_status || (d.esia && Object.keys(d.esia).length) ? `<button class="sm esiaBtn" data-esia="${esc(d.domain)}" title="Идентификация через Госуслуги: сверка Sd ↔ ЕСИА">ESIA</button>` : '';
   const moBtn = d.mo_status ? `<button class="sm esiaBtn" data-mo="${esc(d.domain)}" title="MO (matches owner): сверка Sd ↔ базовая анкета владельца аккаунта #${esc(d.account || '?')}">MO</button>` : '';
   const accBtn = d.account ? ` <button class="sm" data-acc="${esc(d.account)}" title="Открыть вкладку «Смена владельца ЛК» с этим аккаунтом">→ ЛК</button>` : '';
-  const kBtn = d.admin_comment ? `<button class="kbtn" data-k="${esc(d.domain)}" title="Комментарий администратора в S — показать">К</button>` : '';
+  const kBtn = d.admin_comment ? `<button class="kbtn" data-k="${esc(d.domain)}" title="Комментарий администратора в S - показать">К</button>` : '';
   const flags = (d.flags || []).length ? '<ul class="flags">' + d.flags.map(f => `<li><span class="badge s-${FLAG_CLS[f.level] || 'info'}">${FLAG_RU[f.level] || f.level}</span> ${esc(f.text)}</li>`).join('') + '</ul>' : '';
   return `<tr><td><b>${esc(d.domain)}</b>${kBtn}<br><small>${link((d.urls||{}).sd,'Sd')} ${link((d.urls||{}).s,'S')}</small>${esiaBtn}${moBtn}</td>
     <td><span class="badge s-ok">найден</span><br><small>${esc(d.service_status||'')}</small></td>
-    <td>${who}</td><td>${doc}</td><td>${esiaCell(d)}</td><td>${moCell(d)}</td><td>${esc(sd.country||sd.o_country_code||'—')}</td><td>${esc(d.last_admin_change||'—')}</td>
-    <td>${esc(d.provider||'—')}</td><td>${esc(d.account||'—')}${accBtn}${d.login ? `<br><small>логин: ${esc(d.login)}</small>` : ''}${d.account_email ? `<br><small>e-mail: ${esc(d.account_email)}</small>` : ''}</td>
-    <td>${flags || '<small>—</small>'}</td></tr>`;
+    <td>${who}</td><td>${doc}</td><td>${esiaCell(d)}</td><td>${moCell(d)}</td><td>${esc(sd.country||sd.o_country_code||'-')}</td><td>${esc(d.last_admin_change||'-')}</td>
+    <td>${esc(d.provider||'-')}</td><td>${esc(d.account||'-')}${accBtn}${d.login ? `<br><small>логин: ${esc(d.login)}</small>` : ''}${d.account_email ? `<br><small>e-mail: ${esc(d.account_email)}</small>` : ''}</td>
+    <td>${flags || '<small>-</small>'}</td></tr>`;
 }
 // (0.7.6) проверки домена (config/workspace.yaml) и окошко «К»
 const FLAG_RU = {stop: 'стоп', warn: 'внимание', info: 'к сведению'}, FLAG_CLS = {stop: 'fail', warn: 'warn', info: 'info'};
@@ -375,7 +411,7 @@ function copyText(t, okMsg){
 function showKPop(anchor, domain, comment){
   closeKPop();
   kPop = document.createElement('div'); kPop.className = 'kpop';
-  kPop.innerHTML = `<h4>${esc(domain)} — комментарий администратора</h4><div class="tx"></div>
+  kPop.innerHTML = `<h4>${esc(domain)} - комментарий администратора</h4><div class="tx"></div>
     <div class="ft"><span class="hint">S · admin_comment</span><button class="sm" style="margin-left:auto" data-kcopy>Копировать</button></div>`;
   kPop.querySelector('.tx').textContent = comment;
   document.body.appendChild(kPop);
@@ -396,7 +432,19 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeKPop(); });
 
 const dom = {taskId:null, logLen:0, timer:null, items:{}};
-function setDomReport(url){ dom.reportUrl = url; $('#domReport').disabled = !url; }
+function setDomReport(url){ dom.reportUrl = url; $('#domReport').disabled = !url; $('#domReset').disabled = !url; }
+// (0.8.5) результат сохраняется в программе: после перезагрузки страницы он на месте, а при новой загрузке
+// из manager запрашиваются только домены, которых в нём ещё нет; «Сбросить результат» - загрузить всё заново
+const fmtTime = s => s ? s.replace(/^(\d{4})-(\d\d)-(\d\d)T(\d\d:\d\d).*/, '$3.$2.$1 $4') : '';
+async function domRestore(){
+  try {
+    const j = await (await fetch('/api/manager/domains')).json();
+    if (!(j.items || []).length) return;
+    if (!$('#domList').value.trim()) $('#domList').value = (j.list || []).join('\n');
+    renderDomains(j.items); setDomReport('/api/manager/domains/report');
+    $('#domHint').textContent = `Сохранённый результат${j.updated ? ' от ' + fmtTime(j.updated) : ''}: доменов ${j.items.length}. Дописанные домены загрузятся из manager, остальные - нет.`;
+  } catch (e) {}
+}
 async function domLookup(){
   $('#domHint').textContent = '';
   const r = await fetch('/api/manager/lookup', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domains: $('#domList').value})});
@@ -405,7 +453,7 @@ async function domLookup(){
   dom.taskId = j.task_id; dom.logLen = 0;
   $('#domLog').textContent = '';
   $('#domLog').classList.remove('hidden');
-  $('#domLoad').disabled = true; $('#domCancel').disabled = false;
+  $('#domLoad').disabled = true; $('#domCancel').disabled = false; $('#domReset').disabled = true;
   pollDomains();
 }
 $('#domLoad').addEventListener('click', () => domLookup());
@@ -417,10 +465,15 @@ async function pollDomains(){
   dom.logLen = j.log_len;
   if (j.status === 'running'){ dom.timer = setTimeout(pollDomains, 800); return; }
   $('#domLoad').disabled = false; $('#domCancel').disabled = true;
-  if (j.status === 'error'){ $('#domHint').textContent = 'Ошибка: ' + j.error; return; }
-  renderDomains(j.items || []); setDomReport((j.items || []).length ? `/api/manager/tasks/${dom.taskId}/report` : null);
+  if (j.status === 'error'){ $('#domHint').textContent = 'Ошибка: ' + j.error; setDomReport(dom.reportUrl); return; }
+  renderDomains(j.items || []); setDomReport((j.items || []).length ? '/api/manager/domains/report' : null);
 }
 $('#domReport').addEventListener('click', () => { if (dom.reportUrl) location.href = dom.reportUrl; });
+$('#domReset').addEventListener('click', async () => {
+  try { await api('/api/manager/domains/reset', {}); } catch (e) { $('#domHint').textContent = e.message; return; }
+  renderDomains([]); setDomReport(null); $('#domLog').classList.add('hidden');
+  $('#domHint').textContent = 'Результат сброшен - следующая загрузка запросит все домены из manager заново.';
+});
 async function extState(){
   try {
     const s = await (await fetch('/api/manager/status')).json();
@@ -434,7 +487,7 @@ extState(); setInterval(extState, 3000);
 const ESIA_CLS = {match:'ok', warn:'warn', mismatch:'fail', none:'info', no_data:'review', no_link:'info', error:'review'};
 const C = st => st ? ' c-' + st : '';
 function esiaCell(d){
-  if (!d.esia_status) return '<small>—</small>';
+  if (!d.esia_status) return '<small>-</small>';
   const st = d.esia_state ? `<span class="badge s-${d.esia_state === 'approved' ? 'ok' : 'info'}">${esc(d.esia_state)}</span><br>` : '';
   const t = d.esia_state ? (d.esia_ru || '').replace(d.esia_state + ' · ', '') : d.esia_ru;
   return st + `<span class="badge s-${ESIA_CLS[d.esia_status] || 'info'}">${esc(t)}</span>`;
@@ -442,7 +495,7 @@ function esiaCell(d){
 function showEsia(d){
   const e = d.esia || {}, l = e.latest || {}, data = e.data || {}, p = data.rf_passport || {};
   const lk = (u, t) => u ? `<a href="${esc(u)}" target="_blank">${t}</a>` : '';
-  $('#esiaTitle').textContent = `ЕСИА ↔ Sd — ${d.domain}`;
+  $('#esiaTitle').textContent = `ЕСИА ↔ Sd - ${d.domain}`;
   const why = {none: 'Записей об идентификации через Госуслуги нет.', no_link: 'На странице Sd нет ссылки «Идентификация через Госуслуги».',
     no_data: 'Файла данных ЕСИА нет или он не загрузился' + (e.json_error ? ': ' + e.json_error : '.'), error: d.esia_ru}[d.esia_status] || '';
   const rows = (d.esia_rows || []).map(r => `<tr><td class="k">${esc(r.title)}</td>
@@ -453,35 +506,44 @@ function showEsia(d){
     <tr><th>state</th><th>создано</th><th>обработано</th><th>action</th><th>reason / comment</th></tr>
     ${e.history.map(h => `<tr><td>${esc(h.state)}</td><td>${esc(h.creation_date)}</td><td>${esc(h.processed_date)}</td><td>${esc(h.action)}</td><td>${esc([h.reason, h.comment].filter(Boolean).join(' / '))}</td></tr>`).join('')}</table></details>` : '';
   $('#esiaBody').innerHTML = `<div class="kv" style="margin-top:0">
-      <div><b>state</b>${e.state ? `<span class="badge s-${e.state === 'approved' ? 'ok' : 'info'}">${esc(e.state)}</span>` : '—'}</div>
-      <div><b>Создано / обработано</b>${esc(l.creation_date || '—')} / ${esc(l.processed_date || '—')}</div>
-      <div><b>action</b>${esc(l.action || '—')}${l.reason ? '<br>reason: ' + esc(l.reason) : ''}${l.comment ? '<br>' + esc(l.comment) : ''}</div>
-      <div><b>Данные ЕСИА</b>${data.trusted === undefined ? '—' : 'trusted: ' + (data.trusted ? 'да' : 'нет')}${p.vrf_stu ? ' · паспорт: ' + esc(p.vrf_stu) : ''}${data.ogrn ? ' · ОГРН ' + esc(data.ogrn) : ''}${data.is_liquidated === true ? ' · <b style="color:#9b1c1c">ликвидирована</b>' : data.is_liquidated === false ? ' · действует' : ''}</div>
+      <div><b>state</b>${e.state ? `<span class="badge s-${e.state === 'approved' ? 'ok' : 'info'}">${esc(e.state)}</span>` : '-'}</div>
+      <div><b>Создано / обработано</b>${esc(l.creation_date || '-')} / ${esc(l.processed_date || '-')}</div>
+      <div><b>action</b>${esc(l.action || '-')}${l.reason ? '<br>reason: ' + esc(l.reason) : ''}${l.comment ? '<br>' + esc(l.comment) : ''}</div>
+      <div><b>Данные ЕСИА</b>${data.trusted === undefined ? '-' : 'trusted: ' + (data.trusted ? 'да' : 'нет')}${p.vrf_stu ? ' · паспорт: ' + esc(p.vrf_stu) : ''}${data.ogrn ? ' · ОГРН ' + esc(data.ogrn) : ''}${data.is_liquidated === true ? ' · <b style="color:#9b1c1c">ликвидирована</b>' : data.is_liquidated === false ? ' · действует' : ''}</div>
       ${(data.legal_address || {}).address_str ? `<div><b>Юр. адрес (ЕСИА)</b>${esc(data.legal_address.address_str)}</div>` : ''}
       <div><b>Ссылки</b>${[lk(e.url, 'Идентификация через Госуслуги'), lk(e.file_url, 'JSON-файл'), lk((d.urls || {}).sd, 'Sd')].filter(Boolean).join(' · ')}</div>
     </div>
     ${why ? `<div class="msg">${esc(why)}</div>` : ''}
     ${rows ? `<table style="margin-top:12px"><tr><th>Поле</th><th>Sd (${esc(d.group || 'ru_pp')})</th><th>ЕСИА (JSON)</th><th></th></tr>${rows}</table>
-      <p class="hint">Зелёный — совпадает, красный — расходится, жёлтый — написано по-разному (кем выдан, тип улицы, корпус,
-        форма организации указана с одной стороны); без цвета — значения нет с одной из сторон.
-        ${d.kind === 'org' ? 'ООО = «Общество с ограниченной ответственностью», АО/НПАО = «(Непубличное) акционерное общество», ОАО, ПК, хозяйственное товарищество — так же; название должно совпасть.' : ''}</p>` : ''}
+      <p class="hint">Зелёный - совпадает, красный - расходится, жёлтый - написано по-разному (кем выдан, тип улицы, корпус,
+        форма организации указана с одной стороны); без цвета - значения нет с одной из сторон.
+        ${d.kind === 'org' ? 'ООО = «Общество с ограниченной ответственностью», АО/НПАО = «(Непубличное) акционерное общество», ОАО, ПК, хозяйственное товарищество - так же; название должно совпасть.' : ''}</p>` : ''}
     ${hist}`;
   $('#esiaDlg').showModal();
 }
+
+// (0.8.5) окна ESIA и MO закрываются щелчком по затемнённому фону вокруг окна (выделение текста мышью из окна наружу
+// окно не закрывает: нажатие и отпускание должны быть на фоне)
+function outside(dl, e){ const r = dl.getBoundingClientRect(); return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom; }
+['#esiaDlg', '#moDlg'].forEach(sel => {
+  const dl = $(sel); let down = false;
+  dl.addEventListener('mousedown', e => { down = e.target === dl && outside(dl, e); });
+  dl.addEventListener('click', e => { if (down && e.target === dl && outside(dl, e)) dl.close(); down = false; });
+});
 
 // ------------------------------------------------------------------ (0.8.4) MO: администратор домена (Sd) ↔ владелец аккаунта
 const MO_CLS = {match:'ok', warn:'warn', mismatch:'fail', no_data:'review', error:'review'};
 const MO_SHORT = {match:'совпадает', warn:'похоже', mismatch:'не совпадает', no_data:'нет анкеты', error:'ошибка'};
 const OWNER_TYPE = {pp:'физлицо', ip:'ИП', org:'юрлицо'};
 function moCell(d){
-  if (!d.mo_status) return '<small>—</small>';
+  if (!d.mo_status) return '<small>-</small>';
   const more = (d.mo_ru || '').replace(/^Sd [=≈≠] анкета:?\s*/, '');
   return `<span class="badge s-${MO_CLS[d.mo_status] || 'info'}" title="${esc(d.mo_ru)}">${MO_SHORT[d.mo_status] || esc(d.mo_status)}</span>${more ? `<br><small>${esc(more)}</small>` : ''}`;
 }
 function showMo(d){
   const o = d.owner || {}, u = o.urls || {}, sd = d.sd || {};
   const lk = (url, t) => url ? `<a href="${esc(url)}" target="_blank">${t}</a>` : '';
-  $('#moTitle').textContent = `MO · Sd ↔ владелец аккаунта — ${d.domain}`;
+  $('#moTitle').textContent = `MO · Sd ↔ владелец аккаунта - ${d.domain}`;
   const why = d.mo_status === 'no_data' || d.mo_status === 'error' ? d.mo_ru : '';
   const grp = (d.mo_rows || []).length && d.mo_rows[0].field === 'group' ? d.mo_rows[0] : null;
   const rows = (d.mo_rows || []).filter(r => r !== grp).map(r => `<tr><td class="k">${esc(r.title)}</td>
@@ -490,32 +552,35 @@ function showMo(d){
     <td>${r.detail ? `<small>${esc(r.detail)}</small>` : ''}</td></tr>`).join('');
   const mu = sd.matches_user_contacts;
   $('#moBody').innerHTML = `<div class="kv" style="margin-top:0">
-      <div><b>Итог</b><span class="badge s-${MO_CLS[d.mo_status] || 'info'}">${esc(d.mo_ru || '—')}</span></div>
-      <div><b>Аккаунт (владелец услуги)</b>#${esc(d.account || '—')}${d.login ? ' · ' + esc(d.login) : ''}${d.account_email ? '<br>e-mail: ' + esc(d.account_email) : ''}</div>
-      <div><b>Базовая анкета</b>${esc(OWNER_TYPE[d.mo_type] || '—')}${o.source === 'runic' ? ' · из формы базовой анкеты' : o.source ? ' · со страницы «Данные пользователя»' : ''}</div>
-      <div><b>manager: matches_user_contacts (Sd)</b>${mu === undefined || mu === '' ? '—' : esc(mu)} <span class="hint">— поле manager, для справки</span></div>
-      <div><b>Ссылки</b>${[lk(u.user_details, 'Данные пользователя'), lk(u.runic, 'Базовая анкета'), lk((d.urls || {}).sd, 'Sd')].filter(Boolean).join(' · ') || '—'}</div>
+      <div><b>Итог</b><span class="badge s-${MO_CLS[d.mo_status] || 'info'}">${esc(d.mo_ru || '-')}</span></div>
+      <div><b>Аккаунт (владелец услуги)</b>#${esc(d.account || '-')}${d.login ? ' · ' + esc(d.login) : ''}${d.account_email ? '<br>e-mail: ' + esc(d.account_email) : ''}</div>
+      <div><b>Базовая анкета</b>${esc(OWNER_TYPE[d.mo_type] || '-')}${o.source === 'runic' ? ' · из формы базовой анкеты' : o.source ? ' · со страницы «Данные пользователя»' : ''}</div>
+      <div><b>manager: matches_user_contacts (Sd)</b>${mu === undefined || mu === '' ? '-' : esc(mu)} <span class="hint">- поле manager, для справки</span></div>
+      <div><b>Ссылки</b>${[lk(u.user_details, 'Данные пользователя'), lk(u.runic, 'Базовая анкета'), lk((d.urls || {}).sd, 'Sd')].filter(Boolean).join(' · ') || '-'}</div>
     </div>
     ${why ? `<div class="msg">${esc(why)}</div>` : ''}
-    ${grp ? `<div class="msg fail">${esc(grp.detail)} — это разные лица; ниже сверены только контакты.</div>` : ''}
+    ${grp ? `<div class="msg fail">${esc(grp.detail)} - это разные лица; ниже сверены только контакты.</div>` : ''}
     ${rows ? `<table style="margin-top:12px"><tr><th>Поле</th><th>Sd (${esc(d.group || 'ru_pp')})</th><th>Базовая анкета${o.user_id ? ' #' + esc(o.user_id) : ''}</th><th></th></tr>${rows}</table>
-      <p class="hint">Зелёный — совпадает, красный — расходится, жёлтый — написано по-разному (кем выдан, адрес, форма организации);
-        без цвета — значения нет с одной из сторон. Телефоны и e-mail совпадают, если есть общий. Адрес Sd (улица, дом, квартира)
+      <p class="hint">Зелёный - совпадает, красный - расходится, жёлтый - написано по-разному (кем выдан, адрес, форма организации);
+        без цвета - значения нет с одной из сторон. Телефоны и e-mail совпадают, если есть общий. Адрес Sd (улица, дом, квартира)
         собран в одну строку, как в анкете. На вердикт MO не влияет.</p>` : ''}`;
   $('#moDlg').showModal();
 }
 
 // ------------------------------------------------------------------ вкладки
+// (0.8.5) содержимое «Смены владельца ЛК» - на своей вкладке (окно рабочего места забирает его к себе, пока открыто)
+function ownHome(){ const b = $('#ownBox'), t = $('#tabOwner'); if (b && t && b.parentNode !== t) t.appendChild(b); }
 function showTab(id){
+  if (id === 'tabOwner') ownHome();
   document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === id));
   ['tabCheck', 'tabOwner', 'tabWork'].forEach(t => $('#' + t).classList.toggle('hidden', t !== id));
-  document.body.classList.toggle('ws-mode', id === 'tabWork');              // (0.7.6) рабочее место — во всё окно
+  document.body.classList.toggle('ws-mode', id === 'tabWork');              // (0.7.6) рабочее место - во всё окно
   $('#wsSteps').classList.toggle('hidden', id !== 'tabWork');
   try { localStorage.setItem('doctool.tab', id); } catch (e) {}
   if (id === 'tabWork' && window.WS) WS.shown();
 }
 document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
-// (0.7.6) по умолчанию — рабочее место; дальше открывается последняя вкладка
+// (0.7.6) по умолчанию - рабочее место; дальше открывается последняя вкладка
 try { const t = /ws=/.test(location.hash) ? 'tabWork' : localStorage.getItem('doctool.tab') || 'tabWork'; showTab(['tabCheck', 'tabOwner', 'tabWork'].includes(t) ? t : 'tabWork'); } catch (e) { showTab('tabWork'); }
 document.addEventListener('click', e => {
   const es = e.target.closest && e.target.closest('[data-esia]');
@@ -523,10 +588,12 @@ document.addEventListener('click', e => {
   const mo = e.target.closest && e.target.closest('[data-mo]');
   if (mo && dom.items[mo.dataset.mo]) showMo(dom.items[mo.dataset.mo]);
   const ac = e.target.closest && e.target.closest('[data-acc]');
+  // (0.8.5) в рабочем месте «→ ЛК» открывает окно «Смена владельца ЛК», на вкладке «Домены в manager» - вкладку
+  if (ac && ac.closest('#tabWork') && window.WS && WS.openOwner){ WS.openOwner(ac.dataset.acc); return; }
   if (ac){ showTab('tabOwner'); $('#ownQuery').value = ac.dataset.acc; ownParse(); ownLoad(); window.scrollTo(0, 0); }
 });
 
-// ------------------------------------------------------------------ смена владельца ЛК (физлица; с 0.7.3 — ИП и юрлица)
+// ------------------------------------------------------------------ смена владельца ЛК (физлица; с 0.7.3 - ИП и юрлица)
 const own = {acc:null, last:null, timers:{}, kindTouched:false};
 const KIND_RU = {pp: 'физлицо', ip: 'ИП', org: 'юрлицо'}, KIND_PAGE = {pp: 'Физик', ip: 'ИП', org: 'Юрик'};
 const later = (key, fn, ms = 300) => { clearTimeout(own.timers[key]); own.timers[key] = setTimeout(fn, ms); };
@@ -555,9 +622,10 @@ async function ownLoad(){
     const j = await api('/api/owner/account', {query: q});
     if (!j.ok){ $('#ownNotes').innerHTML = msg('fail', esc(j.error.message)); return; }
     own.acc = j.account; own.last = null; $('#ownUndo').disabled = $('#ownVerify').disabled = true; $('#ownFillMsg').innerHTML = '';
+    $('#ownBox').classList.add('acc');
     const t = KIND_RU[own.acc.type] ? own.acc.type : 'pp';
-    setRadio('ownCmpKind', t);                      // сверка — по типу анкеты аккаунта
-    if (!own.kindTouched){ setRadio('ownKind', t); ownKindChanged(); }   // новый владелец — того же типа, пока не выбрали другой
+    setRadio('ownCmpKind', t);                      // сверка - по типу анкеты аккаунта
+    if (!own.kindTouched){ setRadio('ownKind', t); ownKindChanged(); }   // новый владелец - того же типа, пока не выбрали другой
     renderOwnAcc(); ownCompare(); ownPreview();
   } catch (e) { $('#ownNotes').innerHTML = msg('fail', esc(e.message)); }
   finally { $('#ownLoad').disabled = false; }
@@ -566,22 +634,22 @@ function renderOwnAcc(){
   const a = own.acc, u = a.urls || {}, lk = (h, t) => h ? `<a href="${esc(h)}" target="_blank">${t}</a>` : '';
   const via = a.via_domain ? `<div><b>Найден по домену</b>${esc(a.via_domain.domain)}${a.via_domain.bill_owner ? `<br><small>владелец счёта: ${esc(a.via_domain.bill_owner)}</small>` : ''}</div>` : '';
   $('#ownInfo').innerHTML = `<div><b>Аккаунт</b>#${esc(a.user_id)} · <small>${[lk(u.user_details, 'Данные пользователя'), lk(u.runic, 'Базовая анкета'), lk(u.esia, 'Госуслуги')].filter(Boolean).join(' · ')}</small></div>
-    <div><b>Логин</b>${esc(a.login || '—')}</div>
-    <div><b>E-mail аккаунта</b>${esc(a.email || '—')}</div>
+    <div><b>Логин</b>${esc(a.login || '-')}</div>
+    <div><b>E-mail аккаунта</b>${esc(a.email || '-')}</div>
     <div><b>Тип базовой анкеты</b>${esc(a.type_ru)}${a.ba_group ? ` <small>(${esc(a.ba_group)})</small>` : ''}</div>
-    <div><b>Обслуживающая организация</b>${a.servicing_org ? 'текущая: ' + esc(a.servicing_org) : '—'}</div>
-    <div><b>Идентификация аккаунта через Госуслуги</b>${esc(a.esia_account || '—')}</div>${via}`;
+    <div><b>Обслуживающая организация</b>${a.servicing_org ? 'текущая: ' + esc(a.servicing_org) : '-'}</div>
+    <div><b>Идентификация аккаунта через Госуслуги</b>${esc(a.esia_account || '-')}</div>${via}`;
   $('#ownInfo').classList.remove('hidden');
   $('#ownNotes').innerHTML = (a.notes || []).map(n => msg('warn', esc(n))).join('');
   $('#ownBaAll').innerHTML = Object.entries(a.ba_all || {}).map(([k, v]) => `<tr><td class="mono">${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')
     || '<tr><td class="hint">базовая анкета пустая</td></tr>';
 }
-// сверка: строки — из ответа сервера (поля и заголовки — account.OWNER_FIELDS*, по типу анкеты)
+// сверка: строки - из ответа сервера (поля и заголовки - account.OWNER_FIELDS*, по типу анкеты)
 const CMP_HINT = {
-  pp: 'Зелёный — совпадает, красный — расходится, жёлтый — «кем выдан» написан по-разному, без цвета — сравнивать не с чем. Сравнение без учёта регистра, ё/е, пробелов и знаков препинания; паспорт и телефон — по цифрам.',
-  org: 'Зелёный — совпадает, красный — расходится, жёлтый — похоже (адрес совпал частично или записан по-разному; форма организации указана с одной стороны), без цвета — сравнивать не с чем. Название: «ООО» = «Общество с ограниченной ответственностью», само название должно совпасть. Адрес — по названиям и номерам («г.», «ул.», «д.» и порядок не важны). ИНН, КПП, телефон — по цифрам, e-mail — без учёта регистра.',
+  pp: 'Зелёный - совпадает, красный - расходится, жёлтый - «кем выдан» написан по-разному, без цвета - сравнивать не с чем. Сравнение без учёта регистра, ё/е, пробелов и знаков препинания; паспорт и телефон - по цифрам.',
+  org: 'Зелёный - совпадает, красный - расходится, жёлтый - похоже (адрес совпал частично или записан по-разному; форма организации указана с одной стороны), без цвета - сравнивать не с чем. Название: «ООО» = «Общество с ограниченной ответственностью», само название должно совпасть. Адрес - по названиям и номерам («г.», «ул.», «д.» и порядок не важны). ИНН, КПП, телефон - по цифрам, e-mail - без учёта регистра.',
 };
-CMP_HINT.ip = CMP_HINT.pp + ' ИНН ИП — по цифрам.';
+CMP_HINT.ip = CMP_HINT.pp + ' ИНН ИП - по цифрам.';
 async function ownCompare(){
   const kind = radioVal('ownCmpKind');
   const tb = $('#ownCmp tbody');
@@ -607,7 +675,7 @@ async function ownCompare(){
       + (r.detail ? `<br><small class="hint">${esc(r.detail)}</small>` : '');
   });
   const other = own.acc && own.acc.type && KIND_RU[own.acc.type] && own.acc.type !== kind
-    ? ` · <span class="badge s-warn">анкета аккаунта — ${esc(KIND_RU[own.acc.type])}</span>` : '';
+    ? ` · <span class="badge s-warn">анкета аккаунта - ${esc(KIND_RU[own.acc.type])}</span>` : '';
   $('#ownCmpSum').innerHTML = (!j.total ? 'Введите данные заявления' : j.mismatch.length
     ? `<span class="badge s-fail">Расхождения: ${j.mismatch.length}</span> ${esc(j.mismatch.join(', '))}`
     : `<span class="badge s-ok">Совпадает ${j.ok} из ${j.total}</span>${j.warn.length ? ' · похоже / написано по-разному: ' + esc(j.warn.join(', ')) : ''}`) + other;
@@ -619,9 +687,9 @@ function ownKindChanged(){
   $('#ownForm').querySelectorAll('label[data-for]').forEach(l => l.classList.toggle('hidden', !l.dataset.for.split(' ').includes(kind)));
   $('#ownInnTitle').textContent = kind === 'org' ? 'ИНН организации' : 'ИНН ИП';
   $('#ownForm [data-k=inn]').placeholder = kind === 'org' ? '10 цифр' : '12 цифр';
-  $('#ownRecHint').textContent = kind === 'org' ? '(пусто — название организации)' : '(пусто — ФИО)';
+  $('#ownRecHint').textContent = kind === 'org' ? '(пусто - название организации)' : '(пусто - ФИО)';
   $('#ownAddrHint').textContent = kind === 'ip'
-    ? '(→ «Адрес регистр.» и «Почтовый адрес» 1 в 1, город — из адреса)' : '(→ «Почтовый адрес» 1 в 1, город — из адреса)';
+    ? '(→ «Адрес регистр.» и «Почтовый адрес» 1 в 1, город - из адреса)' : '(→ «Почтовый адрес» 1 в 1, город - из адреса)';
   const cur = own.acc && own.acc.type;
   $('#ownKindHint').innerHTML = cur && KIND_RU[cur] && cur !== kind
     ? `<b>Тип анкеты будет переключён: «${KIND_PAGE[cur]}» → «${KIND_PAGE[kind]}».</b>` : '';
@@ -678,7 +746,7 @@ $('#ownFill').addEventListener('click', async () => {
     const manual = ((j.prepared || {}).manual || []).map(x => `<b>${esc(x)}</b>`).join(', ');
     $('#ownFillMsg').innerHTML = msg('ok', `<b>Вкладка «Базовая анкета пользователя #${esc(d.user_id)}» ${d.tab_opened ? 'открыта' : 'найдена'} и заполнена.</b><br>
       ${d.type_switched ? `Тип анкеты переключён: «${esc(KIND_PAGE[d.type_old] || d.type_old || '?')}» → «${esc(KIND_PAGE[kind])}».<br>` : ''}
-      Заменено полей: ${d.changed.length}${d.changed.length ? ' — ' + esc(d.changed.map(c => c.label).join(', ')) : ''}.
+      Заменено полей: ${d.changed.length}${d.changed.length ? ' - ' + esc(d.changed.map(c => c.label).join(', ')) : ''}.
       ${d.same.length ? `Уже были такими: ${d.same.length}. ` : ''}${d.missing.length ? `Не найдены на странице: ${esc(d.missing.join(', '))}. ` : ''}<br>
       Выставьте сами: ${manual}. Проверьте форму (заполненные поля обведены) и нажмите «Сохранить» в manager.`);
     ownPreview();
@@ -691,7 +759,7 @@ $('#ownUndo').addEventListener('click', async () => {
   try {
     const j = await api('/api/owner/fill', {user_id: own.acc.user_id, restore: true, fields, kind: own.last.kind,
       back_type: own.last.switched ? own.last.type_old : ''});
-    $('#ownFillMsg').innerHTML = j.ok ? msg('', `В форме manager возвращены прежние значения: ${j.data.changed.length} полей${j.data.type_back ? `, тип анкеты — снова «${esc(KIND_PAGE[j.data.type_back])}»` : ''}. Если вы уже нажали «Сохранить», это не отменит сохранение.`)
+    $('#ownFillMsg').innerHTML = j.ok ? msg('', `В форме manager возвращены прежние значения: ${j.data.changed.length} полей${j.data.type_back ? `, тип анкеты - снова «${esc(KIND_PAGE[j.data.type_back])}»` : ''}. Если вы уже нажали «Сохранить», это не отменит сохранение.`)
       : msg('fail', esc((j.error || {}).message || 'ошибка'));
     if (j.ok){
       $('#ownUndo').disabled = true; own.last.undone = true;
@@ -715,7 +783,7 @@ $('#ownVerify').addEventListener('click', async () => {
   } catch (e) { $('#ownFillMsg').innerHTML = msg('fail', esc(e.message)); }
 });
 ownKindChanged(); ownCompare(); ownPreview();
-loadMeta();
+loadMeta(); domRestore();
 </script>
 <script src="/static/workspace.js"></script>
 </body>

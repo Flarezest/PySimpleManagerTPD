@@ -1,4 +1,4 @@
-"""Описания бланков и типов заявлений, реестр проверок, роли полей — без OCR.
+"""Описания бланков и типов заявлений, реестр проверок, роли полей - без OCR.
 
 Здесь же проверяется, что новый бланк подключается только YAML-файлом: поля с другими именами
 сопоставлены ролям (role:), проверки, таблица, правки оператора и выгрузка работают без изменений кода."""
@@ -98,7 +98,7 @@ def test_labels_and_prefixes_from_yaml_and_legacy_default():
     form = formspec.form_by_id("regru_transfer_person")
     assert formspec.labels_regex(form).sub(" ", "ГУ МВД (кем выдан)").strip() == "ГУ МВД"
     assert formspec.prefix_regex(form).sub("", "от Тестова").strip() == "Тестова"
-    # бланк без ключей (YAML от 0.3.x) — прежние списки; пустой список — ничего не вырезать
+    # бланк без ключей (YAML от 0.3.x) - прежние списки; пустой список - ничего не вырезать
     old = {"id": "old", "fields": {}}
     assert formspec.labels_regex(old).pattern == formspec.labels_regex(form).pattern
     assert formspec.prefix_regex(old).pattern == formspec.prefix_regex(form).pattern
@@ -188,7 +188,7 @@ def test_validate_command(capsys):
 
 
 def test_name_and_version_match_changelog_and_extension(capsys):
-    """Название программы и версия: __init__.py = верхний раздел CHANGELOG.md; расширение — то же название,
+    """Название программы и версия: __init__.py = верхний раздел CHANGELOG.md; расширение - то же название,
     версия не новее программы (расширение меняется не в каждой версии)."""
     import json
     import re

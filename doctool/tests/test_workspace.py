@@ -1,5 +1,5 @@
 """Рабочее место (0.7.6): архивы, страницы и их разбор, проверка по страницам, сверка, данные для Госуслуг и manager,
-проверки доменов, API. Без нейросети и без расширения; OCR — только на синтетических страницах."""
+проверки доменов, API. Без нейросети и без расширения; OCR - только на синтетических страницах."""
 import json
 import shutil
 import time
@@ -20,7 +20,7 @@ SAMPLES = ROOT / "forms" / "regru_transfer_person" / "samples"
 # ------------------------------------------------------------------ архивы
 
 class _Cp866Info(zipfile.ZipInfo):
-    """Имя файла в архиве — в cp866 без флага UTF-8 (так пишет «Сжатая папка» Windows)."""
+    """Имя файла в архиве - в cp866 без флага UTF-8 (так пишет «Сжатая папка» Windows)."""
     __slots__ = ("raw", "xflags")
 
     def _encodeFilenameFlags(self):
@@ -39,7 +39,7 @@ def test_unzip_cp866_nested_and_safe_paths(tmp_path):
     _zip_cp866(a, "Заявление.txt", b"hello")
     files, notes = archive.unpack(a, tmp_path / "out")
     assert [f.name for f in files] == ["Заявление.txt"] and notes == []
-    # архив в архиве + путь с «..» — всё остаётся внутри папки распаковки
+    # архив в архиве + путь с «..» - всё остаётся внутри папки распаковки
     inner = tmp_path / "inner.zip"
     with zipfile.ZipFile(inner, "w") as z:
         z.writestr("Паспорт.jpg", b"jpg")
@@ -131,7 +131,7 @@ def test_workspace_pages_and_sources(tmp_path):
     assert abs(p1.sx - workspace.PREVIEW_DPI / workspace.EXTRACT_DPI) < 1e-6 and p1.pv[0] > 1000
     app, pas = ws.sources()
     assert [s["index"] for s in app] == [0, 1] and pas == []
-    # оператор: повтор → паспорт, поворот, вырезка рамкой (вырезка — в паспорт, с поворотом исходной страницы)
+    # оператор: повтор → паспорт, поворот, вырезка рамкой (вырезка - в паспорт, с поворотом исходной страницы)
     ws.move(dup.id, "passport")
     assert dup.cls == "passport" and dup.manual
     ws.set_rotation(dup.id, 90)
@@ -142,7 +142,7 @@ def test_workspace_pages_and_sources(tmp_path):
     with pytest.raises(workspace.WsError):
         ws.set_rotation(cp.id, 90)
     app, pas = ws.sources()
-    assert pas[0]["page"] == cp.id                       # вырезка (разворот) — первой: по ней читаются поля
+    assert pas[0]["page"] == cp.id                       # вырезка (разворот) - первой: по ней читаются поля
     # состояние сохраняется в ws.json и читается заново
     ws.set_state({"ticket": "#1", "marks": {"fio": {"mark": "bad", "note": "опечатка"}}, "row": {"a": "1"}})
     ws2 = workspace.Workspace.load(ws.dir)
@@ -193,7 +193,7 @@ def test_compare_new_admin():
     rows = {r["key"]: r for r in workspace.compare_new_admin(
         {"fio": "Белов Игорь Сергеевич", "email": "BELOV@example.ru", "phone": "+7 900 000-00-00"}, page)}
     assert rows["fio"]["status"] == rows["email"]["status"] == rows["phone"]["status"] == "ok"
-    assert rows["passport"]["status"] == "info"                  # в заявлении нет — к сведению
+    assert rows["passport"]["status"] == "info"                  # в заявлении нет - к сведению
     rows = {r["key"]: r for r in workspace.compare_new_admin({"fio": "Белов Иван"}, page)}
     assert rows["fio"]["status"] == "fail"
 
@@ -218,7 +218,7 @@ def test_domain_flags_and_config(tmp_path):
     codes = {f["code"]: f["level"] for f in domains.domain_flags(i, c, today=date(2026, 10, 14))}
     assert codes["admin_comment"] == "stop" and "esia_none" not in codes
     assert domains.flags_level(domains.domain_flags(i, c, today=date(2026, 10, 14))) == "stop"
-    # не найденный домен — проверок нет
+    # не найденный домен - проверок нет
     assert domains.domain_flags(domains.DomainInfo(domain="b.ru", status="not_found")) == []
     bad = tmp_path / "bad.yaml"
     bad.write_text("table:\n  operations:\n    - {title: X, column4: other, case_type: nope}\n"
@@ -259,7 +259,7 @@ def test_workspace_api(tmp_path):
     res = c.get(f"/api/ws/{ws_id}/result").json()
     assert res["ready"] and res["matrix"]["rows"] and res["gos"]["series"] == "4012"
     assert res["login_to"] == "user_id:7654321" and res["boxes"]
-    # расширение не подключено: проверка прошла, данные доменов не загружены — замечание в деле
+    # расширение не подключено: проверка прошла, данные доменов не загружены - замечание в деле
     assert any("расширение" in n for n in res["result"]["notes"])
     assert c.post(f"/api/ws/{ws_id}/gosuslugi", json={}).status_code == 409
     r = c.post(f"/api/ws/{ws_id}/pages", json={"action": "move", "pid": d["pages"][1]["id"], "cls": "other"})

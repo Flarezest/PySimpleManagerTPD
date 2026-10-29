@@ -4,15 +4,15 @@
 
 Что проверяется:
 1. --version совпадает с doctool/__init__.py;
-2. validate без DOCTOOL_HOME — папка данных «Документы/PySimpleManager» и ПРОЧТИ.txt;
+2. validate без DOCTOOL_HOME - папка данных «Документы/PySimpleManager» и ПРОЧТИ.txt;
 3. check по образцам модулей (DOCX, PDF): поля совпадают с <образец>.expected.json;
 4. check по картинке (страница PDF-образца → PNG): работает Tesseract из состава программы, найдены домены;
 5. web: /api/meta отвечает; повторный запуск (без аргументов, как с ярлыка) видит запущенную программу
    и завершается;
 6. (0.7.6) рабочее место: дело из zip-архива (заявление + подпись) разбирается на страницы и проверяется;
-   у сборки для Windows — 7-Zip в составе программы распаковывает .7z.
+   у сборки для Windows - 7-Zip в составе программы распаковывает .7z.
 
-Нужен pymupdf (есть в requirements.txt). Временные файлы — во временной папке, она удаляется.
+Нужен pymupdf (есть в requirements.txt). Временные файлы - во временной папке, она удаляется.
 """
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ def check_sample(exe: str, env: dict, home: Path, src: Path, exp: Path) -> None:
         got = (fields.get(key) or {}).get("value") or ""
         if got != value:
             bad[key] = (value, got)
-    ok(not bad, f"{src.name}: поля совпадают с {exp.name}" + (f" — {json.dumps(bad, ensure_ascii=False)}" if bad else ""))
+    ok(not bad, f"{src.name}: поля совпадают с {exp.name}" + (f" - {json.dumps(bad, ensure_ascii=False)}" if bad else ""))
 
 
 def free_port() -> int:
@@ -119,7 +119,7 @@ def ws_case(port: int, files: list[Path], what: str) -> None:
             time.sleep(1)
         cls = sorted({p["cls"] for p in d.get("pages") or []})
         ok(d.get("status") == "ready" and "application" in cls, f"рабочее место ({what}): страницы {cls}, {d.get('status')}"
-           + (f" — {d.get('error')}" if d.get("error") else ""))
+           + (f" - {d.get('error')}" if d.get("error") else ""))
         r = http(port, f"/api/ws/{ws['id']}/result")
         rows = ((r.get("matrix") or {}).get("rows")) or []
         ok(r.get("ready") and len(rows) > 3, f"рабочее место ({what}): сверка, строк {len(rows)}")

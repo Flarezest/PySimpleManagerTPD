@@ -1,4 +1,4 @@
-"""Связь с расширением Chrome по WebSocket — с поддельным «расширением» (без браузера)."""
+"""Связь с расширением Chrome по WebSocket - с поддельным «расширением» (без браузера)."""
 import sys
 import threading
 from pathlib import Path
@@ -91,7 +91,7 @@ def test_job_autoload_domains(tmp_path, monkeypatch):
         assert j["status"] == "done", j
         res = j["result"]
         assert res["domains"][0]["holder"] == "Тестов Пётр Сергеевич"
-        assert any(c["name"] == "Заявитель — администратор доменов (Sd)" and c["status"] == "ok" for c in res["checks"])
+        assert any(c["name"] == "Заявитель - администратор доменов (Sd)" and c["status"] == "ok" for c in res["checks"])
         assert res["record"]["manager_domains"][0]["provider"] == "cctldru"
         assert any("Загружаю данные доменов" in x for x in j["log"])
 
@@ -139,7 +139,7 @@ def test_manual_lookup_attaches_to_case(tmp_path, monkeypatch):
 
 def test_domains_sorted_by_problem_in_result(tmp_path, monkeypatch):
     """Таблица доменов в интерфейсе: свободные по WHOIS → данные не сходятся → не найдены → в порядке.
-    В выгрузке (record) порядок — как в заявлении."""
+    В выгрузке (record) порядок - как в заявлении."""
     import time
 
     import doctool.jobs as jobs_mod
@@ -190,7 +190,7 @@ def test_domains_sorted_by_problem_in_result(tmp_path, monkeypatch):
     assert [d["problem"] for d in j["result"]["domains"]] == ["free", "mismatch", "not_found", "ok"]
     assert [d["domain"] for d in j["items"]] == shown
     assert [d["domain"] for d in j["result"]["record"]["manager_domains"]] == doms
-    # e-mail администратора из Sd (с 0.5.0) — в таблице и в выгрузке по доменам
+    # e-mail администратора из Sd (с 0.5.0) - в таблице и в выгрузке по доменам
     assert next(d for d in j["items"] if d["domain"] == "other.ru")["emails"] == ["ivanov@example.com",
                                                                                   "ivanov2@example.com"]
     r = client.get(f"/api/manager/tasks/{t['task_id']}/report")      # домены дела → выгрузка с проверками дела
@@ -228,7 +228,7 @@ def test_domains_report_without_case(tmp_path, monkeypatch):
     html = client.get(f"/api/manager/tasks/{t['task_id']}/report").text
     assert "Домены в manager" in html and "Администратор у доменов один" not in html   # найден один домен
     assert "расхождение" in html                                    # «Домены в manager»: o-k.ru не найден
-    assert "o-k.ru → ok.ru" in html                                 # похож на найденный — вероятная опечатка
+    assert "o-k.ru → ok.ru" in html                                 # похож на найденный - вероятная опечатка
     assert "/tech/srv_details?service_id=11" in html and "Найдено несколько услуг" in html
     assert "Сверка с заявлением и паспортом не выполнялась" in html
     assert client.get("/api/manager/tasks/nope/report").status_code == 404

@@ -61,7 +61,7 @@ def test_module_layout_and_hooks():
     assert formspec.call_hook(None, "after_text", default="нет") == "нет"
     with pytest.raises(KeyError):
         formspec.call_hook(FORM, "нет_такого_хука")
-    # раздел «новому Администратору» — в модуле бланка, не в ядре
+    # раздел «новому Администратору» - в модуле бланка, не в ядре
     assert not hasattr(application, "apply_new_admin_block") and not hasattr(application, "parse_new_admin_block")
 
 
@@ -83,16 +83,16 @@ def test_reference_reading():
     assert ex.get("new_admin_org") == "ООО «Тест»" and ex.get("new_admin_org_contact.emails") == ["info@test.ru"]
     assert not ex.get("new_admin_fio") and not ex.get("services")
     assert ex.get("contract") == "1234567" and ex.get("application_date") == "01.10.2026"
-    # OCR-текст скана по подписям не читается — только регулярки
+    # OCR-текст скана по подписям не читается - только регулярки
     assert application.extract_from_text(TEMPLATE, FORM, "x.png", conf=0.85, source="ocr-text").debug.get("reader") is None
-    # не бланк (подписей меньше min_found) — регулярки, как раньше
+    # не бланк (подписей меньше min_found) - регулярки, как раньше
     free = "Генеральному директору\nот Тестова Петра Сергеевича, 15.03.1990\nПаспорт 4509 123456\n"
     ex2 = application.extract_from_text(free, FORM, "y.pdf")
     assert ex2.debug.get("reader") is None and ex2.get("passport") == "4509 123456"
 
 
 def test_reference_value_that_does_not_parse_falls_back_to_regex():
-    # подпись на месте, но в строке паспорта не паспорт — поле читают регулярки (здесь — из строки «Паспорт …» ниже)
+    # подпись на месте, но в строке паспорта не паспорт - поле читают регулярки (здесь - из строки «Паспорт …» ниже)
     text = TEMPLATE.replace("4509 123456, 20.04.2010\n(серия", "см. ниже\n(серия") + "Паспорт 4510 654321\n"
     ex = application.extract_from_text(text, FORM, "x.pdf")
     assert ex.debug["reader"] == "reference" and ex.get("passport") == "4510 654321"
@@ -134,7 +134,7 @@ def test_pdf_values_written_over_blank(tmp_path):
     doc.save(tmp_path / "o.pdf")
     lines = pdf_page_text(pymupdf.open(tmp_path / "o.pdf")[0]).splitlines()
     i = next(n for n, x in enumerate(lines) if "Тестова" in x)
-    assert lines[i + 1] == "(ФИО, дата рождения)" and "ГУ МВД России" in lines[i + 2]   # значения — у своих подписей
+    assert lines[i + 1] == "(ФИО, дата рождения)" and "ГУ МВД России" in lines[i + 2]   # значения - у своих подписей
 
 
 def test_module_folder_wins_over_stale_file(tmp_path, monkeypatch):

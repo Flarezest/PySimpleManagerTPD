@@ -1,7 +1,7 @@
-"""Галка «Поля заявления — нейросетью» (0.7.0): режим на уровне дела и проверки ответа модели.
+"""Галка «Поля заявления - нейросетью» (0.7.0): режим на уровне дела и проверки ответа модели.
 
 Модель не вызывается: ответ подставляется вместо llm_extract.ask. Тексты синтетические, по образцу OCR
-реальных заявлений (ФИО, номера и адреса вымышлены). Ошибки модели в ответах — те, что встречались на наборах
+реальных заявлений (ФИО, номера и адреса вымышлены). Ошибки модели в ответах - те, что встречались на наборах
 PhysicalPersonAdminChange с qwen3:8b: ИНН = номер паспорта, обрезанный «кем выдан», печатная подсказка бланка,
 ФИО у подписи из «Я, …», заявитель как новый администратор, пропущенный домен в списке."""
 import sys
@@ -46,7 +46,7 @@ e-mail/тел. | 8-926-000-00-00 petr@example.ru
 """
 
 ANSWER = {
-    "applicant_header": "Дымовой Кристины Михайловны, 21.06.1990",     # в тексте — через перевод строки
+    "applicant_header": "Дымовой Кристины Михайловны, 21.06.1990",     # в тексте - через перевод строки
     "inn": "4610966611",                                               # номер паспорта, а не ИНН
     "passport": "4610 966611 … 09.07.2010",
     "issued_by": "УФМС России по Московской обл. в Тестовом р-не",     # обрезано слева
@@ -68,7 +68,7 @@ ANSWER = {
 
 @pytest.fixture
 def fake_model(monkeypatch):
-    """Подменяет обращение к модели: возвращает answers[...] по очереди (последний — для всех следующих)."""
+    """Подменяет обращение к модели: возвращает answers[...] по очереди (последний - для всех следующих)."""
     calls = []
 
     def install(*answers):
@@ -132,13 +132,13 @@ def test_answer_checks(fake_model):
     assert ex.get("applicant_header") == "ДЫМОВА КРИСТИНА МИХАЙЛОВНА"
     assert ex.get("applicant_header.birth_date") == "21.06.1990"
     assert ex.fields["applicant_header"].source == "llm-ocr-text" and ex.fields["applicant_header"].confidence == 0.85
-    # номер паспорта в поле ИНН отброшен (у физлица ИНН — 12 цифр)
+    # номер паспорта в поле ИНН отброшен (у физлица ИНН - 12 цифр)
     assert ex.get("inn") is None and "цифр" in rep["inn"]["dropped"]
     assert ex.get("passport") == "4610 966611" and ex.get("passport.issue_date") == "09.07.2010"
     # «кем выдан» расширен до естественных границ
     assert ex.get("issued_by").startswith("ТП в пос.Тестовое О-НИЯ УФМС")
     assert ex.get("issued_by").endswith("в Тестовом р-не")
-    # печатная подсказка бланка — не значение
+    # печатная подсказка бланка - не значение
     assert ex.get("services") is None and rep["services"]["dropped"] == "печатная подпись бланка"
     # ФИО у подписи = то же место текста, что «Я, …» → отброшено
     assert ex.get("signature_fio") is None and "applicant_fio" in rep["signature_fio"]["dropped"]
@@ -176,7 +176,7 @@ def test_domain_with_space_and_email_domain(fake_model):
     fake_model({**ANSWER, "domains": ["primer-odin. ru", "primer-dva.ru", "primer-tri.ru", "example.ru"]})
     ex = _llm(TEXT)
     unc = ex.get("domains.uncertain") or []
-    assert "primer-odin.ru" not in unc          # пробел внутри имени — не «нет в тексте»
+    assert "primer-odin.ru" not in unc          # пробел внутри имени - не «нет в тексте»
     assert "example.ru" in unc                  # домен только из адреса e-mail
 
 

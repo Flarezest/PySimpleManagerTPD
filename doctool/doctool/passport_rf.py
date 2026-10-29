@@ -1,11 +1,11 @@
 """Извлечение данных с главного разворота (стр. 2–3) паспорта гражданина РФ.
 
 Источники в порядке надёжности:
-1. MRZ (если есть и сошлись контрольные цифры) — ФИО, дата рождения, пол, серия/номер,
+1. MRZ (если есть и сошлись контрольные цифры) - ФИО, дата рождения, пол, серия/номер,
    дата выдачи, код подразделения;
 2. OCR красных цифр серии/номера (поворот + цветовая маска);
 3. OCR основного текста (несколько проходов Tesseract, эвристики по расположению);
-4. опционально — локальная VLM (Ollama) для недостающих полей.
+4. опционально - локальная VLM (Ollama) для недостающих полей.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ STOP_WORDS = {"РОССИЙСКАЯ", "ФЕДЕРАЦИЯ", "МУЖ", "ЖЕН", 
               "ПОДРАЗДЕЛЕНИЯ", "ПОДПИСЬ", "ЛИЧНАЯ", "ВЫДАЧИ", "ПОЛ"}
 PATRONYMIC_RE = re.compile(r"(ВИЧ|ВНА|ИЧНА|ИНИЧНА|ОГЛЫ|КЫЗЫ|УУЛУ)$")
 DATE_RE = re.compile(r"(?<!\d)(\d{2})\s?[.,·\-]\s?(\d{2})\s?[.,·\-]\s?((?:19|20)\d{2})(?!\d)")
-DEPT_RE = re.compile(r"(?<!\d)(\d{3})\s?[-—–=]\s?(\d{3})(?!\d)")
+DEPT_RE = re.compile(r"(?<!\d)(\d{3})\s?[-\u2014\u2013=]\s?(\d{3})(?!\d)")
 SERIES_RE = re.compile(r"(?<!\d)(\d{2})\s?(\d{2})\s?(\d{6})(?!\d)")
 UPPER_TOKEN_RE = re.compile(r"[А-ЯЁ][А-ЯЁ\-]{2,}")
 
@@ -90,7 +90,7 @@ def _line1_score(l1: str) -> int:
 
 def read_mrz(img: np.ndarray) -> mrzlib.MRZResult | None:
     """OCR нижней части разворота в нескольких вариантах; строка 2 выбирается по контрольным
-    цифрам, строка 1 (ФИО) — по «правдоподобию»."""
+    цифрам, строка 1 (ФИО) - по «правдоподобию»."""
     h = img.shape[0]
     region = img[int(h * 0.7):, :]
     wl = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<"
@@ -190,7 +190,7 @@ def parse_main_text(lines: list[tuple[str, Line]], img_h: int) -> dict:
         elif re.search(r"\bЖЕН\b", up):
             sexes.append(("ЖЕН", l.conf))
 
-    # даты: дата выдачи — в верхней половине разворота, дата рождения — в нижней
+    # даты: дата выдачи - в верхней половине разворота, дата рождения - в нижней
     issue = [(d.strftime("%d.%m.%Y"), c) for d, y, k, c in dates if k == "issue" or (k == "" and y < 0.5)]
     birth = [(d.strftime("%d.%m.%Y"), c) for d, y, k, c in dates if k == "birth" or (k == "" and y >= 0.5)]
     if (v := _vote(issue)):
@@ -287,7 +287,7 @@ def _wvote(values: list[tuple[str, float]], tag: str | None = None) -> tuple[str
 
 def _merge_lines(items: list[tuple[float, str, float]], vocab: bool = False) -> str:
     """Склеивает строки разных проходов OCR: для каждой позиции по y выбирается прочтение,
-    с которым согласны остальные проходы (вес — уверенность × длина). vocab=True — для «кем выдан»:
+    с которым согласны остальные проходы (вес - уверенность × длина). vocab=True - для «кем выдан»:
     прочтения из слов названий органов («ОБЛАСТИ», «РОССИИ») получают приоритет над случайными
     словами («ВЛАСТИ»)."""
     items = sorted(items)
@@ -313,13 +313,13 @@ def _merge_lines(items: list[tuple[float, str, float]], vocab: bool = False) -> 
 VLM_PROMPT_TOP = (
     "Это верхняя страница разворота паспорта гражданина РФ (кем выдан, дата выдачи, код подразделения). "
     "Текст может быть написан от руки. Верни JSON с ключами: issued_by, issue_date, department_code. "
-    "Дату пиши в формате ДД.ММ.ГГГГ ровно так, как написано в документе. Если поле не видно — null. Только JSON."
+    "Дату пиши в формате ДД.ММ.ГГГГ ровно так, как написано в документе. Если поле не видно - null. Только JSON."
 )
 VLM_PROMPT_BOTTOM = (
     "Это нижняя страница разворота паспорта гражданина РФ (страница с фотографией). "
     "Текст может быть написан от руки. Верни JSON с ключами: surname, given_name, patronymic, sex, "
     "birth_date, birth_place. Дату пиши в формате ДД.ММ.ГГГГ ровно так, как написано. "
-    "Если поле не видно — null. Только JSON."
+    "Если поле не видно - null. Только JSON."
 )
 
 
@@ -345,8 +345,8 @@ def vlm_extract(img: np.ndarray, vlm: OllamaVLM) -> dict:
 # ------------------------------------------------------------------ правдоподобие значений
 
 PASSPORT_START = date(1997, 10, 1)   # начало выдачи паспортов РФ этого образца
-# Год в серии (3–4 цифры) — год изготовления бланка. Бланки печатают с опережением, поэтому паспорт
-# с серией «46 19» может быть выдан в 2018 г. (набор 7 — Опря, подтверждено MRZ). Допуск — 3 года.
+# Год в серии (3–4 цифры) - год изготовления бланка. Бланки печатают с опережением, поэтому паспорт
+# с серией «46 19» может быть выдан в 2018 г. (набор 7 - Опря, подтверждено MRZ). Допуск - 3 года.
 SERIES_YEAR_LEAD = 3
 TRUSTED_SOURCES = ("mrz", "manual")   # значения, которые не отбрасываются: MRZ с контрольными цифрами, ввод оператора
 
@@ -376,9 +376,9 @@ def plausibility(ex: Extraction) -> list[str]:
         if f is None:
             return
         if f.source in TRUSTED_SOURCES:
-            problems.append(f"{FIELD_RU.get(key, key)}: «{f.value}» — {why} (значение из {f.source.upper()}, оставлено)")
+            problems.append(f"{FIELD_RU.get(key, key)}: «{f.value}» - {why} (значение из {f.source.upper()}, оставлено)")
             return
-        problems.append(f"{FIELD_RU.get(key, key)}: «{f.value}» — {why}; значение отброшено, нужна ручная проверка")
+        problems.append(f"{FIELD_RU.get(key, key)}: «{f.value}» - {why}; значение отброшено, нужна ручная проверка")
         ex.fields[key] = type(f)("", 0.0, f.source, raw=f.raw, needs_review=True,
                                  alternatives=[f.value] + list(f.alternatives))
 
@@ -411,7 +411,7 @@ def extract_passport(pages: list[Page], vlm: OllamaVLM | None = None, mode: str 
     ex = Extraction(doc_type="passport_rf", source_file=pages[0].source)
     log(f"Паспорт: ищу разворот с фото (страниц в файле: {len(pages)})…")
     page, angle, score = find_main_spread(pages)
-    log(f"Паспорт: разворот — стр. {page.index + 1}, поворот {angle}°")
+    log(f"Паспорт: разворот - стр. {page.index + 1}, поворот {angle}°")
     img = rotate(page.image, angle)
     if mode == "photo":
         img2, ok = straighten_photo(img)
@@ -420,7 +420,7 @@ def extract_passport(pages: list[Page], vlm: OllamaVLM | None = None, mode: str 
             log("Паспорт (фото): перспектива выровнена")
     ex.debug.update(page=page.index + 1, rotation=angle, keyword_score=score)
     if score < 3:
-        ex.notes.append("Главный разворот паспорта найден неуверенно — проверьте вручную.")
+        ex.notes.append("Главный разворот паспорта найден неуверенно - проверьте вручную.")
 
     # 1. основной текст
     log("Паспорт: распознаю текст (несколько проходов OCR)…")
@@ -432,7 +432,7 @@ def extract_passport(pages: list[Page], vlm: OllamaVLM | None = None, mode: str 
         f = ex.fields["issued_by"]
         fixed, fixes = correct_ocr(f.value)
         fixed = fixed.strip(" ,")
-        if re.search(r"[А-Я]{5,}\.$", fixed):  # «ОБЛАСТИ.» — точка-мусор; «ОБЛ.» — сокращение, оставляем
+        if re.search(r"[А-Я]{5,}\.$", fixed):  # «ОБЛАСТИ.» - точка-мусор; «ОБЛ.» - сокращение, оставляем
             fixed = fixed[:-1]
         if fixes:
             ex.debug["issued_by_fixes"] = fixes
@@ -506,7 +506,7 @@ def extract_passport(pages: list[Page], vlm: OllamaVLM | None = None, mode: str 
     ex.notes += plausibility(ex)
     if sum(1 for k in ("surname", "given_name", "patronymic", "birth_date") if ex.fields.get(k) and
            ex.fields[k].source in ("ocr", "mrz")) == 0:
-        ex.notes.append("Основные поля паспорта не прочитаны OCR — возможно, паспорт заполнен от руки. "
+        ex.notes.append("Основные поля паспорта не прочитаны OCR - возможно, паспорт заполнен от руки. "
                         "Значения от модели нужно подтвердить вручную.")
     for k in wanted:
         f = ex.fields.get(k)
@@ -521,7 +521,7 @@ def extract_passport(pages: list[Page], vlm: OllamaVLM | None = None, mode: str 
 # ------------------------------------------------------------------ ранее выданные паспорта
 
 PREV_KEYWORDS = ["СВЕДЕНИЯ", "РАНЕЕ", "ВЫДАННЫХ", "ПАСПОРТАХ", "СЕРИЯ", "НОМЕР"]
-PREV_ROW_RE = re.compile(r"(?<!\d)(\d{4})\s+(\d{6})(?!\d)\s*(\d{3}\s?[-—–]\s?\d{3})?\s*(\d{2}[.,]\d{2}[.,]\d{4})?")
+PREV_ROW_RE = re.compile(r"(?<!\d)(\d{4})\s+(\d{6})(?!\d)\s*(\d{3}\s?[-\u2014\u2013]\s?\d{3})?\s*(\d{2}[.,]\d{2}[.,]\d{4})?")
 
 
 def find_previous_passports(pages: list[Page], skip_index: int | None = None) -> list[dict]:
@@ -544,7 +544,7 @@ def find_previous_passports(pages: list[Page], skip_index: int | None = None) ->
                 rec = found.setdefault(key, {"series_number": key, "department_code": "", "issue_date": "",
                                              "page": p.index + 1})
                 if dept and not rec["department_code"]:
-                    rec["department_code"] = re.sub(r"\s", "", dept).replace("—", "-").replace("–", "-")
+                    rec["department_code"] = re.sub(r"\s", "", dept).replace("\u2014", "-").replace("\u2013", "-")
                 d = parsers.parse_date(dt.replace(",", ".")) if dt else None
                 if d and not rec["issue_date"]:
                     rec["issue_date"] = parsers.fmt(d)

@@ -15,7 +15,7 @@ DECISION_RU = {ACCEPT: "Принять", REJECT: "Отклонить", REVIEW: "
 
 
 def load_case_types(path: Path | None = None) -> dict[str, dict]:
-    """Типы заявлений. По умолчанию — свой config/case_types.yaml из папки данных пользователя, если он есть
+    """Типы заявлений. По умолчанию - свой config/case_types.yaml из папки данных пользователя, если он есть
     (0.7.5, doctool/paths.py), иначе встроенный CONFIG."""
     if path is None:
         from .paths import config_file
@@ -37,17 +37,24 @@ class Decision:
         return {"code": self.code, "title": self.title, "reasons": self.reasons}
 
 
+def _dash(s: str) -> str:
+    """(0.8.5) Названия проверок пишутся с дефисом; в своём case_types.yaml они могли остаться с длинным или коротким
+    тире (до 0.8.5) - правило всё равно срабатывает."""
+    return str(s or "").replace("\u2014", "-").replace("\u2013", "-")
+
+
 def _match(cond: dict, checks: list[Check], flags: set[str], app_fields: dict) -> bool:
     if "flag" in cond and cond["flag"] not in flags:
         return False
     if "check" in cond:
         sts = cond.get("status", ["fail"])
-        if not any(c.name == cond["check"] and c.status in sts for c in checks):
+        want = _dash(cond["check"])
+        if not any(_dash(c.name) == want and c.status in sts for c in checks):
             return False
     if "any_status" in cond and not any(c.status in cond["any_status"] for c in checks):
         return False
     if "missing" in cond:
-        # app_fields — словарь полей заявления или formspec.Fields (тогда можно указать роль поля)
+        # app_fields - словарь полей заявления или formspec.Fields (тогда можно указать роль поля)
         f = app_fields.field(cond["missing"]) if hasattr(app_fields, "field") else app_fields.get(cond["missing"])
         if f is not None and f.value:
             return False

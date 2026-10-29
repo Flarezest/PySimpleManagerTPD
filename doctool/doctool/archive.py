@@ -1,11 +1,11 @@
-"""Распаковка архивов из тикетницы (0.7.6): zip — средствами Python, rar и 7z — программой 7-Zip или UnRAR.
+"""Распаковка архивов из тикетницы (0.7.6): zip - средствами Python, rar и 7z - программой 7-Zip или UnRAR.
 
     files, notes = unpack(path, dest)      # файлы архива (вложенные архивы тоже распаковываются)
 
-zip: имена файлов в архивах из Windows без флага UTF-8 записаны в кодировке cp866 — они переводятся, иначе
-русские имена превращаются в «Р—Р°СЏРІР»РµРЅРёРµ». Пути внутри архива «обезвреживаются» (без «..» и дисков).
-rar, 7z: ищется 7-Zip — в составе программы (установщик для Windows кладёт 7z.exe в папку программы), в PATH,
-в «C:\\Program Files\\7-Zip»; для rar — ещё UnRAR (WinRAR). Пароль не запрашивается: архив с паролем — ошибка
+zip: имена файлов в архивах из Windows без флага UTF-8 записаны в кодировке cp866 - они переводятся, иначе
+русские имена превращаются в «Р-Р°СЏРІР»РµРЅРёРµ». Пути внутри архива «обезвреживаются» (без «..» и дисков).
+rar, 7z: ищется 7-Zip - в составе программы (установщик для Windows кладёт 7z.exe в папку программы), в PATH,
+в «C:\\Program Files\\7-Zip»; для rar - ещё UnRAR (WinRAR). Пароль не запрашивается: архив с паролем - ошибка
 с понятным текстом.
 """
 from __future__ import annotations
@@ -17,9 +17,9 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 ARCHIVE_EXT = {".zip", ".rar", ".7z"}
-MAX_DEPTH = 2                     # вложенные архивы: архив в архиве в архиве — дальше не распаковываем
+MAX_DEPTH = 2                     # вложенные архивы: архив в архиве в архиве - дальше не распаковываем
 MAX_FILES = 300
-MAX_TOTAL = 1024 * 1024 * 1024    # 1 ГБ распакованных данных — защита от «zip-бомб»
+MAX_TOTAL = 1024 * 1024 * 1024    # 1 ГБ распакованных данных - защита от «zip-бомб»
 
 
 class ArchiveError(RuntimeError):
@@ -84,7 +84,7 @@ def _unzip(path: Path, dest: Path) -> None:
             raise ArchiveError(f"{path.name}: в архиве больше {MAX_FILES} файлов")
         for info in infos:
             if info.flag_bits & 0x1:
-                raise ArchiveError(f"{path.name}: архив защищён паролем — распакуйте его вручную")
+                raise ArchiveError(f"{path.name}: архив защищён паролем - распакуйте его вручную")
             total += info.file_size
             if total > MAX_TOTAL:
                 raise ArchiveError(f"{path.name}: распакованные файлы больше 1 ГБ")
@@ -122,13 +122,13 @@ def _external(path: Path, dest: Path) -> None:
     seven = find_7z()
     tried = []
     if seven:
-        # -p: пароль заведомо неверный — архив с паролем не повиснет на вопросе о пароле, а вернёт ошибку
+        # -p: пароль заведомо неверный - архив с паролем не повиснет на вопросе о пароле, а вернёт ошибку
         p = _run([seven, "x", "-y", "-bd", "-pPySimpleManager", f"-o{dest}", str(path)], path.name)
         if p.returncode == 0:
             return
         out = _out_text(p)
         if "password" in out.lower() or "парол" in out.lower():
-            raise ArchiveError(f"{path.name}: архив защищён паролем — распакуйте его вручную")
+            raise ArchiveError(f"{path.name}: архив защищён паролем - распакуйте его вручную")
         tried.append(f"7-Zip: {out.strip().splitlines()[-1] if out.strip() else p.returncode}")
     if path.suffix.lower() == ".rar":
         unrar = find_unrar()
@@ -138,7 +138,7 @@ def _external(path: Path, dest: Path) -> None:
                 return
             out = _out_text(p)
             if "password" in out.lower() or "парол" in out.lower():
-                raise ArchiveError(f"{path.name}: архив защищён паролем — распакуйте его вручную")
+                raise ArchiveError(f"{path.name}: архив защищён паролем - распакуйте его вручную")
             tried.append(f"UnRAR: {out.strip().splitlines()[-1] if out.strip() else p.returncode}")
     if not tried:
         raise ArchiveError(f"{path.name}: для архивов {path.suffix.lower()} нужен 7-Zip (https://7-zip.org) или WinRAR. "
@@ -160,7 +160,7 @@ def unpack(path: str | Path, dest: str | Path, depth: int = 0) -> tuple[list[Pat
     for f in sorted((x for x in dest.rglob("*") if x.is_file()), key=lambda x: natural_key(str(x.relative_to(dest)))):
         if is_archive(f):
             if depth + 1 > MAX_DEPTH:
-                notes.append(f"{f.name}: вложенный архив слишком глубоко — не распакован")
+                notes.append(f"{f.name}: вложенный архив слишком глубоко - не распакован")
                 files.append(f)
                 continue
             sub = f.with_name(f.name + "_файлы")

@@ -52,7 +52,7 @@ def test_ensure_user_dir(home):
         assert (home / sub).is_dir()
     text = (home / paths.README_NAME).read_text(encoding="utf-8-sig")
     assert str(home) in text and str(paths.BUNDLED_FORMS) in text
-    paths.ensure_user_dir()                      # повторно — без ошибок, файл тот же
+    paths.ensure_user_dir()                      # повторно - без ошибок, файл тот же
     assert (home / paths.README_NAME).read_text(encoding="utf-8-sig") == text
 
 
@@ -111,7 +111,7 @@ def test_cli_default_out_is_user_results(home, monkeypatch):
 def test_bundled_tesseract_first(tmp_path, monkeypatch):
     from doctool import ocr
     monkeypatch.delenv("TESSERACT_CMD", raising=False)
-    # setenv перед delenv: monkeypatch запоминает исходное состояние и после теста вернёт его — иначе TESSDATA_PREFIX,
+    # setenv перед delenv: monkeypatch запоминает исходное состояние и после теста вернёт его - иначе TESSDATA_PREFIX,
     # заданный find_tesseract(), остаётся и следующие тесты с OCR ищут языки во временной папке этого теста
     monkeypatch.setenv("TESSDATA_PREFIX", "")
     monkeypatch.delenv("TESSDATA_PREFIX")

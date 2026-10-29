@@ -1,6 +1,6 @@
 """Командная строка PySimpleManager (пакет doctool).
 
-Примеры (подробно — docs/USAGE.md):
+Примеры (подробно - docs/USAGE.md):
   python -m doctool web                                    # веб-интерфейс в браузере
   python -m doctool check -a заявление.pdf -p паспорт.pdf
   python -m doctool --vlm qwen3-vl:4b-instruct check -a заявление.jpg -p паспорт.pdf --handwritten
@@ -36,7 +36,7 @@ def _vlm(args) -> OllamaVLM | None:
     log(f"Проверяю модель {args.vlm} в Ollama ({args.ollama})…")
     v = OllamaVLM(model=args.vlm, host=args.ollama)
     if not v.available():
-        print(f"[!] Модель {args.vlm} недоступна в Ollama ({args.ollama}) — продолжаю без VLM. "
+        print(f"[!] Модель {args.vlm} недоступна в Ollama ({args.ollama}) - продолжаю без VLM. "
               f"Проверьте, что Ollama запущена и модель скачана: ollama pull {args.vlm}", file=sys.stderr)
         return None
     return v
@@ -60,13 +60,13 @@ def cmd_check(args):
     d = res.decision
     print(f"\nВЕРДИКТ: {d.title.upper()}")
     for r in d.reasons:
-        print(f"  — {r}")
+        print(f"  - {r}")
     print("\nПроверки:")
     for c in res.checks:
         mark = {"ok": "✓", "warn": "!", "fail": "✗", "review": "?", "info": "·"}[c.status]
-        print(f"  {mark} {c.name}: {STATUS_RU[c.status]}" + (f" — {c.detail}" if c.detail else ""))
-    print(f"\nПапка дела: {res.case_dir}\n  report.html — отчёт, export.json — выгрузка для системы, "
-          f"result.json — всё распознанное")
+        print(f"  {mark} {c.name}: {STATUS_RU[c.status]}" + (f" - {c.detail}" if c.detail else ""))
+    print(f"\nПапка дела: {res.case_dir}\n  report.html - отчёт, export.json - выгрузка для системы, "
+          f"result.json - всё распознанное")
 
 
 def cmd_extract(args):
@@ -118,7 +118,7 @@ def cmd_validate(args):
                     {"passport": "; нужен паспорт", "domains": "; после загрузки из manager"}.get(d.needs or "", "")
             print(f"  {cid:24} {d.title}{extra}")
             for n, rows in d.names.items():
-                print(f"  {'':24}   «{n}» — строка таблицы: {', '.join(rows) or '—'}")
+                print(f"  {'':24}   «{n}» - строка таблицы: {', '.join(rows) or '-'}")
         print("\nРоли полей заявления (role: в forms/<id>/form.yaml):")
         for r, t in ROLES.items():
             print(f"  {r:24} {t}")
@@ -131,7 +131,7 @@ def cmd_validate(args):
             print(f"  {f.get('id', '?'):24} {extra}; чтение эталона по подписям: {'да' if f.get('reference') else 'нет'}")
         print("\nТипы заявлений:")
         for tid, ct in types.items():
-            print(f"  {tid:24} бланк: {ct.get('form') or '—'}; проверки: {', '.join(checklib.ids_for(ct))}")
+            print(f"  {tid:24} бланк: {ct.get('form') or '-'}; проверки: {', '.join(checklib.ids_for(ct))}")
         print()
     for line in paths.describe():
         print(line)
@@ -154,18 +154,18 @@ def main(argv=None):
     for stream in (sys.stdout, sys.stderr):
         if stream is not None and hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
-    out_default = paths.results_dir()       # 0.7.5: у установленной программы — Документы/PySimpleManager/results
+    out_default = paths.results_dir()       # 0.7.5: у установленной программы - Документы/PySimpleManager/results
     p = argparse.ArgumentParser(prog=APP_NAME if paths.FROZEN else "python -m doctool",
-                                description=f"{APP_NAME} {__version__} — локальная проверка заявлений и паспортов РФ")
+                                description=f"{APP_NAME} {__version__} - локальная проверка заявлений и паспортов РФ")
     p.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     p.add_argument("--vlm", default=None, help=f"модель Ollama для рукописного текста, напр. {DEFAULT_MODEL}")
     p.add_argument("--ollama", default="http://127.0.0.1:11434", help="адрес Ollama")
     p.add_argument("-q", "--quiet", action="store_true", help="не показывать ход работы")
     p.add_argument("--llm-fields", metavar="МОДЕЛЬ", default=None,
                    help="поля заявления читает нейросеть (модель Ollama, напр. qwen3:8b) вместо регулярок бланка; "
-                        "для web — модель по умолчанию для галки «Поля заявления — нейросетью»")
+                        "для web - модель по умолчанию для галки «Поля заявления - нейросетью»")
     p.add_argument("--llm-think", choices=["on", "off"], default="on",
-                   help="нейросеть для полей рассуждает перед ответом (qwen3): on — точнее, off — быстрее")
+                   help="нейросеть для полей рассуждает перед ответом (qwen3): on - точнее, off - быстрее")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("check", help="проверить заявление (и паспорт), вынести вердикт")
@@ -179,19 +179,19 @@ def main(argv=None):
     c.add_argument("--passport-mode", choices=["auto", "scan", "photo"], default="auto", help="паспорт: скан или фото")
     c.add_argument("--admin", help="JSON с данными текущего администратора из внутренней системы")
     c.add_argument("-o", "--out", default=out_default, help=f"папка для результатов (по умолчанию {out_default})")
-    c.add_argument("--case", help="название дела (по умолчанию — имя файла)")
+    c.add_argument("--case", help="название дела (по умолчанию - имя файла)")
     c.add_argument("--date", help=argparse.SUPPRESS)   # с 0.5.0 не используется: срок действия паспорта не проверяется
     c.set_defaults(func=cmd_check)
 
     e = sub.add_parser("extract", help="только извлечь поля из документа")
     e.add_argument("file", help="файл документа")
     e.add_argument("--type", choices=["passport", "application"], default="application",
-                   help="тип документа (по умолчанию application — заявление)")
+                   help="тип документа (по умолчанию application - заявление)")
     e.add_argument("-o", "--out", default=out_default, help="куда сохранять фрагменты сканов (crops)")
     e.set_defaults(func=cmd_extract)
 
     w = sub.add_parser("web", help="запустить веб-интерфейс (откроется в браузере)")
-    w.add_argument("--host", default="127.0.0.1", help="0.0.0.0 — открыть доступ из локальной сети")
+    w.add_argument("--host", default="127.0.0.1", help="0.0.0.0 - открыть доступ из локальной сети")
     w.add_argument("--port", type=int, default=8765)
     w.add_argument("-o", "--out", default=out_default, help=f"папка для результатов (по умолчанию {out_default})")
     w.add_argument("--no-browser", action="store_true", help="не открывать браузер автоматически")

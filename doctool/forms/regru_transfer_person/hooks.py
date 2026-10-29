@@ -1,14 +1,14 @@
 """Модуль заявления REG.RU «передача права администрирования домена (физлицо)»: особая логика бланка.
 
 Раздел «новому Администратору» (с 0.5.0; до 0.7.3 был в ядре, application.py). Таблица нового администратора на
-скане часто теряет подписи («Для физ.лиц и ИП:», «ФИО»), а в свободной форме её нет вовсе — поэтому раздел разбирается
+скане часто теряет подписи («Для физ.лиц и ИП:», «ФИО»), а в свободной форме её нет вовсе - поэтому раздел разбирается
 целиком: организация (строка с ООО/АО/…), ФИО (2–4 слова, есть словарное имя или отчество), e-mail и телефоны.
-Границы раздела — ключ `new_admin_block` в form.yaml.
+Границы раздела - ключ `new_admin_block` в form.yaml.
 
 Хуки (formspec.HOOKS):
-  after_text — после чтения полей из текста: неправдоподобные значения полей нового администратора убираются,
+  after_text - после чтения полей из текста: неправдоподобные значения полей нового администратора убираются,
                пустые заполняются из раздела;
-  scan_page  — скан: если раздел не дал ни организации, ни ФИО, полоса раздела перечитывается отдельно (psm 6);
+  scan_page  - скан: если раздел не дал ни организации, ни ФИО, полоса раздела перечитывается отдельно (psm 6);
                в режиме нейросети её читает модель (только поля нового администратора).
 """
 from __future__ import annotations
@@ -60,7 +60,7 @@ _CELL_LABELS = re.compile(r"(?i)\bНаименование(?:\s+юр\.?\s*лиц
 
 
 def _person_line(line: str) -> str | None:
-    """Строка похожа на ФИО (2–4 слова с заглавной, хотя бы одно — словарное имя или отчество)?"""
+    """Строка похожа на ФИО (2–4 слова с заглавной, хотя бы одно - словарное имя или отчество)?"""
     if "@" in line or ORG_RE.search(line):
         return None
     toks = names.extract_fio(_CELL_LABELS.sub(" ", line))
@@ -104,7 +104,7 @@ _BLOCK_FIELDS = {"org": "new_admin_org", "person": "new_admin_fio", "org_contact
 
 def apply_new_admin_block(ex: Extraction, text: str, form: dict, conf: float, source: str) -> bool:
     """Разбор раздела «новому Администратору» (ключ `new_admin_block` бланка): неправдоподобные значения
-    полей нового администратора убираются, пустые заполняются из раздела. True — раздел что-то дал."""
+    полей нового администратора убираются, пустые заполняются из раздела. True - раздел что-то дал."""
     cfg = form.get("new_admin_block")
     if not cfg:
         return False
@@ -125,7 +125,7 @@ def apply_new_admin_block(ex: Extraction, text: str, form: dict, conf: float, so
             for k in [k for k in ex.fields if k == key or k.startswith(key + ".")]:
                 del ex.fields[k]
             _store(ex, key, form["fields"][key]["type"], found[part], conf, source)
-    # контакты «юрлица», когда юрлица нет, — это контакты нового администратора-физлица
+    # контакты «юрлица», когда юрлица нет, - это контакты нового администратора-физлица
     org_c, org, fio_c = (ex.fields.get(roles.get(k, "")) for k in ("org_contact", "org", "contact"))
     if org_c is not None and org_c.source != "manual" and not (org is not None and org.value):
         okey, ckey = roles.get("org_contact"), roles.get("contact")
@@ -160,7 +160,7 @@ NEW_ADMIN_KEYS = ("new_admin_inline", "new_admin_org", "new_admin_org_contact", 
 
 
 def _llm_new_admin(page: Page, lines: list[Line], form: dict, prefer: Extraction) -> None:
-    """Режим модели: нового администратора не нашли в тексте страницы — полоса раздела перечитывается отдельно
+    """Режим модели: нового администратора не нашли в тексте страницы - полоса раздела перечитывается отдельно
     (psm 6), и модель читает только поля нового администратора."""
     keys = [k for k in NEW_ADMIN_KEYS if k in form["fields"]]
     if not keys or any(prefer.get(k) for k in ("new_admin_org", "new_admin_fio") if k in keys):

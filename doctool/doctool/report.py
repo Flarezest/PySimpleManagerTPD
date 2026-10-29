@@ -24,7 +24,7 @@ FIELD_TITLES = {
     "domains.stated_count": "Доменов по тексту заявления («всего N»)",
     "domains.uncertain": "Домены, прочитанные по-разному",
     "services": "Доп. услуги", "new_admin_inline": "Новый администратор (текст)",
-    "new_admin_org": "Новый администратор — юрлицо", "new_admin_fio": "Новый администратор — физлицо/ИП",
+    "new_admin_org": "Новый администратор - юрлицо", "new_admin_fio": "Новый администратор - физлицо/ИП",
     "new_admin_contact": "Контакты нового администратора", "new_admin_contact.emails": "E-mail",
     "new_admin_contact.phones": "Телефон", "contract": "Договор/аккаунт", "signature_fio": "ФИО у подписи",
     "application_date": "Дата заявления", "application_date.raw": "Дата заявления (как написано)",
@@ -117,7 +117,7 @@ def append_excel(path: Path, case_id: str, app: Extraction, pas: Extraction | No
     for title, ex in (("Заявление", app), ("Паспорт", pas)):
         if ex is None:
             continue
-        d.append([f"— {title} —"])
+        d.append([f"- {title} -"])
         for k, f in ex.fields.items():
             v = ", ".join(f.value) if isinstance(f.value, list) else f.value
             d.append([field_title(k, ex), str(v), f.source, f.confidence, "да" if f.needs_review else ""])
@@ -138,7 +138,7 @@ def _img_tag(path: str | None, max_h: int = 120) -> str:
 
 
 def domains_table(domains: list[dict]) -> str:
-    """Таблица «Домены в manager» для отчёта (domains — DomainInfo.to_dict()). Домены сгруппированы
+    """Таблица «Домены в manager» для отчёта (domains - DomainInfo.to_dict()). Домены сгруппированы
     по проблемности (domains.PROBLEMS): сначала свободные по WHOIS, затем с несовпадающими данными и т. д."""
     from .domains import sort_by_problem
     e = html.escape
@@ -152,7 +152,7 @@ def domains_table(domains: list[dict]) -> str:
     for d in domains:
         if d.get("problem") and d.get("problem") != group:
             group = d["problem"]
-            out.append(f'<tr class="grp"><td colspan="5">{e(d.get("problem_ru", group))} — {counts[group]}</td></tr>')
+            out.append(f'<tr class="grp"><td colspan="5">{e(d.get("problem_ru", group))} - {counts[group]}</td></tr>')
         cls = d.get("verdict") or ("fail" if d.get("status") == "not_found" else "review" if d.get("status") == "error" else "")
         if d.get("status") == "found":
             sd = d.get("sd") or {}
@@ -162,10 +162,10 @@ def domains_table(domains: list[dict]) -> str:
                     + (f", ИНН {e(sd.get('code', ''))}" if sd.get("code") else "")
                     + (f"<br>e-mail: {e(', '.join(d['emails']))}" if d.get("emails") else "") + "</span>")
             cmp_ = "<br>".join(f"{e(r['title'])}: <b>{STATUS_RU[r['status']]}</b>"
-                               + (f" — {e(r['detail'])}" if r.get("detail") else "") for r in d.get("compare") or [])
-            extra = (f"provider: {e(d.get('provider', '') or '—')}<br>аккаунт: {e(d.get('account', '') or '—')}<br>"
+                               + (f" - {e(r['detail'])}" if r.get("detail") else "") for r in d.get("compare") or [])
+            extra = (f"provider: {e(d.get('provider', '') or '-')}<br>аккаунт: {e(d.get('account', '') or '-')}<br>"
                      + (f"e-mail аккаунта: {e(d['account_email'])}<br>" if d.get("account_email") else "")
-                     + f"смена админа: {e(d.get('last_admin_change', '') or '—')}<br>страна: {e(sd.get('country', '') or '—')}"
+                     + f"смена админа: {e(d.get('last_admin_change', '') or '-')}<br>страна: {e(sd.get('country', '') or '-')}"
                      + (f"<br>ЕСИА: {e(d['esia_ru'])}" if d.get("esia_ru") else "")
                      + (f"<br>MO (владелец аккаунта): {e(d['mo_ru'])}" if d.get("mo_ru") else ""))
         else:
@@ -204,7 +204,7 @@ def save_html(path: Path, case_id: str, app: Extraction, pas: Extraction | None,
                 + "".join(out) + "</table>")
 
     if decision is not None:
-        v = decision.title + " — " + "; ".join(decision.reasons)
+        v = decision.title + " - " + "; ".join(decision.reasons)
         vcls = {"reject": "fail", "accept": "ok", "review": "warn"}[decision.code]
     else:
         v = verdict(checks)

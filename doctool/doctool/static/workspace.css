@@ -1,8 +1,9 @@
-/* PySimpleManager — рабочее место оператора (0.7.6; 0.8.0 — строка «Поиск», меню «Окна»; 0.8.1 — текст PDF, дело без файлов). Цвета — переменные index.html (светлая и тёмная тема). */
+/* PySimpleManager - рабочее место оператора (0.7.6; 0.8.0 - строка «Поиск», меню «Окна»; 0.8.1 - текст PDF, дело без файлов). Цвета - переменные index.html (светлая и тёмная тема). */
 body.ws-mode{height:100vh;display:flex;flex-direction:column;overflow:hidden}
 body.ws-mode main{display:none}
 .wsx{--desk:#e3e7ec;--viewer:#8a9099;--wshadow:0 8px 28px rgba(16,24,40,.18);flex:1;min-height:0;display:flex;flex-direction:column}
-@media (prefers-color-scheme: dark){.wsx{--desk:#0e1012;--viewer:#3a3f46;--wshadow:0 8px 28px rgba(0,0,0,.6)}}
+:root[data-theme=dark] .wsx{--desk:#0e1012;--viewer:#3a3f46;--wshadow:0 8px 28px rgba(0,0,0,.6)}
+@media (prefers-color-scheme: dark){:root:not([data-theme=light]) .wsx{--desk:#0e1012;--viewer:#3a3f46;--wshadow:0 8px 28px rgba(0,0,0,.6)}}
 .wsx button{padding:5px 11px}
 .wsx button.sm{padding:1px 8px;font-size:12px}
 .wsx select,.wsx input[type=text]{min-width:0;padding:5px 8px}
@@ -94,7 +95,6 @@ body.ws-mode.ws-topoff .ws-mini{display:flex}
 .ws-rz.w{left:0;top:10px;bottom:10px;width:5px;cursor:ew-resize}.ws-rz.e{right:0;top:10px;bottom:10px;width:6px;cursor:ew-resize}
 .ws-rz.nw{left:0;top:0;width:10px;height:10px;cursor:nwse-resize}.ws-rz.se{right:0;bottom:0;width:12px;height:12px;cursor:nwse-resize}
 .ws-rz.ne{right:0;top:0;width:10px;height:10px;cursor:nesw-resize}.ws-rz.sw{left:0;bottom:0;width:10px;height:10px;cursor:nesw-resize}
-.ws-snap{position:absolute;border:2px dashed var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);border-radius:8px;pointer-events:none;z-index:100000;display:none}
 body.ws-dragging,body.ws-dragging *{user-select:none!important}
 
 /* ---------- просмотр документа ---------- */
@@ -108,7 +108,7 @@ body.ws-dragging,body.ws-dragging *{user-select:none!important}
 .ws-vp.selmode{cursor:crosshair}
 .ws-stage{position:relative;margin:8px auto}
 .ws-stage img.pg{position:absolute;left:0;top:0;transform-origin:0 0;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.35);user-select:none;-webkit-user-drag:none}
-/* (0.8.1) текстовый слой PDF: прозрачные слова поверх превью — выделяются мышью и копируются */
+/* (0.8.1) текстовый слой PDF: прозрачные слова поверх превью - выделяются мышью и копируются */
 .ws-tl{position:absolute;left:0;top:0;transform-origin:0 0;line-height:1;z-index:2}
 .ws-tl span{position:absolute;white-space:pre;color:transparent;transform-origin:0 0;cursor:text;font-family:sans-serif}
 .ws-tl ::selection{background:rgba(0,90,255,.3);color:transparent}
@@ -119,7 +119,7 @@ body.ws-dragging,body.ws-dragging *{user-select:none!important}
 .ws-vp.tselmode .ws-tl{pointer-events:none;user-select:none}
 .ws-tsel{display:inline-flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap;padding:0 4px;border-radius:5px}
 .ws-tsel.on{color:var(--accent);font-weight:600;background:color-mix(in srgb,var(--accent) 10%,transparent)}
-/* узкий экран: флажок в две строки, подпись «Раскладка:» скрыта — панель остаётся в одну строку (как в 0.8.3) */
+/* узкий экран: флажок в две строки, подпись «Раскладка:» скрыта - панель остаётся в одну строку (как в 0.8.3) */
 .ws-tsel .ws-br{display:none}
 @media (max-width:1500px){.ws-tbar .ws-tsel{font-size:11px;line-height:1.1;padding:0;gap:3px}.ws-tbar .ws-tsel input{margin:0}.ws-tsel .ws-br{display:inline}.ws-tbar .ws-lbl{display:none}}
 .ws-sel.ts{border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
@@ -145,7 +145,7 @@ body.ws-dragging,body.ws-dragging *{user-select:none!important}
 /* (0.8.1) дело без файлов; файлы с компьютера над рабочим местом */
 .ws-nofiles{align-self:center;font-size:12.5px;color:var(--muted);padding:6px 4px}
 .ws-desk.addover{outline:3px dashed var(--accent);outline-offset:-3px}
-.ws-desk.addover::after{content:"Отпустите — файлы добавятся в дело";position:absolute;left:50%;top:40%;transform:translateX(-50%);z-index:200001;background:var(--card);color:var(--text);border:1px solid var(--accent);border-radius:8px;padding:10px 16px;font-size:14px;box-shadow:var(--wshadow);pointer-events:none}
+.ws-desk.addover::after{content:"Отпустите - файлы добавятся в дело";position:absolute;left:50%;top:40%;transform:translateX(-50%);z-index:200001;background:var(--card);color:var(--text);border:1px solid var(--accent);border-radius:8px;padding:10px 16px;font-size:14px;box-shadow:var(--wshadow);pointer-events:none}
 
 /* ---------- домены ---------- */
 .ws-dlist{padding:6px 8px;display:flex;flex-direction:column;gap:6px}
@@ -159,7 +159,9 @@ body.ws-dragging,body.ws-dragging *{user-select:none!important}
 .ws-lnk{color:var(--accent);cursor:pointer;text-decoration:underline;background:none!important;border:0!important;padding:0!important;font-size:12px}
 .ws-acc small{display:block;color:var(--muted);font-size:11.5px;overflow-wrap:anywhere}
 .ws-dadd{display:flex;gap:6px;padding:6px 8px;border-bottom:1px solid var(--line)}
-.ws-dadd textarea{min-height:34px;height:34px;font-size:12.5px}
+.ws-dadd textarea{min-height:52px;height:52px;font-size:12.5px}
+.ws-dbtn{display:flex;flex-direction:column;gap:4px}   /* (0.8.5) «Загрузить из manager» и «Сбросить» */
+.ws-dbtn button{white-space:nowrap}
 
 /* ---------- Sd, manager, строка таблицы ---------- */
 .ws-pad{padding:10px 12px;font-size:13px}

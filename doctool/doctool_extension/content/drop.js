@@ -1,10 +1,10 @@
-/* PySimpleManager (0.8.0): файлы дела, перетащенные из рабочего места программы на страницу сайта —
+/* PySimpleManager (0.8.0): файлы дела, перетащенные из рабочего места программы на страницу сайта -
  * проверка ЭП на Госуслугах (e-trust.gosuslugi.ru), Контур.Крипто, Nextcloud.
  *
  * Сами файлы Chrome между страницами не передаёт: со страницы программы приходит только ссылка на файл дела
  * (тип данных application/x-pysm-file или текст «pysm-file:{…}»). Скрипт просит фоновую часть расширения взять
  * файл у программы на этом компьютере и отдаёт его странице так, как если бы его перетащили из папки: событием drop
- * на то же место, а если страница его не приняла — в ближайшее поле выбора файла. Ничего не отправляет и кнопок
+ * на то же место, а если страница его не приняла - в ближайшее поле выбора файла. Ничего не отправляет и кнопок
  * не нажимает. Чужие перетаскивания (файлы из папки, текст, ссылки сайта) не трогает.
  */
 (() => {
@@ -12,7 +12,7 @@
   window.__pysmDrop = true;
   const MARK = 'application/x-pysm-file';
 
-  // во время перетаскивания данные не читаются — видны только типы
+  // во время перетаскивания данные не читаются - видны только типы
   const looksOurs = dt => {
     const t = [...((dt && dt.types) || [])];
     return t.includes(MARK) || (t.includes('text/plain') && t.includes('text/uri-list') && !t.includes('Files'));
@@ -58,7 +58,7 @@
     const el = (target && target.isConnected) ? target : (document.elementFromPoint(x, y) || document.body);
     el.dispatchEvent(new DragEvent('dragenter', opts));
     el.dispatchEvent(new DragEvent('dragover', opts));
-    const taken = !el.dispatchEvent(new DragEvent('drop', opts));   // страница вызвала preventDefault — файл принят
+    const taken = !el.dispatchEvent(new DragEvent('drop', opts));   // страница вызвала preventDefault - файл принят
     if (taken) return 'передан странице';
     const input = nearestFileInput(el, file.name);
     if (!input) return '';
@@ -75,7 +75,7 @@
     if (!e.isTrusted || !looksOurs(e.dataTransfer)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
-    say('отпустите — файл дела будет положен на страницу', false, 1500);
+    say('отпустите - файл дела будет положен на страницу', false, 1500);
   }, true);
 
   addEventListener('drop', async e => {
@@ -96,6 +96,6 @@
     const file = new File([bytes], f.name || 'file', { type: f.mime || r.type || 'application/octet-stream' });
     const how = deliver(file, target, x, y);
     if (how) say(`«${file.name}» ${how}`, false, 4000);
-    else say(`страница не приняла «${file.name}» — выберите файл на странице вручную`, true, 8000);
+    else say(`страница не приняла «${file.name}» - выберите файл на странице вручную`, true, 8000);
   }, true);
 })();

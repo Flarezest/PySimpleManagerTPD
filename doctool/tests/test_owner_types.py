@@ -1,6 +1,6 @@
 """0.7.3: «Смена владельца ЛК» для ИП и юрлиц (сверка базовой анкеты, автозаполнение с переключением типа анкеты)
-и ручной ввод данных заявления со сверкой с данными доменов из manager. Страницы manager — обезличенные фикстуры
-(вымышленные данные), структура — как на страницах, присланных пользователем 11.10.2026."""
+и ручной ввод данных заявления со сверкой с данными доменов из manager. Страницы manager - обезличенные фикстуры
+(вымышленные данные), структура - как на страницах, присланных пользователем 11.10.2026."""
 import json
 import sys
 import threading
@@ -32,7 +32,7 @@ def test_address_and_email_kinds():
     st, det = same("address", "350087, Краснодарский край, г. Краснодар, ул. Красная, д. 3", "г Краснодар, ул Красная, 3")
     assert st == "warn" and "350087" in det                         # с одной стороны есть индекс и регион
     st, det = same("address", "ул. Мира, д. 19, кв. 187", "ул. Мира, д. 19, кв. 188")
-    assert st == "fail" and "187" in det                            # другая квартира — другой адрес
+    assert st == "fail" and "187" in det                            # другая квартира - другой адрес
     assert same("address", "Москва, ул. Тверская, д 1", "Санкт-Петербург, Невский пр-кт, д. 1")[0] == "fail"
     assert same("address", "", "ул. Мира")[0] == ""
     assert same("email", " Info@Example.RU", "info@example.ru")[0] == "ok"
@@ -80,7 +80,7 @@ def test_prepare_fill_ip():
     assert r["kind"] == "ip" and f["code"] == "500100732259"
     assert f["p_addr_r_addr"] == f["p_addr_addr"] == "г. Тестоград, ул. Садовая, д. 3, кв. 4"   # адрес регистрации = почтовый
     assert f["p_addr_r_city"] == f["p_addr_city"] == "Тестоград" and f["p_addr_r_zip"] == f["p_addr_zip"] == "347000"
-    assert [x["field"] for x in r["preview"]][6] == "code"           # порядок — как на странице
+    assert [x["field"] for x in r["preview"]][6] == "code"           # порядок - как на странице
     assert set(f) <= {k for k, _ in account.FILL_FIELDS_IP}
     assert account.prepare_fill({"inn": "123"}, "ip")["notes"][0].startswith("ИНН ИП: 3 цифр")
     # физлицу ИНН и адрес регистрации ИП не передаются, даже если введены
@@ -96,7 +96,7 @@ def test_prepare_fill_org():
     assert r["kind"] == "org" and f["org_r"] == "ООО «Ромашка»" and f["code"] == "7701234567" and f["kpp"] == "770101001"
     assert f["address_r_addr"] == f["p_addr_addr"] == "г. Москва, ул. Тверская, д. 1, офис 5"   # почтовый пуст → физический
     assert f["address_r_city"] == f["p_addr_city"] == "Москва" and f["address_r_zip"] == f["p_addr_zip"] == "125009"
-    assert f["p_addr_recipient"] == "ООО «Ромашка»"                  # получатель по умолчанию — организация
+    assert f["p_addr_recipient"] == "ООО «Ромашка»"                  # получатель по умолчанию - организация
     assert f["phone"] == "+74950000000" and f["e_mail"] == "info@romashka.ru" and f["actt_e_mail"] == "buh@romashka.ru"
     assert any("Почтовый адрес не указан" in n for n in r["notes"])
     assert "Страна регистрации" in r["manual"] and "Название родительской организации" in r["untouched"]
@@ -117,7 +117,7 @@ def test_verify_saved_org():
 
 # ------------------------------------------------------------------ страницы manager (Playwright)
 
-try:                                     # без Playwright тесты страниц пропускаются, остальные — нет
+try:                                     # без Playwright тесты страниц пропускаются, остальные - нет
     from playwright import sync_api
 except ImportError:  # pragma: no cover
     sync_api = None
@@ -177,7 +177,7 @@ def _val(page, form, name):
 
 
 def test_fill_org_switches_type_and_back(page):
-    """Аккаунт физлица, новый владелец — юрлицо: тип «Физик» → «Юрик», заполняется форма юрлица; «Вернуть как было»
+    """Аккаунт физлица, новый владелец - юрлицо: тип «Физик» → «Юрик», заполняется форма юрлица; «Вернуть как было»
     возвращает и значения, и тип."""
     page.goto((FIX / "runic_pp.html").as_uri())
     page.add_script_tag(content=JS)
@@ -192,7 +192,7 @@ def test_fill_org_switches_type_and_back(page):
     assert "hidden" in page.evaluate("() => document.getElementById('ru_pp_contacts').className")
     assert _val(page, "ru_org_contacts", "org_r") == "ООО «Ромашка»" and _val(page, "ru_org_contacts", "kpp") == "770101001"
     assert _val(page, "ru_org_contacts", "address_r_city") == "Москва"
-    assert _val(page, "ru_org_contacts", "org") == "OOO «Romashka»"                       # English name — страница (blur)
+    assert _val(page, "ru_org_contacts", "org") == "OOO «Romashka»"                       # English name - страница (blur)
     assert _val(page, "ru_pp_contacts", "person_r_surname") == "Тестов"                   # форма физлица не тронута
     assert d["values"]["org_r"] == "ООО «Ромашка»"
     old = {c["name"]: c["old"] for c in d["changed"]}
@@ -224,10 +224,10 @@ def test_fill_same_type_and_guards(page):
     r = page.evaluate("f => window.__doctoolManager.fillRunic('2000', f, {type: 'org'})",
                       {"phone": "+74951112233", "person_r_surname": "Иванов"})
     assert r["ok"] and not r["data"]["type_switched"] and [c["name"] for c in r["data"]["changed"]] == ["phone"]
-    # без типа (как вызывала программа 0.7.2) — по-прежнему только физлицо
+    # без типа (как вызывала программа 0.7.2) - по-прежнему только физлицо
     r = page.evaluate("f => window.__doctoolManager.fillRunic('2000', f)", {"phone": "+74951112233"})
     assert not r["ok"] and r["error"]["code"] == "not_person"
-    # страница не показала форму после переключения — ошибка, ничего не заполняется
+    # страница не показала форму после переключения - ошибка, ничего не заполняется
     page.goto((FIX / "runic_pp.html").as_uri())
     page.evaluate("() => document.querySelectorAll('input[name=type]').forEach(r => r.replaceWith(r.cloneNode(true)))")
     page.add_script_tag(content=JS)
@@ -251,7 +251,7 @@ def test_manual_case_recompute(tmp_path):
     assert res.app.get("applicant_header.birth_date") == "15.03.1990" and res.registered
     assert (Path(tmp_path) / "реестр_проверок.xlsx").exists()
     assert res.record["application_fields_reader"] == "manual"
-    # стёртое значение — пустое (раньше правка на пустое не применялась)
+    # стёртое значение - пустое (раньше правка на пустое не применялась)
     recompute(res, {"fio": {"app": ""}}, [])
     assert not res.app.get("applicant_fio") and res.app.get("applicant_header.birth_date") == "15.03.1990"
 
@@ -294,8 +294,8 @@ def test_manual_case_web_and_manager(tmp_path):
     cmp_ = {x["field"]: x["status"] for x in r["domains"][0]["compare"]}
     assert cmp_["fio"] == "ok" and cmp_["birth_date"] == "ok" and cmp_["passport"] == "ok"   # Sd = введённые данные
     chk = {c["name"]: c["status"] for c in r["checks"]}
-    assert chk["Заявитель — администратор доменов (Sd)"] == "ok" and chk["Паспорт в Sd"] == "ok"
-    # ввели другие данные — Sd расходится с заявлением
+    assert chk["Заявитель - администратор доменов (Sd)"] == "ok" and chk["Паспорт в Sd"] == "ok"
+    # ввели другие данные - Sd расходится с заявлением
     r2 = client.post(f"/api/jobs/{job_id}/recompute", json={"overrides": {"fio": {"app": "Иванов Иван Иванович"},
                                                                            "passport": {"app": "4510 654321"}},
                                                             "confirmed": []}).json()
@@ -335,13 +335,13 @@ def test_web_manual_entry_owner_kinds_and_domains_width(tmp_path, browser):
             pg.on("pageerror", lambda e: errors.append(str(e)))
             pg.goto(url)
             pg.click("nav.tabs button[data-tab=tabCheck]")      # (0.7.6) по умолчанию открыто рабочее место
-            # 1) (0.8.1) вкладка — только «Домены в manager»: «Новой проверки» заявления нет
+            # 1) (0.8.1) вкладка - только «Домены в manager»: «Новой проверки» заявления нет
             assert pg.text_content("nav.tabs button[data-tab=tabCheck]").strip() == "Домены в manager"
             assert pg.locator("#formCard, #resultCard, #progressCard, #caseType").count() == 0
             pg.fill("#domList", "testdomain-pp.ru")
-            pg.click("#domLoad")                                  # расширения нет — сообщение
+            pg.click("#domLoad")                                  # расширения нет - сообщение
             pg.wait_for_function("() => document.querySelector('#domHint').textContent.includes('не подключено')")
-            # 2) окно «Домены в manager» без прокрутки вбок при длинных значениях; логин и e-mail аккаунта — раздельно
+            # 2) окно «Домены в manager» без прокрутки вбок при длинных значениях; логин и e-mail аккаунта - раздельно
             long = {"domain": "ochen-dlinnoe-imya-domena-dlya-proverki-shiriny.ru", "status": "found", "kind": "person",
                     "fio": "Константинопольский Константин Константинович", "passport": "4509 123456",
                     "sd": {"birth_date": "15.03.1990", "passport_date": "20.04.2010",
@@ -363,7 +363,7 @@ def test_web_manual_entry_owner_kinds_and_domains_width(tmp_path, browser):
             assert "Смена администратора меньше 30 дней" in pg.text_content("#domTable tbody tr:nth-child(2) td:nth-child(11)")
             mo = pg.text_content("#domTable tbody tr:nth-child(2) td:nth-child(6)")        # (0.8.4) колонка MO
             assert "не совпадает" in mo and "Телефон" in mo, mo
-            # 3) смена владельца: поля по типу нового владельца, сверка юрлица — поля ru_org
+            # 3) смена владельца: поля по типу нового владельца, сверка юрлица - поля ru_org
             pg.click("nav.tabs button[data-tab=tabOwner]")
             pg.check("input[name=ownKind][value=org]")
             assert pg.is_visible("#ownForm [data-k=org_name]") and not pg.is_visible("#ownForm [data-k=surname]")

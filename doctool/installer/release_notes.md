@@ -1,30 +1,30 @@
 ## Установка
 
-**Windows 10/11** — скачайте `PySimpleManager-…-windows-x64-setup.exe` и запустите. Права администратора не нужны.
+**Windows 10/11** - скачайте `PySimpleManager-…-windows-x64-setup.exe` и запустите. Права администратора не нужны.
 Если Windows покажет «Система Windows защитила ваш компьютер», нажмите «Подробнее» → «Выполнить в любом случае»
-(установщик не подписан сертификатом). Tesseract с русским языком и 7-Zip (архивы rar и 7z) уже внутри — отдельно
+(установщик не подписан сертификатом). Tesseract с русским языком и 7-Zip (архивы rar и 7z) уже внутри - отдельно
 ставить ничего не нужно.
 
-**Linux (Ubuntu 22.04 и новее, Debian 12)** — скачайте `pysimplemanager_…_amd64.deb` и выполните
-`sudo apt install ./pysimplemanager_…_amd64.deb` (Tesseract с русским языком поставится сам; для архивов rar —
-`sudo apt install 7zip unrar`, в Debian `unrar` — из раздела non-free). Запуск — «PySimpleManager»
+**Linux (Ubuntu 22.04 и новее, Debian 12)** - скачайте `pysimplemanager_…_amd64.deb` и выполните
+`sudo apt install ./pysimplemanager_…_amd64.deb` (Tesseract с русским языком поставится сам; для архивов rar -
+`sudo apt install 7zip unrar`, в Debian `unrar` - из раздела non-free). Запуск - «PySimpleManager»
 в меню приложений или `pysimplemanager` в терминале.
 
-**macOS (Apple Silicon, пробная сборка)** — откройте `.dmg`, перетащите папку `PySimpleManager` в «Программы»,
+**macOS (Apple Silicon, пробная сборка)** - откройте `.dmg`, перетащите папку `PySimpleManager` в «Программы»,
 запустите в ней `Запустить PySimpleManager.command`. При первом запуске macOS его заблокирует: «Системные настройки →
 Конфиденциальность и безопасность → Всё равно открыть».
 
 Программа открывается в браузере (http://127.0.0.1:8765), окно консоли остаётся открытым, пока она работает.
-Результаты проверок — в папке «Документы/PySimpleManager». Обновление — новый установщик поверх старого,
+Результаты проверок - в папке «Документы/PySimpleManager». Обновление - новый установщик поверх старого,
 результаты и свои настройки сохраняются.
 
 ## Расширение Chrome (данные из manager)
 
 Ставится один раз: `chrome://extensions` → «Режим разработчика» → «Загрузить распакованное расширение» → папка
 `chrome_extension` в папке программы (Windows: Пуск → PySimpleManager → «Расширение Chrome (папка)»;
-Linux: `/opt/pysimplemanager/chrome_extension`). После обновления программы — кнопка «Обновить» на карточке
-расширения. С 0.7.6 расширение заполняет страницу проверки паспорта на Госуслугах — Chrome попросит разрешение на
-сайт gosuslugi.ru. С 0.8.0 — ещё egrul.nalog.ru, e-trust.gosuslugi.ru, crypto.kontur.ru, Nextcloud и программа на
+Linux: `/opt/pysimplemanager/chrome_extension`). После обновления программы - кнопка «Обновить» на карточке
+расширения. С 0.7.6 расширение заполняет страницу проверки паспорта на Госуслугах - Chrome попросит разрешение на
+сайт gosuslugi.ru. С 0.8.0 - ещё egrul.nalog.ru, e-trust.gosuslugi.ru, crypto.kontur.ru, Nextcloud и программа на
 127.0.0.1 (строка «Поиск» рабочего места: сайт рядом, перетаскивание файлов дела на сайт).
 
-Что изменилось — CHANGELOG.md.
+Что изменилось - CHANGELOG.md.

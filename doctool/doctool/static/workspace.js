@@ -1,14 +1,14 @@
-/* PySimpleManager — рабочее место оператора (0.7.6; 0.8.0 — строка «Поиск», меню «Окна», удаление дел; 0.8.1 — дело
- * без файлов и добавление файлов в открытое дело, выделение текста PDF, без окна «Сверка»; 0.8.2 — кнопки «Смена
- * админа через manager» и «Безбумажные операции» (доверенность в manager) при любой операции; 0.8.3 — верхняя панель
- * убирается наверх, стол с окнами растёт; 0.8.4 — ручное выделение текста рамкой (печатный текст → буфер обмена),
- * MO у доменов).
+/* PySimpleManager - рабочее место оператора (0.7.6; 0.8.0 - строка «Поиск», меню «Окна», удаление дел; 0.8.1 - дело
+ * без файлов и добавление файлов в открытое дело, выделение текста PDF, без окна «Сверка»; 0.8.2 - кнопки «Смена
+ * админа через manager» и «Безбумажные операции» (доверенность в manager) при любой операции; 0.8.3 - верхняя панель
+ * убирается наверх, стол с окнами растёт; 0.8.4 - ручное выделение текста рамкой (печатный текст → буфер обмена),
+ * MO у доменов; 0.8.5 - сохранённый результат доменов дела и «Сбросить», окно «Смена владельца ЛК», без прилипания).
  *
  * Дело из архива тикетницы (или пустое): страницы по документам (лента), плавающие окна (заявление, паспорт, домены,
  * строка таблицы, Sd, manager), смена администратора в manager через расширение, строка для таблицы xlsx, строка
- * «Поиск» (Ctrl+K) — сайт открывается рядом с рабочим местом через расширение, файлы дела перетаскиваются на сайт.
- * Сервер — /api/ws/* (doctool/workspace.py, web.py). Общие функции страницы ($, esc, api, copyText, showKPop,
- * showEsia, showMo, FLAG_RU, FLAG_CLS, ST) — из index.html.
+ * «Поиск» (Ctrl+K) - сайт открывается рядом с рабочим местом через расширение, файлы дела перетаскиваются на сайт.
+ * Сервер - /api/ws/* (doctool/workspace.py, web.py). Общие функции страницы ($, esc, api, copyText, showKPop,
+ * showEsia, showMo, FLAG_RU, FLAG_CLS, ST) - из index.html.
  */
 (() => {
 'use strict';
@@ -37,7 +37,7 @@ const today = () => new Date().toLocaleDateString('ru-RU');
 const W = {id: null, ws: null, res: null, meta: null, logLen: 0, timer: null, sel: null, domain: '', built: false,
            operator: store.get('pysm.operator', {login: '', surname: ''}), docx: {}, recheck: false, lookupTask: null,
            lastJob: '', lastStatus: '', textsel: store.get('pysm.ws.textsel', false)};
-window.WS = {shown, domainByName: n => ((W.res && W.res.result.domains) || []).find(d => d.domain === n)};
+window.WS = {shown, domainByName: n => ((W.res && W.res.result.domains) || []).find(d => d.domain === n), openOwner: acc => openOwn(acc)};
 
 const CLS = {application: 'Заявление', passport: 'Паспорт', other: 'Прочее', unknown: 'Не определено', hidden: 'Скрытые (пустые, повторы)'};
 const pages = () => (W.ws && W.ws.pages) || [];
@@ -71,12 +71,19 @@ function saveState(part, now){
 }
 
 // ================================================================ приём дела
+const OP_RENAMED = {'Смена владельца аккаунта': 'Смена владельца ЛК'};
 function fillSelect(sel, items, value){
   sel.innerHTML = items.map(t => `<option ${t === value ? 'selected' : ''}>${esc(t)}</option>`).join('');
 }
 async function init(){
   try { W.meta = await getJSON('/api/ws/meta'); } catch (e) { return; }
   const ops = W.meta.operations.map(o => o.title), vias = W.meta.receipt_methods;
+  // (0.8.5) «Смена владельца аккаунта» → «Смена владельца ЛК»: выбор и своя раскладка, запомненные в браузере
+  Object.entries(OP_RENAMED).forEach(([o, n]) => {
+    if (!ops.includes(n) || ops.includes(o)) return;
+    if (store.get('pysm.ws.op') === o) store.set('pysm.ws.op', n);
+    const L = store.get('pysm.ws.layout.' + o); if (L && !store.get('pysm.ws.layout.' + n)) store.set('pysm.ws.layout.' + n, L);
+  });
   fillSelect(q('#wsOpNew'), ops, store.get('pysm.ws.op', ops[0]));
   fillSelect(q('#wsViaNew'), vias, store.get('pysm.ws.via', vias[0]));
   fillSelect(q('#wsOp'), ops, ops[0]);
@@ -87,7 +94,7 @@ async function init(){
   drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files.length) createCase([...e.dataTransfer.files]); });
   drop.addEventListener('click', e => { if (e.target.id !== 'wsFiles') q('#wsFiles').click(); });
   q('#wsFiles').addEventListener('change', e => { if (e.target.files.length) createCase([...e.target.files]); e.target.value = ''; });
-  // (0.8.1) дело без файлов — сразу к окнам; файлы можно добавить потом (перетащить или «Добавить файлы»)
+  // (0.8.1) дело без файлов - сразу к окнам; файлы можно добавить потом (перетащить или «Добавить файлы»)
   q('#wsEmpty').addEventListener('click', () => createCase([]));
   q('#wsAddInput').addEventListener('change', e => { if (e.target.files.length) addFiles([...e.target.files]); e.target.value = ''; });
   document.addEventListener('click', async e => {
@@ -111,8 +118,9 @@ async function init(){
   q('#wsCopyRow2').addEventListener('click', copyRow);
   q('#wsOpenMgr').addEventListener('click', gateClick);
   q('#wsOpenLoa').addEventListener('click', openLoa);
+  q('#wsOpenOwn').addEventListener('click', () => openOwn());
   q('#wsStripT').addEventListener('click', () => { W.stripManual = true; stripMode(!q('#wsStrip').classList.contains('compact')); });
-  // на невысоком экране лента — одной строкой, пока оператор сам не переключил
+  // на невысоком экране лента - одной строкой, пока оператор сам не переключил
   addEventListener('resize', () => { if (!W.stripManual) stripMode(innerHeight < 820); });
   qq('[data-wspreset]').forEach(b => b.addEventListener('click', () => applyPreset(b.dataset.wspreset)));
   q('#wsSaveLayout').addEventListener('click', saveLayout);
@@ -134,11 +142,11 @@ async function init(){
   });
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyK' && W.id && !q('#tabWork').classList.contains('hidden')){ e.preventDefault(); toggleSearch(); }
-    // (0.8.3) Ctrl+Shift+↑ — убрать верхнюю панель, Ctrl+Shift+↓ — вернуть (в полях ввода — обычное выделение текста)
+    // (0.8.3) Ctrl+Shift+↑ - убрать верхнюю панель, Ctrl+Shift+↓ - вернуть (в полях ввода - обычное выделение текста)
     if (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && W.id && !q('#tabWork').classList.contains('hidden')
         && !(e.target.closest && e.target.closest('input,textarea,select,[contenteditable]'))){ e.preventDefault(); setTop(e.key === 'ArrowUp'); }
   });
-  // (0.8.3) верхняя панель: убрать наверх / вернуть; тонкая полоса вместо неё («Перепроверить» — и в полосе)
+  // (0.8.3) верхняя панель: убрать наверх / вернуть; тонкая полоса вместо неё («Перепроверить» - и в полосе)
   q('#wsTopHide').addEventListener('click', () => setTop(true));
   q('#wsTopShow').addEventListener('click', () => setTop(false));
   q('#wsMiniSearch').addEventListener('click', () => { toggleSearch(); renderMini(); });
@@ -154,12 +162,16 @@ async function init(){
   if (m) openCase(m[1]); else showIntake();
   if (!q('#tabWork').classList.contains('hidden')) shown();
 }
-function shown(){ if (W.id) WM.all().forEach(w => { WM.apply(w); w.onResize && w.onResize(); }); }
+function shown(){
+  if (!W.id) return;
+  const ow = WM.get('own'); if (ow) adoptOwn(ow);          // (0.8.5) содержимое «Смены владельца ЛК» - снова в окно
+  WM.all().forEach(w => { WM.apply(w); w.onResize && w.onResize(); });
+}
 function stripMode(compact){ q('#wsStrip').classList.toggle('compact', compact); q('#wsStripT').textContent = compact ? 'Лента ▾' : 'Лента ▴'; }
 
 // ================================================================ (0.8.3) верхняя панель: убрать наверх / вернуть
 // Шапка программы с вкладками (#appTop) и шапка дела с лентой и панелью раскладки (#wsTop) уезжают наверх на свою
-// высоту (--h), стол с окнами растёт — окна держат доли стола и растут вместе с ним. Остаётся полоса #wsMini: «▾ Панель»,
+// высоту (--h), стол с окнами растёт - окна держат доли стола и растут вместе с ним. Остаётся полоса #wsMini: «▾ Панель»,
 // тикет · операция · способ получения, шаги дела, «Поиск», «Окна», свёрнутые окна (#wsDock переносится в полосу).
 // Выбор запоминается (localStorage pysm.ws.topoff); на экране приёма и на других вкладках панель на месте.
 const TOP = {off: !!store.get('pysm.ws.topoff', false)};
@@ -180,7 +192,7 @@ function setTop(off){
   TOP.off = !!off; store.set('pysm.ws.topoff', TOP.off);
   closeWinPop(); closeGatePop();
   applyTop();
-  if (off) toast('Панель убрана наверх — вернуть: «▾ Панель» или Ctrl+Shift+↓', 3500);
+  if (off) toast('Панель убрана наверх - вернуть: «▾ Панель» или Ctrl+Shift+↓', 3500);
 }
 function renderMini(){
   const box = q('#wsMiniInfo'); if (!box) return;
@@ -203,7 +215,7 @@ async function showIntake(){
         <button class="sm" id="wsDelAll" title="Удалить все дела рабочего места: папки дел с файлами и результаты проверок">Удалить все (${total})</button></div>
       <div id="wsDelBar"></div>
       <table><tr><th>Создано</th><th>Тикет</th><th>Операция</th><th>Файлы</th><th></th></tr>
-      ${r.items.map(i => `<tr><td>${esc((i.created || '').replace('T', ' '))}</td><td>${esc(i.ticket || '—')}</td><td>${esc(i.operation || '')}</td>
+      ${r.items.map(i => `<tr><td>${esc((i.created || '').replace('T', ' '))}</td><td>${esc(i.ticket || '-')}</td><td>${esc(i.operation || '')}</td>
         <td><small>${(i.files || []).length ? esc(i.files.join(', ')) : '<span class="hint">без файлов</span>'}</small></td><td class="ws-ract"><button class="sm" data-wsopen="${esc(i.id)}">Открыть</button>
         <button class="sm" data-wsdel="${esc(i.id)}" title="Удалить дело: папка дела с файлами и результаты проверки стираются с диска">Удалить</button></td></tr>`).join('')}</table>` : '';
     bindRecent(total);
@@ -231,7 +243,7 @@ async function createCase(files){
 // (0.8.1) файлы в открытое дело: разбираются только новые страницы, затем проверка запускается заново
 async function addFiles(files){
   if (!W.id || !files.length) return;
-  if (W.ws && !['ready', 'error'].includes(W.ws.status)){ toast('Дело ещё разбирается — добавьте файлы, когда разбор закончится'); return; }
+  if (W.ws && !['ready', 'error'].includes(W.ws.status)){ toast('Дело ещё разбирается - добавьте файлы, когда разбор закончится'); return; }
   const fd = new FormData();
   files.forEach(f => fd.append('files', f, f.name));
   toast(`Добавляю в дело: ${esc(files.map(f => f.name).join(', '))}…`);
@@ -243,7 +255,7 @@ async function addFiles(files){
     poll(true);
   } catch (e) { toast('Не добавилось: ' + esc(e.message), 6000); }
 }
-// файлы с компьютера (не миниатюры и не файлы дела) над рабочим местом — добавить в дело
+// файлы с компьютера (не миниатюры и не файлы дела) над рабочим местом - добавить в дело
 const osFiles = e => { const t = [...((e.dataTransfer && e.dataTransfer.types) || [])]; return t.includes('Files') && !t.includes('text/plain') && !t.includes(FILE_MARK); };
 let addOverT = 0;
 function addOver(on){
@@ -273,7 +285,7 @@ async function poll(force){
   try { d = await getJSON(`/api/ws/${W.id}?since=${W.logLen}`); }
   catch (e) {
     q('#wsStatus').textContent = 'Дело не найдено: ' + e.message;
-    if (/Нет такого/.test(e.message)) { toast('Дело не найдено — начните новое'); newCase(); }
+    if (/Нет такого/.test(e.message)) { toast('Дело не найдено - начните новое'); newCase(); }
     return;
   }
   const first = !W.ws;
@@ -288,6 +300,11 @@ async function poll(force){
     if (d.state.via) q('#wsVia').value = d.state.via;
   }
   if (first){ renderRow(); renderDomains(); }
+  // (0.8.5) нет результата проверки (дело без проверки или программа перезапускалась) - домены из сохранённого
+  if (first && (!d.job || d.job.status === 'lost')) loadStoredDomains();
+  if (first && d.job && d.job.status === 'lost' && op().checked && W.ws.pages.length){
+    setRecheck(true); toast('Результат проверки дела не сохранился (программа перезапускалась) - нажмите «Перепроверить». Домены уже загружены и повторно не запрашиваются', 7000);
+  }
   const st0 = W.lastWsStatus + '|' + (d.job ? d.job.status : '');
   W.lastWsStatus = d.status;
   if (changed){ renderArch(); renderStrip(); refreshDocs(); if (SR.on){ if (first) renderSbar(); else renderSfiles(); } }
@@ -296,7 +313,7 @@ async function poll(force){
   const jst = job ? job.status : '';
   const sl = {unpacking: 'Распаковываю…', pages: 'Готовлю страницы…', classifying: 'Разбираю страницы…', ready: '', error: 'Ошибка: ' + (d.error || '')}[d.status] || '';
   const jl = job && (jst === 'running' || jst === 'queued') ? 'Проверка: ' + ((job.log || []).slice(-1)[0] || 'в очереди').replace(/^\s*[\d.]+ с\s+/, '') : '';
-  q('#wsStatus').textContent = sl ? `${sl} ${W.lastLog ? '— ' + W.lastLog.replace(/^\d\d:\d\d:\d\d\s+/, '') : ''}` : jl || (jst === 'error' ? 'Проверка: ошибка — ' + (job.error || '') : '');
+  q('#wsStatus').textContent = sl ? `${sl} ${W.lastLog ? '- ' + W.lastLog.replace(/^\d\d:\d\d:\d\d\s+/, '') : ''}` : jl || (jst === 'error' ? 'Проверка: ошибка - ' + (job.error || '') : '');
   if (job && jst === 'done' && (W.lastJob !== job.id || W.lastStatus !== 'done')) { W.lastJob = job.id; W.lastStatus = 'done'; await loadResult(); }
   else if (job) W.lastStatus = jst;
   if (!W.applied && d.status !== 'unpacking') { W.applied = true; }
@@ -331,25 +348,25 @@ function thumbHTML(p, cur){
     : `<img src="${p.thumb}" alt="" style="transform:rotate(${p.rot || 0}deg)">`;
   const short = p.file_name.split('/').pop();
   return `<div class="ws-th${cur ? ' cur' : ''}${p.cls === 'hidden' ? ' hid' : ''}" draggable="true" data-pid="${p.id}"
-    title="${esc(p.label)} — ${esc(p.sub)}\n${esc(p.why)}${p.auto_rot ? '\nповёрнута автоматически' : ''}\nПеретащите в другую группу или в окно документа">
+    title="${esc(p.label)} - ${esc(p.sub)}\n${esc(p.why)}${p.auto_rot ? '\nповёрнута автоматически' : ''}\nПеретащите в другую группу или в окно документа">
     ${cf}<div class="tb${p.rot % 180 ? ' r' + p.rot : ''}">${img}</div>${esc(short.length > 10 ? short.slice(0, 8) + '…' : short)}${p.file_pages > 1 ? ' · ' + (p.index + 1) : ''}</div>`;
 }
 function renderStrip(){
   if (!W.ws) return;
   if (!W.ws.files.length){
-    q('#wsStrip').innerHTML = `<div class="ws-nofiles">Файлов в деле нет — перетащите архив или файлы на рабочее место или нажмите «Добавить файлы». Окна, «Поиск» и домены работают и без них.</div>`;
+    q('#wsStrip').innerHTML = `<div class="ws-nofiles">Файлов в деле нет - перетащите архив или файлы на рабочее место или нажмите «Добавить файлы». Окна, «Поиск» и домены работают и без них.</div>`;
     return;
   }
   const cur = new Set(WM.all().filter(w => w.kind === 'doc' || w.kind === 'page').map(w => (docPages(w)[w.idx] || {}).id));
   const grp = cls => {
     const ps = pages().filter(p => p.cls === cls);
-    const empty = {application: 'Нет страниц', passport: 'Нет страниц — перетащите сюда или выделите рамкой на странице', other: 'Конверт, опись, нотариус…',
+    const empty = {application: 'Нет страниц', passport: 'Нет страниц - перетащите сюда или выделите рамкой на странице', other: 'Конверт, опись, нотариус…',
       unknown: 'Всё определено', hidden: 'Нет'}[cls];
     return `<div class="ws-grp" data-cls="${cls}"><h4>${CLS[cls]} · ${ps.length}</h4><div class="items">${ps.map(p => thumbHTML(p, cur.has(p.id))).join('') || `<span class="empty">${empty}</span>`}</div></div>`;
   };
   const extra = W.ws.files.filter(f => f.kind === 'sig' || f.kind === 'other' && !/TIFF/.test(f.note));
   const fileBox = extra.length ? `<div class="ws-grp"><h4>Подпись и другие файлы · ${extra.length}</h4><div class="items">${extra.map(f =>
-      `<div class="ws-file" draggable="true" data-dragfile="${esc(f.id)}" title="Перетащите на страницу сайта (строка «Поиск») — файл положит туда расширение"><a href="/api/ws/${W.id}/file/${f.id}" target="_blank" draggable="false"><b>${esc(f.name.split('/').pop())}</b></a><br><span class="hint">${esc(f.note)}</span></div>`).join('')}</div></div>` : '';
+      `<div class="ws-file" draggable="true" data-dragfile="${esc(f.id)}" title="Перетащите на страницу сайта (строка «Поиск») - файл положит туда расширение"><a href="/api/ws/${W.id}/file/${f.id}" target="_blank" draggable="false"><b>${esc(f.name.split('/').pop())}</b></a><br><span class="hint">${esc(f.note)}</span></div>`).join('')}</div></div>` : '';
   q('#wsStrip').innerHTML = ['application', 'passport', 'other', 'unknown', 'hidden'].map(grp).join('') + fileBox;
 }
 async function pageAction(body, msgText){
@@ -374,7 +391,8 @@ async function recheck(){
   try {
     const r = await api(`/api/ws/${W.id}/check`, {});
     setRecheck(false); W.res = null; W.lastJob = '';
-    toast(r.job_id ? 'Проверка запущена заново' : 'Для этого типа операции проверка не настроена — сверка вручную');
+    toast(r.job_id ? 'Проверка запущена заново' : 'Для этого типа операции проверка не настроена - сверка вручную');
+    if (!r.job_id) loadStoredDomains();
     poll(true);
   } catch (e) { toast('Не получилось: ' + esc(e.message)); }
 }
@@ -382,7 +400,7 @@ document.addEventListener('dragstart', e => {
   const t = e.target.closest && e.target.closest('.ws-th');
   if (t){
     e.dataTransfer.setData('text/plain', 'wspid:' + t.dataset.pid);
-    // (0.8.0) миниатюру можно перетащить и на страницу сайта — туда уйдёт файл этой страницы
+    // (0.8.0) миниатюру можно перетащить и на страницу сайта - туда уйдёт файл этой страницы
     const p = pageById(t.dataset.pid);
     if (p && p.kind !== 'crop' && W.ws){ setFileDrag(e.dataTransfer, W.ws.files.find(f => f.id === p.file)); e.dataTransfer.effectAllowed = 'copyMove'; }
     else e.dataTransfer.effectAllowed = 'move';
@@ -446,7 +464,6 @@ const WM = (() => {
   let z = 10, active = null;
   const desk = () => q('#wsDesk');
   const D = () => { const r = desk().getBoundingClientRect(); return {w: r.width, h: r.height, left: r.left, top: r.top}; };
-  const snapOn = () => q('#wsSnapOn').checked;
   function open(id, title, opts = {}){
     if (wins.has(id)){ const w = wins.get(id); restore(id); focus(id); return w; }
     const el = document.createElement('div');
@@ -491,6 +508,7 @@ const WM = (() => {
   function close(id){
     const w = wins.get(id); if (!w) return;
     if (w.pop && !w.pop.closed) w.pop.close();
+    if (w.beforeClose) w.beforeClose();          // (0.8.5) окно «Смена владельца ЛК» отдаёт содержимое вкладке
     w.el.remove(); wins.delete(id); dock();
     if (w.onClose) w.onClose();
   }
@@ -501,36 +519,10 @@ const WM = (() => {
     q('#wsJoin').classList.toggle('hidden', ![...wins.values()].some(w => w.kind === 'page'));
   }
   function resized(w){ if (w.onResize) requestAnimationFrame(() => w.onResize()); }
-  function snapZone(px, py){
-    const d = D(), E = 18;
-    px = Math.max(0, Math.min(px, d.w)); py = Math.max(0, Math.min(py, d.h));
-    if (py <= E && px > d.w * .15 && px < d.w * .85) return {x: 0, y: 0, w: 1, h: 1, full: true};
-    if (px <= E) return py < d.h * .25 ? {x: 0, y: 0, w: .5, h: .5} : py > d.h * .75 ? {x: 0, y: .5, w: .5, h: .5} : {x: 0, y: 0, w: .5, h: 1};
-    if (px >= d.w - E) return py < d.h * .25 ? {x: .5, y: 0, w: .5, h: .5} : py > d.h * .75 ? {x: .5, y: .5, w: .5, h: .5} : {x: .5, y: 0, w: .5, h: 1};
-    return null;
-  }
-  function showPv(zn){
-    const pv = q('#wsSnap'), d = D();
-    if (!zn){ pv.style.display = 'none'; return; }
-    Object.assign(pv.style, {display: 'block', left: zn.x * d.w + 3 + 'px', top: zn.y * d.h + 3 + 'px', width: zn.w * d.w - 6 + 'px', height: zn.h * d.h - 6 + 'px'});
-  }
-  function magnet(w, x, y, ww, hh){
-    const d = D(), M = 10, gap = 6, vx = [0, d.w], vy = [0, d.h];
-    wins.forEach(o => {
-      if (o === w || o.min) return;
-      const r = rectPx(o);
-      vx.push(r.x - gap, r.x + r.w + gap, r.x, r.x + r.w); vy.push(r.y - gap, r.y + r.h + gap, r.y, r.y + r.h);
-    });
-    let bx = null, bd = M;
-    vx.forEach(c => { if (Math.abs(x - c) < bd){ bd = Math.abs(x - c); bx = c; } if (Math.abs(x + ww - c) < bd){ bd = Math.abs(x + ww - c); bx = c - ww; } });
-    let by = null; bd = M;
-    vy.forEach(c => { if (Math.abs(y - c) < bd){ bd = Math.abs(y - c); by = c; } if (Math.abs(y + hh - c) < bd){ bd = Math.abs(y + hh - c); by = c - hh; } });
-    return [bx ?? x, by ?? y];
-  }
   function startDrag(e, w){
     if (e.button !== 0) return;
     const sx = e.clientX, sy = e.clientY;
-    let r0 = rectPx(w), moved = false, zone = null;
+    let r0 = rectPx(w), moved = false;
     const bar = e.target.closest('.bar');
     bar.setPointerCapture(e.pointerId);
     document.body.classList.add('ws-dragging');
@@ -548,16 +540,12 @@ const WM = (() => {
       }
       const d = D();
       let x = r0.x + dx, y = r0.y + dy;
-      if (snapOn()) [x, y] = magnet(w, x, y, r0.w, r0.h);
       y = Math.max(0, Math.min(y, d.h - 31)); x = Math.max(-r0.w + 80, Math.min(x, d.w - 80));
       setPx(w, {x, y, w: r0.w, h: r0.h});
-      zone = snapOn() ? snapZone(ev.clientX - d.left, ev.clientY - d.top) : null;
-      showPv(zone);
     };
     const up = () => {
       bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); bar.removeEventListener('pointercancel', up);
-      document.body.classList.remove('ws-dragging'); showPv(null);
-      if (zone){ if (zone.full){ w.prev = {...w.fr}; w.max = true; } setFr(w, zone, zone.full ? 0 : 3); }
+      document.body.classList.remove('ws-dragging');
       if (moved){ resized(w); presetOff(); }
     };
     bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up); bar.addEventListener('pointercancel', up);
@@ -576,13 +564,6 @@ const WM = (() => {
       if (dir.includes('s')) hh = Math.min(Math.max(MINH, r0.h + dy), d.h - r0.y);
       if (dir.includes('w')){ const nx = Math.max(0, Math.min(r0.x + dx, r0.x + r0.w - MINW)); ww = r0.w + (r0.x - nx); x = nx; }
       if (dir.includes('n')){ const ny = Math.max(0, Math.min(r0.y + dy, r0.y + r0.h - MINH)); hh = r0.h + (r0.y - ny); y = ny; }
-      if (snapOn()){
-        const [mx, my] = magnet(w, dir.includes('w') ? x : x + ww, dir.includes('n') ? y : y + hh, 0, 0);
-        if (dir.includes('e') && mx - x >= MINW) ww = mx - x;
-        if (dir.includes('s') && my - y >= MINH) hh = my - y;
-        if (dir.includes('w') && r0.x + r0.w - mx >= MINW){ ww = r0.x + r0.w - mx; x = mx; }
-        if (dir.includes('n') && r0.y + r0.h - my >= MINH){ hh = r0.y + r0.h - my; y = my; }
-      }
       setPx(w, {x, y, w: ww, h: hh});
       resized(w);
     };
@@ -658,7 +639,7 @@ function applyPreset(name){
 function saveLayout(){
   const L = {}; CORE.forEach(id => { const w = WM.get(id); if (w) L[id] = {fr: w.fr, min: w.min}; });
   store.set(layoutKey(), L);
-  toast(`Раскладка запомнена для «${esc(q('#wsOp').value)}» — следующее дело откроется так же`);
+  toast(`Раскладка запомнена для «${esc(q('#wsOp').value)}» - следующее дело откроется так же`);
   store.set('pysm.ws.preset', 'mine');
 }
 function buildWindows(){
@@ -697,7 +678,7 @@ function renderDoc(w, keepScroll){
   WM.setTitle(w, `${name}${p ? ` <small>· ${esc(p.sub || '')}</small>` : ''}`);
   if (!p){
     const hint = !['ready', 'error'].includes(W.ws.status) ? 'Страницы разбираются…'
-      : !W.ws.files.length ? 'Файлов в деле нет.<br>Перетащите сюда архив или файлы с компьютера — они добавятся в дело.'
+      : !W.ws.files.length ? 'Файлов в деле нет.<br>Перетащите сюда архив или файлы с компьютера - они добавятся в дело.'
       : w.cls === 'passport' ? 'Страниц паспорта нет.<br>Перетащите сюда миниатюру из ленты или выделите паспорт рамкой на странице заявления (⬚).'
       : 'Нет страниц.<br>Перетащите сюда миниатюру из ленты сверху.';
     body.innerHTML = `<div class="ws-doc"><div class="ws-vp" style="cursor:default"><div class="ws-empty">${hint}</div></div></div>`;
@@ -708,13 +689,13 @@ function renderDoc(w, keepScroll){
   body.innerHTML = `<div class="ws-doc">
     <div class="ws-dtools">
       ${ps.length > 1 ? `<button data-d="prev" title="Предыдущая страница">‹</button><span>стр. ${w.idx + 1} из ${ps.length}</span><button data-d="next" title="Следующая страница">›</button><span class="sep"></span>` : ''}
-      ${p.kind === 'docx' ? '<span>документ Word — текст</span>' : `<button data-d="zout" title="Уменьшить (Ctrl + колесо)">−</button><span class="zt"></span><button data-d="zin" title="Увеличить (Ctrl + колесо)">+</button>
+      ${p.kind === 'docx' ? '<span>документ Word - текст</span>' : `<button data-d="zout" title="Уменьшить (Ctrl + колесо)">−</button><span class="zt"></span><button data-d="zin" title="Увеличить (Ctrl + колесо)">+</button>
       <button data-d="fit" title="По ширине окна">по ширине</button>${p.kind !== 'crop' ? '<button data-d="rot" title="Повернуть на 90° по часовой стрелке">↻</button>' : ''}`}
-      ${w.kind === 'doc' && ps.length > 1 ? '<span class="sep"></span><button data-d="split" title="Каждую страницу — в своё окно">Разложить</button>' : ''}
-      ${p.kind !== 'docx' && p.kind !== 'crop' ? `<span class="sep"></span><button data-d="crop" title="Обвести рамкой паспорт (или другую часть страницы) — вырезка уйдёт в окно «Паспорт»">${w.selmode ? 'Отмена рамки' : '⬚ Рамкой → паспорт'}</button>` : ''}
+      ${w.kind === 'doc' && ps.length > 1 ? '<span class="sep"></span><button data-d="split" title="Каждую страницу - в своё окно">Разложить</button>' : ''}
+      ${p.kind !== 'docx' && p.kind !== 'crop' ? `<span class="sep"></span><button data-d="crop" title="Обвести рамкой паспорт (или другую часть страницы) - вырезка уйдёт в окно «Паспорт»">${w.selmode ? 'Отмена рамки' : '⬚ Рамкой → паспорт'}</button>` : ''}
     </div>
     <div class="ws-vp${w.selmode ? ' selmode' : W.textsel && p.kind !== 'docx' ? ' tselmode' : ''}">${p.kind === 'docx' ? '<div class="ws-docx">загрузка…</div>' : '<div class="ws-stage"></div>'}</div>
-    <div class="ws-pinfo">${W.textsel && p.kind !== 'docx' ? '<span>рамка мышью → текст в буфер обмена (прокрутка — колесом)</span> · ' : p.kind === 'pdf' && p.text ? '<span title="Текст страницы можно выделить мышью и скопировать (Ctrl+C), как в браузере">текст выделяется</span> · ' : ''}${esc(p.label)} · ${esc(p.sub || '')} · ${p.manual ? 'группа выбрана вручную' : 'уверенность ' + Math.round(p.conf * 100) + ' %'}${p.auto_rot ? ' · повёрнута автоматически' : ''}${p.why ? ' · ' + esc(p.why) : ''}</div></div>`;
+    <div class="ws-pinfo">${W.textsel && p.kind !== 'docx' ? '<span>рамка мышью → текст в буфер обмена (прокрутка - колесом)</span> · ' : p.kind === 'pdf' && p.text ? '<span title="Текст страницы можно выделить мышью и скопировать (Ctrl+C), как в браузере">текст выделяется</span> · ' : ''}${esc(p.label)} · ${esc(p.sub || '')} · ${p.manual ? 'группа выбрана вручную' : 'уверенность ' + Math.round(p.conf * 100) + ' %'}${p.auto_rot ? ' · повёрнута автоматически' : ''}${p.why ? ' · ' + esc(p.why) : ''}</div></div>`;
   bindTools(w, p);
   const vp = q('.ws-vp', body);
   if (p.kind === 'docx'){
@@ -735,8 +716,8 @@ function renderDoc(w, keepScroll){
   bindViewer(w, vp, stage, p, z);
   if (w.pop && !w.pop.closed) renderPopup(w);
 }
-// (0.8.1) текстовый слой PDF: прозрачные слова поверх превью — выделение мышью и Ctrl+C, как в просмотрщике PDF
-// браузера. Слова и их места (px превью, без поворота) — /api/ws/<id>/text/<pid>; у сканов текстового слоя нет.
+// (0.8.1) текстовый слой PDF: прозрачные слова поверх превью - выделение мышью и Ctrl+C, как в просмотрщике PDF
+// браузера. Слова и их места (px превью, без поворота) - /api/ws/<id>/text/<pid>; у сканов текстового слоя нет.
 let measureCtx = null;
 function textWidth(t){
   if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
@@ -744,7 +725,7 @@ function textWidth(t){
   return measureCtx.measureText(t).width / 100;      // ширина при размере шрифта 1px
 }
 function textLayerHTML(data){
-  const out = [], rot = data.rot ? `rotate(${data.rot}deg) ` : '';     // страница PDF с /Rotate — строки под углом
+  const out = [], rot = data.rot ? `rotate(${data.rot}deg) ` : '';     // страница PDF с /Rotate - строки под углом
   (data.lines || []).forEach(words => {
     words.forEach(([x, y, w, h0, t], i) => {
       const h = Math.max(4, h0), w1 = textWidth(t) * h;
@@ -812,7 +793,7 @@ function bindViewer(w, vp, stage, p, z){
         const x1 = ev.clientX - sr.left, y1 = ev.clientY - sr.top;
         const r = [Math.min(x0, x1) / z, Math.min(y0, y1) / z, Math.abs(x1 - x0) / z, Math.abs(y1 - y0) / z];
         w.selmode = false;
-        if (r[2] < 30 || r[3] < 30){ renderDoc(w, true); toast('Рамка слишком маленькая — попробуйте ещё раз'); return; }
+        if (r[2] < 30 || r[3] < 30){ renderDoc(w, true); toast('Рамка слишком маленькая - попробуйте ещё раз'); return; }
         const res = await pageAction({action: 'crop', pid: p.id, rect: r, cls: 'passport'}, 'Вырезка → окно «Паспорт». Нажмите «Перепроверить», чтобы прочитать паспорт');
         if (res && res.page){ const pw = WM.get('pas'); WM.restore('pas'); WM.focus('pas'); pw.idx = Math.max(0, docPages(pw).findIndex(x => x.id === res.page)); renderDoc(pw); }
         else renderDoc(w, true);
@@ -825,7 +806,7 @@ function bindViewer(w, vp, stage, p, z){
       dragRect(vp, stage, e, rect => readZone(p, rect.map(v => v / z), rect.box));
       return;
     }
-    if (e.target.closest('.ws-tl span')) return;      // по тексту — выделение (страница не двигается)
+    if (e.target.closest('.ws-tl span')) return;      // по тексту - выделение (страница не двигается)
     const sx = e.clientX, sy = e.clientY, sl = vp.scrollLeft, stp = vp.scrollTop;
     vp.setPointerCapture(e.pointerId); vp.classList.add('panning');
     const mv = ev => { vp.scrollLeft = sl - (ev.clientX - sx); vp.scrollTop = stp - (ev.clientY - sy); };
@@ -836,7 +817,7 @@ function bindViewer(w, vp, stage, p, z){
 // ---------------------------------------------------------------- (0.8.4) ручное выделение текста
 // Флажок «Ручное выделение текста» (на верхней панели и на полосе, когда панель убрана; общий для всех окон, запоминается
 // в браузере): зажатой ЛКМ
-// обводится рамка — сервер возвращает текст (PDF с текстовым слоем — слова слоя, скан / фото — печатный текст,
+// обводится рамка - сервер возвращает текст (PDF с текстовым слоем - слова слоя, скан / фото - печатный текст,
 // Tesseract; /api/ws/<id>/ocr), текст сразу копируется в буфер обмена и показывается в окошке у рамки (можно поправить,
 // скопировать снова, вписать в «Поиск»). Работает и в откреплённом окне.
 function syncTsel(){ qq('[data-tsel]').forEach(cb => { cb.checked = !!W.textsel; cb.closest('label').classList.toggle('on', !!W.textsel); }); }
@@ -844,10 +825,10 @@ function setTextSel(on){
   W.textsel = !!on; store.set('pysm.ws.textsel', W.textsel);
   syncTsel(); closeTextPop();
   WM.all().filter(w => w.kind === 'doc' || w.kind === 'page').forEach(w => { w.selmode = false; renderDoc(w, true); if (w.pop && !w.pop.closed) renderPopup(w); });
-  if (W.textsel) toast('Ручное выделение текста: зажмите левую кнопку мыши и обведите печатный текст — он попадёт в буфер обмена');
+  if (W.textsel) toast('Ручное выделение текста: зажмите левую кнопку мыши и обведите печатный текст - он попадёт в буфер обмена');
 }
 function dragRect(cap, stage, e, done){
-  // рамка мышью внутри stage; done([x, y, w, h] в px stage, с полем box — элемент рамки), если рамка не меньше 6 px
+  // рамка мышью внутри stage; done([x, y, w, h] в px stage, с полем box - элемент рамки), если рамка не меньше 6 px
   const doc = stage.ownerDocument, sr = stage.getBoundingClientRect();
   const x0 = e.clientX - sr.left, y0 = e.clientY - sr.top;
   const box = doc.createElement('div'); box.className = 'ws-sel ts'; stage.appendChild(box);
@@ -866,7 +847,7 @@ function dragRect(cap, stage, e, done){
   cap.addEventListener('pointermove', mv); cap.addEventListener('pointerup', up);
 }
 function copyIn(doc, t){
-  // в буфер обмена из нужного окна (откреплённое окно — своим navigator, иначе Chrome отвечает «документ не в фокусе»)
+  // в буфер обмена из нужного окна (откреплённое окно - своим navigator, иначе Chrome отвечает «документ не в фокусе»)
   const win = doc.defaultView;
   const fallback = () => {
     const ta = doc.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
@@ -887,7 +868,7 @@ async function readZone(p, rect, box){
   catch (e) { box.remove(); noteIn(doc, 'Текст не прочитан: ' + e.message); return; }
   box.classList.remove('busy');
   const text = (res.text || '').trim();
-  if (!text){ box.remove(); noteIn(doc, 'В рамке не найден печатный текст — обведите строку плотнее (рукопись не распознаётся)'); return; }
+  if (!text){ box.remove(); noteIn(doc, 'В рамке не найден печатный текст - обведите строку плотнее (рукопись не распознаётся)'); return; }
   const ok = await copyIn(doc, text);
   showTextPop(doc, box, text, res, ok);
 }
@@ -902,10 +883,10 @@ function showTextPop(doc, box, text, res, copied){
   const el = doc.createElement('div'); el.className = 'ws-tpop';
   const src = res.source === 'pdf' ? 'из текста PDF' : `распознано · уверенность ${Math.round(res.conf || 0)} %`;
   const low = res.source !== 'pdf' && (res.conf || 0) < 70;
-  el.innerHTML = `<div class="hd"><b>${copied ? 'Скопировано в буфер обмена' : 'Не скопировалось — скопируйте кнопкой'}</b><span class="hint">${src}</span><button data-t="x" title="Закрыть (Esc)">×</button></div>
+  el.innerHTML = `<div class="hd"><b>${copied ? 'Скопировано в буфер обмена' : 'Не скопировалось - скопируйте кнопкой'}</b><span class="hint">${src}</span><button data-t="x" title="Закрыть (Esc)">×</button></div>
     <textarea spellcheck="false" rows="${Math.min(8, text.split('\n').length)}"></textarea>
-    <div class="ft">${low ? '<span class="lowc">низкая уверенность — проверьте текст</span>' : '<span class="hint">можно поправить и скопировать снова</span>'}
-      <button data-t="copy">Копировать</button>${text.includes('\n') ? '<button data-t="line" title="Строки через пробел — и в буфер обмена">В одну строку</button>' : ''}${doc === document ? '<button data-t="q" title="Вписать в строку «Поиск»">В поиск</button>' : ''}</div>`;
+    <div class="ft">${low ? '<span class="lowc">низкая уверенность - проверьте текст</span>' : '<span class="hint">можно поправить и скопировать снова</span>'}
+      <button data-t="copy">Копировать</button>${text.includes('\n') ? '<button data-t="line" title="Строки через пробел - и в буфер обмена">В одну строку</button>' : ''}${doc === document ? '<button data-t="q" title="Вписать в строку «Поиск»">В поиск</button>' : ''}</div>`;
   const ta = el.querySelector('textarea'); ta.value = text;
   doc.body.appendChild(el);
   const r = box.getBoundingClientRect(), vw = doc.defaultView.innerWidth, vh = doc.defaultView.innerHeight;
@@ -935,7 +916,7 @@ function splitPages(w){
     WM.setFr(pw, fr, 2);
   });
   WM.minimize(w.id); renderStrip();
-  toast('Каждая страница — в своём окне. «Собрать страницы» на панели раскладки — обратно');
+  toast('Каждая страница - в своём окне. «Собрать страницы» на панели раскладки - обратно');
 }
 function joinPages(){ WM.all().filter(w => w.kind === 'page').forEach(w => WM.close(w.id)); WM.restore('app'); renderStrip(); }
 
@@ -943,10 +924,10 @@ function joinPages(){ WM.all().filter(w => w.kind === 'page').forEach(w => WM.cl
 function detach(w){
   if (w.kind !== 'doc' && w.kind !== 'page') return;
   const pop = window.open('', 'pysm_' + w.id + '_' + W.id, 'width=820,height=980');
-  if (!pop){ toast('Браузер не дал открыть окно — разрешите всплывающие окна для этой страницы'); return; }
+  if (!pop){ toast('Браузер не дал открыть окно - разрешите всплывающие окна для этой страницы'); return; }
   w.pop = pop;
   pop.document.open();
-  pop.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>PySimpleManager — ${w.title.replace(/<[^>]+>/g, '')}</title>
+  pop.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>PySimpleManager - ${w.title.replace(/<[^>]+>/g, '')}</title>
     <style>body{margin:0;background:#8a9099;font:13px "Segoe UI",system-ui,sans-serif}.bar{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;padding:6px 10px;background:#fff;border-bottom:1px solid #ddd}
     .pst{position:relative;margin:10px auto;box-shadow:0 2px 12px rgba(0,0,0,.35);background:#fff;overflow:hidden}.pst img{position:absolute;left:0;top:0;transform-origin:0 0}
     .tl{position:absolute;left:0;top:0;transform-origin:0 0;line-height:1}.tl span{position:absolute;white-space:pre;color:transparent;transform-origin:0 0;cursor:text;font-family:sans-serif}
@@ -954,8 +935,8 @@ function detach(w){
     .docx{background:#fff;margin:10px auto;padding:30px 40px;max-width:820px;font:15px/1.5 "Times New Roman",serif}
     body.ocr .pst{cursor:crosshair}body.ocr .tl{pointer-events:none;user-select:none}.bar label{display:flex;gap:4px;align-items:center;font-size:12.5px;white-space:nowrap}
     ${TSEL_CSS}</style></head>
-    <body><div class="bar"><b id="pt"></b><span class="hint" id="tsmsg">Окно открыто отдельно — его можно унести на второй монитор. Текст PDF выделяется и копируется.</span>
-    <label title="Зажмите левую кнопку мыши и обведите печатный текст рамкой — он попадёт в буфер обмена"><input type="checkbox" id="tsel">Ручное выделение текста</label>
+    <body><div class="bar"><b id="pt"></b><span class="hint" id="tsmsg">Окно открыто отдельно - его можно унести на второй монитор. Текст PDF выделяется и копируется.</span>
+    <label title="Зажмите левую кнопку мыши и обведите печатный текст рамкой - он попадёт в буфер обмена"><input type="checkbox" id="tsel">Ручное выделение текста</label>
     <button id="back" style="margin-left:auto">Вернуть в рабочее место</button></div><div id="pp"></div></body></html>`);
   pop.document.close();
   pop.document.getElementById('back').onclick = () => pop.close();
@@ -1006,9 +987,11 @@ const resDomains = () => (W.res && W.res.result.domains) || [];
 function openDom(fr){
   const w = WM.open('dom', 'Домены <small>· Sd, S, ЕСИА из manager</small>', {kind: 'panel', fr});
   q('.body', w.el).innerHTML = `<div class="ws-dadd"><textarea id="wsDomList" placeholder="Домены (через пробел, запятую или с новой строки)"></textarea>
-    <button class="sm" id="wsDomLoad" title="Загрузить данные доменов из manager (расширение Chrome)">Загрузить из manager</button></div>
+    <div class="ws-dbtn"><button class="sm" id="wsDomLoad" title="Загрузить данные доменов из manager (расширение Chrome). Домены, которые уже загружены в этом деле, повторно не запрашиваются">Загрузить из manager</button>
+    <button class="sm" id="wsDomReset" title="Сбросить результат: следующая загрузка запросит все домены из manager заново">Сбросить</button></div></div>
     <div class="hint" id="wsDomHint" style="padding:2px 8px"></div><div class="ws-dlist" id="wsDlist"></div>`;
   q('#wsDomLoad').onclick = domLookup;
+  q('#wsDomReset').onclick = domReset;
   q('.body', w.el).addEventListener('click', e => {
     const c = e.target.closest('input[data-inc]');
     if (c){ const ex = excluded(); if (c.checked) ex.delete(c.dataset.inc); else ex.add(c.dataset.inc); saveState({mgr: {excluded: [...ex]}}); renderDomains(); renderGate(); renderRow(); renderLoa(); return; }
@@ -1034,8 +1017,8 @@ function renderDomains(){
   if (ta) ta.oninput = () => { ta.dataset.touched = '1'; };
   if (!items.length){
     const noCheck = W.ws && W.ws.status === 'ready' && !W.ws.job_id;
-    box.innerHTML = `<p class="hint" style="margin:4px">${W.res ? (W.res.result.domains_from_app || []).length ? 'Данных из manager ещё нет — нажмите «Загрузить из manager» (нужен Chrome с расширением).' : 'Домены в заявлении не найдены — впишите их выше.'
-      : noCheck ? 'Впишите домены выше и нажмите «Загрузить из manager» — покажутся Sd, S, аккаунт и проверки.' : 'Домены появятся после проверки заявления.'}</p>`;
+    box.innerHTML = `<p class="hint" style="margin:4px">${W.res ? (W.res.result.domains_from_app || []).length ? 'Данных из manager ещё нет - нажмите «Загрузить из manager» (нужен Chrome с расширением).' : 'Домены в заявлении не найдены - впишите их выше.'
+      : noCheck ? 'Впишите домены выше и нажмите «Загрузить из manager» - покажутся Sd, S, аккаунт и проверки.' : 'Домены появятся после проверки заявления.'}</p>`;
     return;
   }
   const link = (u, t) => u ? `<a class="ws-lnk" href="${esc(u)}" target="_blank">${t}</a>` : '';
@@ -1047,31 +1030,32 @@ function renderDomains(){
         <div class="hint">${esc(d.error || '')}${wh.status === 'free' ? '<br>WHOIS: домен свободен' : wh.status === 'registered' ? '<br>WHOIS: зарегистрирован' + (wh.registrar ? ', ' + esc(wh.registrar) : '') : ''}</div></div>`;
     }
     const sd = d.sd || {};
-    const who = d.kind === 'person' ? `${esc(d.fio)} · ${esc(sd.birth_date || '—')}` : esc(d.holder || '—');
+    const who = d.kind === 'person' ? `${esc(d.fio)} · ${esc(sd.birth_date || '-')}` : esc(d.holder || '-');
     const v = d.verdict ? `<span class="badge s-${d.verdict}">${esc((typeof ST !== 'undefined' && ST[d.verdict]) || d.verdict)}</span>` : '';
-    const kb = d.admin_comment ? `<button class="kbtn" data-k="${esc(d.domain)}" title="Комментарий администратора в S — показать">К</button>` : '';
+    const kb = d.admin_comment ? `<button class="kbtn" data-k="${esc(d.domain)}" title="Комментарий администратора в S - показать">К</button>` : '';
     return `<div class="ws-dc${off ? ' off' : ''}"><div class="h"><label title="Включить домен в смену администратора и в строку таблицы"><input type="checkbox" data-inc="${esc(d.domain)}" ${off ? '' : 'checked'}></label>
         <b>${esc(d.domain)}</b>${kb} <button class="ws-lnk" data-sd="${esc(d.domain)}">Sd</button> ${link((d.urls || {}).s, 'S')} <button class="ws-lnk" data-wsesia="${esc(d.domain)}">ESIA</button>${d.mo_status ? ` <button class="ws-lnk" data-wsmo="${esc(d.domain)}" title="MO (matches owner): Sd ↔ базовая анкета владельца аккаунта">MO</button>` : ''}
         <span style="margin-left:auto">${WST[d.flags_level || ''] || ''}</span></div>
       <div class="g"><span>Администратор</span><span>${who} ${v}</span>
-        ${d.kind === 'person' ? `<span>Паспорт</span><span>${d.passport ? `${esc(d.passport)} <button class="ws-lnk" data-wsq="${esc(d.passport)}" title="Вписать в строку «Поиск»">в поиск</button>` : '—'}${sd.passport_date || sd.passport_place ? `<small class="ws-sub">выдан ${esc(sd.passport_date || '—')}${sd.passport_place ? ' · ' + esc(sd.passport_place) : ''}</small>` : ''}</span>`
-          : d.kind === 'org' ? `<span>ИНН</span><span>${sd.code ? `${esc(sd.code)} <button class="ws-lnk" data-wsq="${esc(sd.code)}" title="Вписать в строку «Поиск»">в поиск</button>` : '—'}</span>` : ''}
-        <span>ЕСИА</span><span>${esc(d.esia_ru || '—')}</span>
-        <span>MO</span><span>${d.mo_status ? `<span class="badge s-${MO_WS[d.mo_status] || 'info'}">${esc(d.mo_ru)}</span>` : '—'}</span>
-        <span>Смена админа</span><span>${esc(d.last_admin_change || '—')}</span>
-        <span>Provider</span><span>${esc(d.provider || '—')}</span>
-        <span>Аккаунт</span><span class="ws-acc">${esc(d.account || '—')}${d.account ? ` <button class="ws-lnk" data-acc="${esc(d.account)}" title="Вкладка «Смена владельца ЛК» с этим аккаунтом">→ ЛК</button>` : ''}${d.login ? `<small>логин: ${esc(d.login)}</small>` : ''}${d.account_email ? `<small>e-mail: ${esc(d.account_email)}</small>` : ''}</span></div>
+        ${d.kind === 'person' ? `<span>Паспорт</span><span>${d.passport ? `${esc(d.passport)} <button class="ws-lnk" data-wsq="${esc(d.passport)}" title="Вписать в строку «Поиск»">в поиск</button>` : '-'}${sd.passport_date || sd.passport_place ? `<small class="ws-sub">выдан ${esc(sd.passport_date || '-')}${sd.passport_place ? ' · ' + esc(sd.passport_place) : ''}</small>` : ''}</span>`
+          : d.kind === 'org' ? `<span>ИНН</span><span>${sd.code ? `${esc(sd.code)} <button class="ws-lnk" data-wsq="${esc(sd.code)}" title="Вписать в строку «Поиск»">в поиск</button>` : '-'}</span>` : ''}
+        <span>ЕСИА</span><span>${esc(d.esia_ru || '-')}</span>
+        <span>MO</span><span>${d.mo_status ? `<span class="badge s-${MO_WS[d.mo_status] || 'info'}">${esc(d.mo_ru)}</span>` : '-'}</span>
+        <span>Смена админа</span><span>${esc(d.last_admin_change || '-')}</span>
+        <span>Provider</span><span>${esc(d.provider || '-')}</span>
+        <span>Аккаунт</span><span class="ws-acc">${esc(d.account || '-')}${d.account ? ` <button class="ws-lnk" data-acc="${esc(d.account)}" title="Вкладка «Смена владельца ЛК» с этим аккаунтом">→ ЛК</button>` : ''}${d.login ? `<small>логин: ${esc(d.login)}</small>` : ''}${d.account_email ? `<small>e-mail: ${esc(d.account_email)}</small>` : ''}</span></div>
       ${(d.flags || []).length ? '<ul>' + d.flags.map(f => `<li><span class="badge s-${FLAG_CLS[f.level] || 'info'}">${FLAG_RU[f.level] || f.level}</span> ${esc(f.text)}</li>`).join('') + '</ul>' : ''}</div>`;
   }).join('');
 }
 async function domLookup(){
   const doms = q('#wsDomList').value;
   if (!doms.trim()){ toast('Впишите домены'); return; }
-  const body = {domains: doms};
-  if (W.res) body.job_id = W.res.result.job_id;
+  const body = {domains: doms, ws_id: W.id};
+  if (W.res && W.res.result.job_id) body.job_id = W.res.result.job_id;
   try {
     const j = await api('/api/manager/lookup', body);
-    q('#wsDomHint').textContent = `Загружаю из manager: ${j.domains.join(', ')}…`;
+    // (0.8.5) из manager - только домены, которых нет в сохранённом результате дела
+    q('#wsDomHint').textContent = (j.todo || j.domains).length ? `Загружаю из manager: ${(j.todo || j.domains).join(', ')}…` : 'Все домены уже загружены в этом деле';
     q('#wsDomLoad').disabled = true;
     pollLookup(j.task_id, 0);
   } catch (e) { q('#wsDomHint').textContent = e.message; }
@@ -1084,13 +1068,32 @@ async function pollLookup(id, since){
     q('#wsDomLoad').disabled = false;
     q('#wsDomHint').textContent = t.status === 'error' ? 'Ошибка: ' + t.error : '';
     if (t.result) await loadResult();
-    else if (t.items){ W.res = W.res || null; if (!W.res){ W.looseDomains = t.items; renderLoose(t.items); } }
+    else if (t.items && (!W.res || W.res.loose)) renderLoose(t.items);
   } catch (e) { q('#wsDomLoad').disabled = false; q('#wsDomHint').textContent = e.message; }
 }
 function renderLoose(items){
-  // дело без проверки (операция без типа заявления): домены — без сверки с документами
-  W.res = {result: {domains: items, domains_from_app: [], decision: {code: 'review', title: 'Без проверки документов', reasons: []}, job_id: ''}, matrix: {rows: [], domains: []}, boxes: {}, gos: {}, new_admin: {}, login_to: ''};
+  // дело без проверки (операция без типа заявления) или результат проверки не сохранился: домены - без сверки с документами
+  W.res = {loose: true, result: {domains: items, domains_from_app: [], decision: {code: 'review', title: 'Без проверки документов', reasons: []}, job_id: ''}, matrix: {rows: [], domains: []}, boxes: {}, gos: {}, new_admin: {}, login_to: ''};
   renderDomains(); renderRow(); renderGate(); renderLoa();
+}
+// (0.8.5) сохранённый результат загрузки доменов дела: виден и без результата проверки (дело без проверки,
+// перезапуск программы); при новой загрузке из manager запрашиваются только домены, которых в нём нет
+async function loadStoredDomains(){
+  const id = W.id; if (!id) return;
+  try {
+    const j = await getJSON(`/api/ws/${id}/domains`);
+    if (W.id !== id || (W.res && !W.res.loose)) return;
+    if ((j.items || []).length) renderLoose(j.items);
+  } catch (e) {}
+}
+async function domReset(){
+  if (!W.id) return;
+  try { await api(`/api/ws/${W.id}/domains/reset`, {}); } catch (e) { toast('Не получилось: ' + esc(e.message)); return; }
+  if (W.res && W.res.loose) W.res = null;
+  else if (W.res) await loadResult();
+  const ta = q('#wsDomList'); if (ta) delete ta.dataset.touched;
+  renderDomains(); renderRow(); renderGate(); renderLoa();
+  const h = q('#wsDomHint'); if (h) h.textContent = 'Результат сброшен - следующая загрузка запросит все домены из manager заново';
 }
 function openSd(dn){
   const d = resDomains().find(x => x.domain === dn); if (!d) return;
@@ -1119,10 +1122,10 @@ function openSd(dn){
 const link2 = (u, t) => u ? `<a href="${esc(u)}" target="_blank">${t}</a>` : '';
 
 // ================================================================ строка таблицы
-// номер тикета в таблице — с «#» (как в тикетнице): 20261012373031821 → #20261012373031821
+// номер тикета в таблице - с «#» (как в тикетнице): 20261012373031821 → #20261012373031821
 function ticketNo(){ const t = q('#wsTicket').value.trim(); return /^\d{6,}$/.test(t) ? '#' + t : t; }
 function incDomains(){
-  // найденные в manager и не снятые галкой домены — в порядке заявления (в окне «Домены» они по проблемности)
+  // найденные в manager и не снятые галкой домены - в порядке заявления (в окне «Домены» они по проблемности)
   const fromApp = (W.res && W.res.result.domains_from_app) || [];
   const pos = d => { const i = fromApp.indexOf(d); return i < 0 ? 1e6 : i; };
   return resDomains().filter(d => d.status === 'found' && !excluded().has(d.domain)).map(d => d.domain).sort((a, b) => pos(a) - pos(b));
@@ -1157,7 +1160,7 @@ function openRow(fr){
     const k = i.dataset.rk;
     const values = {...((st().row || {}).values || {})};
     if (k === 'got'){
-      // «принял» — сам оператор: фамилия запоминается для следующих дел, «обработал» по умолчанию — тот же человек
+      // «принял» - сам оператор: фамилия запоминается для следующих дел, «обработал» по умолчанию - тот же человек
       W.operator.surname = i.value.trim(); store.set('pysm.operator', W.operator);
       delete values.got;
     }
@@ -1194,11 +1197,11 @@ function renderRow(){
     ${ROW_KEYS.map(([k, t]) => `<div class="rf${k === 'd' || k === 'ticket_status' ? ' wide' : ''}"><span class="rt"><label for="wsRk_${k}">${t}</label>
       <button type="button" class="ws-lnk rr${ov[k] !== undefined ? '' : ' hidden'}" data-rreset="${k}" title="Вернуть значение по умолчанию: ${esc(def[k])}">↺</button></span>
       <input type="text" id="wsRk_${k}" data-rk="${k}" class="${ov[k] !== undefined ? 'over' : ''}" value="${esc(v[k])}"
-        ${k === 'got' ? 'title="Ваша фамилия — запоминается для следующих дел"' : k === 'done' ? 'title="По умолчанию — тот же, кто принял"' : ''}></div>`).join('')}</div>
+        ${k === 'got' ? 'title="Ваша фамилия - запоминается для следующих дел"' : k === 'done' ? 'title="По умолчанию - тот же, кто принял"' : ''}></div>`).join('')}</div>
     ${o.column4 === 'domain' && def.doms.length > 1 ? `<label class="chk" style="margin-top:6px"><input type="checkbox" id="wsPer" ${(st().row || {}).per_domain ? 'checked' : ''}> строка на каждый домен (иначе домены через запятую)</label>` : ''}
     <div id="wsRowPrev"></div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><button class="primary" id="wsCopyRow">Копировать строку</button>
-      <span class="hint">Все поля можно поправить, ↺ — вернуть как было. D — ${o.column4 === 'contract' ? 'номер договора (аккаунта)' : 'домен'} для «${esc(o.title)}». B — ваша фамилия, запоминается${W.operator.login ? ` (логин manager: ${esc(W.operator.login)})` : ''}; C по умолчанию — тот же человек.</span></div></div>`;
+      <span class="hint">Все поля можно поправить, ↺ - вернуть как было. D - ${o.column4 === 'contract' ? 'номер договора (аккаунта)' : 'домен'} для «${esc(o.title)}». B - ваша фамилия, запоминается${W.operator.login ? ` (логин manager: ${esc(W.operator.login)})` : ''}; C по умолчанию - тот же человек.</span></div></div>`;
   renderRowPreview();
   if (focusK){ const i = q(`[data-rk="${focusK}"]`, body); if (i){ i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 }
@@ -1212,7 +1215,7 @@ function renderRowPreview(){
 function copyRow(){
   const tsv = rowLines().map(l => l.join('\t')).join('\n');
   copyText(tsv).then(ok => {
-    toast(ok ? 'Строка скопирована — вставьте в таблицу (Ctrl+V)' : 'Не удалось скопировать — выделите строку в окне «Строка таблицы»');
+    toast(ok ? 'Строка скопирована - вставьте в таблицу (Ctrl+V)' : 'Не удалось скопировать - выделите строку в окне «Строка таблицы»');
     if (ok){ saveState({row: {copied: true, copied_at: new Date().toISOString(), last: tsv}}); renderSteps(); }
   });
 }
@@ -1233,10 +1236,10 @@ function gateReasons(){
   const R = [];
   const inc = resDomains().filter(d => d.status === 'found' && !excluded().has(d.domain));
   const stops = inc.filter(d => d.flags_level === 'stop');
-  if (stops.length) R.push(`стоп по домену ${stops.map(d => d.domain).join(', ')} — снимите галку у домена или откройте с причиной`);
-  // (0.8.2) пустой список доменов — не причина: окно открывается сразу, домены можно вписать на странице manager
+  if (stops.length) R.push(`стоп по домену ${stops.map(d => d.domain).join(', ')} - снимите галку у домена или откройте с причиной`);
+  // (0.8.2) пустой список доменов - не причина: окно открывается сразу, домены можно вписать на странице manager
   const d = W.res && W.res.result.decision;
-  if (d && d.code === 'reject') R.push('вердикт программы: ' + d.title + ((d.reasons || []).length ? ' — ' + d.reasons.slice(0, 2).join('; ') : ''));
+  if (d && d.code === 'reject') R.push('вердикт программы: ' + d.title + ((d.reasons || []).length ? ' - ' + d.reasons.slice(0, 2).join('; ') : ''));
   return R;
 }
 function renderGate(){
@@ -1249,8 +1252,9 @@ function renderGate(){
   // (0.8.2) обе кнопки видны всегда; выделена кнопка страницы manager этой операции (config/workspace.yaml: manager_page)
   q('#wsOpenMgr').classList.toggle('primary', hasMgr() && !R.length);
   q('#wsOpenLoa').classList.toggle('primary', op().manager_page === 'loa_add');
+  q('#wsOpenOwn').classList.toggle('primary', op().manager_page === 'runic');
 }
-// шаг «Смена в manager» в шапке дела — у операций со страницей domain_move, «Доверенность в manager» — loa_add
+// шаг «Смена в manager» в шапке дела - у операций со страницей domain_move, «Доверенность в manager» - loa_add
 const hasMgr = () => op().manager_page === 'domain_move';
 function renderSteps(){
   const box = q('#wsSteps'); if (!box || !W.ws) { if (box) box.innerHTML = ''; return; }
@@ -1271,7 +1275,7 @@ function gateClick(e){
   closeGatePop();
   gatePop = document.createElement('div'); gatePop.className = 'ws-pop';
   gatePop.innerHTML = `<h5>Перед сменой осталось</h5><ul>${R.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
-    <label class="f">Открыть всё равно — причина (сохранится в деле) <input type="text" id="wsWhy" placeholder="например: стоп снят по согласованию с …"></label>
+    <label class="f">Открыть всё равно - причина (сохранится в деле) <input type="text" id="wsWhy" placeholder="например: стоп снят по согласованию с …"></label>
     <div style="display:flex;gap:6px;margin-top:8px"><button class="sm primary" id="wsForce">Открыть всё равно</button><button class="sm" id="wsGateClose">Закрыть</button></div>`;
   document.body.appendChild(gatePop);
   const r = e.target.getBoundingClientRect();
@@ -1300,7 +1304,7 @@ function renderMgr(){
   const loginTo = mg.login_to !== undefined ? mg.login_to : (W.res && W.res.login_to) || '';
   const acc = mg.change_account !== undefined ? mg.change_account : !!loginTo;
   const files = W.ws.files.filter(f => ['pdf', 'image', 'docx', 'sig'].includes(f.kind));
-  // подпись .sig проверяется вручную — по умолчанию не загружается (галку можно поставить)
+  // подпись .sig проверяется вручную - по умолчанию не загружается (галку можно поставить)
   const sel = new Set(mg.files_sel || files.filter(f => f.kind !== 'sig').map(f => f.id));
   const rows = mg.rows || [];
   const fio = (adm.fio || '').split(/\s+/);
@@ -1308,20 +1312,20 @@ function renderMgr(){
     ${mg.why ? `<div class="msg warn">Открыто с причиной: ${esc(mg.why)}</div>` : ''}
     <h4>Шаг 1 · «Перенос доменов между аккаунтами»</h4>
     <table><tr><th style="width:34%">Поле страницы</th><th>Значение</th></tr>
-      <tr><td>Домены <span class="mono">domains</span></td><td>${inc.map(esc).join('<br>') || '<span class="hint">нет — поле на странице не трогается: впишите домены в manager или загрузите их в окне «Домены»</span>'}</td></tr>
+      <tr><td>Домены <span class="mono">domains</span></td><td>${inc.map(esc).join('<br>') || '<span class="hint">нет - поле на странице не трогается: впишите домены в manager или загрузите их в окне «Домены»</span>'}</td></tr>
       <tr><td>Операция</td><td><label class="chk"><input type="checkbox" checked disabled> смена администратора <span class="mono">do_change_admin</span></label>
         <label class="chk"><input type="checkbox" id="mAcc" ${acc ? 'checked' : ''}> перенос на другой аккаунт <span class="mono">do_change_account</span></label></td></tr>
-      ${acc ? `<tr><td>Принимающий аккаунт <span class="mono">login_to</span></td><td><input type="text" id="mLogin" value="${esc(loginTo)}" style="width:100%"><span class="hint">из «Номер договора» заявления: ${esc(adm.contract || '—')}</span></td></tr>` : ''}
+      ${acc ? `<tr><td>Принимающий аккаунт <span class="mono">login_to</span></td><td><input type="text" id="mLogin" value="${esc(loginTo)}" style="width:100%"><span class="hint">из «Номер договора» заявления: ${esc(adm.contract || '-')}</span></td></tr>` : ''}
       <tr><td>Загрузить документы <span class="mono">attachment</span></td><td>${files.map(f => `<label class="chk"><input type="checkbox" data-mf="${f.id}" ${sel.has(f.id) ? 'checked' : ''}> ${esc(f.name.split('/').pop())} <span class="hint">${(f.size / 1024 / 1024).toFixed(2)} МБ</span></label>`).join('') || '<span class="hint">нет файлов</span>'}</td></tr>
-      <tr><td>Остальные флажки</td><td class="c-info">не проверять контакты…, allow_rereg_only_bill, сохранить ЧУ, расторгнуть сделку — расширение не трогает</td></tr></table>
+      <tr><td>Остальные флажки</td><td class="c-info">не проверять контакты…, allow_rereg_only_bill, сохранить ЧУ, расторгнуть сделку - расширение не трогает</td></tr></table>
     <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap"><button class="primary" id="mFill">Вписать на странице manager</button>
-      <span class="hint">Расширение откроет «Перенос доменов между аккаунтами» и заполнит её${inc.length ? '' : ' (без доменов — только флажки и документы)'}. <b>«Далее» нажимаете вы.</b></span></div>
+      <span class="hint">Расширение откроет «Перенос доменов между аккаунтами» и заполнит её${inc.length ? '' : ' (без доменов - только флажки и документы)'}. <b>«Далее» нажимаете вы.</b></span></div>
     <div id="mFillMsg">${mg.step >= 1 ? `<div class="msg ok">Шаг 1 заполнен${(mg.files || []).length ? `, документов: ${mg.files.length}` : ''}.</div>` : ''}</div>
     <h4>Шаг 2 · «Данные нового администратора»</h4>
-    <p class="hint" style="margin:0 0 6px">После «Далее» в manager: «Сверить» прочитает данные на странице и подсветит их там (зелёный — совпадает с заявлением, красный — нет).</p>
+    <p class="hint" style="margin:0 0 6px">После «Далее» в manager: «Сверить» прочитает данные на странице и подсветит их там (зелёный - совпадает с заявлением, красный - нет).</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="mRead">Сверить «данные нового аккаунта»</button>
       <button id="mFillC" title="Переключить на «заполнить вручную» и вписать ФИО, телефон и e-mail из заявления">Заполнить вручную: ФИО и контакты</button></div>
-    <div class="msg" style="margin-top:8px">Новый администратор в заявлении: <b>${esc(adm.fio || adm.org || '—')}</b>${adm.email ? ' · ' + esc(adm.email) : ''}${adm.phone ? ' · ' + esc(adm.phone) : ''}${adm.contract ? ' · договор ' + esc(adm.contract) : ''}</div>
+    <div class="msg" style="margin-top:8px">Новый администратор в заявлении: <b>${esc(adm.fio || adm.org || '-')}</b>${adm.email ? ' · ' + esc(adm.email) : ''}${adm.phone ? ' · ' + esc(adm.phone) : ''}${adm.contract ? ' · договор ' + esc(adm.contract) : ''}</div>
     <div id="mReadOut">${rows.length ? mgrRowsHTML(rows) : ''}</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap"><button class="primary" id="mDone">Смена выполнена → строка таблицы</button>
       <span class="hint">Нажмите после сообщения об успехе в manager.</span></div></div>`;
@@ -1358,7 +1362,7 @@ function renderMgr(){
   };
   q('#mFillC', b).onclick = async () => {
     const fields = {person_r_surname: fio[0] || '', person_r_name: fio[1] || '', person_r_patronimic: fio.slice(2).join(' '), phone: adm.phone || '', e_mail: adm.email || ''};
-    if (!adm.fio){ toast('В заявлении новый администратор — не физлицо или не прочитан: впишите данные в manager вручную'); return; }
+    if (!adm.fio){ toast('В заявлении новый администратор - не физлицо или не прочитан: впишите данные в manager вручную'); return; }
     try {
       const r = await api(`/api/ws/${W.id}/manager/fill_contacts`, {fields});
       toast(r.ok ? `Вписано полей: ${(r.data.changed || []).length}. Паспорт, дату рождения и адрес нового администратора впишите сами` : esc((r.error || {}).message || 'ошибка'), 7000);
@@ -1370,15 +1374,15 @@ function mgrRowsHTML(rows){
   const C = {ok: 'c-ok', fail: 'c-fail', warn: 'c-warn', info: 'c-info'};
   const L = {ok: '<span class="badge s-ok">совпадает</span>', fail: '<span class="badge s-fail">расходится</span>', warn: '<span class="badge s-warn">похоже</span>', info: '<span class="badge s-info">к сведению</span>'};
   return `<table style="margin-top:8px"><tr><th>Поле</th><th>Заявление</th><th>manager: данные нового аккаунта</th><th></th></tr>
-    ${rows.map(r => `<tr><td>${esc(r.title)}</td><td class="${C[r.status] || ''}">${esc(r.app) || '<span class="hint">в заявлении нет</span>'}</td><td class="${C[r.status] || ''}">${esc(r.mgr) || '<span class="hint">—</span>'}</td><td>${L[r.status] || ''}</td></tr>`).join('')}</table>`;
+    ${rows.map(r => `<tr><td>${esc(r.title)}</td><td class="${C[r.status] || ''}">${esc(r.app) || '<span class="hint">в заявлении нет</span>'}</td><td class="${C[r.status] || ''}">${esc(r.mgr) || '<span class="hint">-</span>'}</td><td>${L[r.status] || ''}</td></tr>`).join('')}</table>`;
 }
 
 // ================================================================ (0.8.2) безбумажные операции: доверенность в manager
 // Кнопка «Безбумажные операции» (есть всегда): окно с полями страницы manager «Добавить новый документ от
-// пользователя» (Документы → Доверенности → Добавить, /userdocs/loa_add) под теми же названиями. Значения — из Sd
+// пользователя» (Документы → Доверенности → Добавить, /userdocs/loa_add) под теми же названиями. Значения - из Sd
 // найденного домена (физлицо: серия и номер паспорта, ФИО; юрлицо: код страны и ИНН; e-mail и телефон
 // администратора), иначе паспорт и ФИО из документов дела; всё можно поправить. Расширение вписывает их на странице
-// (/api/ws/{id}/manager/loa_fill); вид документа, срок действия, «Показать домены…» и «Добавить документ» — оператор.
+// (/api/ws/{id}/manager/loa_fill); вид документа, срок действия, «Показать домены…» и «Добавить документ» - оператор.
 const LOA_KEYS = ['passport_inn', 'fullname', 'email', 'customer_phone'];
 const LOA_LABEL = {
   person: {passport_inn: 'Номер паспорта (физ.лицо)', fullname: 'ФИО Администратора'},
@@ -1388,8 +1392,8 @@ const LOA_LABEL = {
 const LOA_LABEL_ALL = {email: 'Высылать письма об окончании срока доверенности на указанный email', customer_phone: 'Телефон (опционально)'};
 const firstPhone = s => String(s || '').split(/[\n,;]+/).map(x => x.trim()).filter(Boolean)[0] || '';
 function loaSources(){
-  // администраторы найденных доменов (домены с одинаковым паспортом / ИНН — одна строка) в порядке строки таблицы
-  // (включённые галкой, по заявлению), затем остальные; последним — документы дела (паспорт, иначе заявление)
+  // администраторы найденных доменов (домены с одинаковым паспортом / ИНН - одна строка) в порядке строки таблицы
+  // (включённые галкой, по заявлению), затем остальные; последним - документы дела (паспорт, иначе заявление)
   const inc = incDomains(), out = [];
   const pos = d => { const i = inc.indexOf(d.domain); return i < 0 ? 1e6 : i; };
   const found = resDomains().filter(d => d.status === 'found' && (d.kind === 'person' || d.kind === 'org'))
@@ -1415,6 +1419,34 @@ function openLoa(){
     fr: {x: .22, y: .04, w: Math.min(.58, 780 / Math.max(1, D.width)), h: .9}});
   renderLoa(); renderSteps();
 }
+// ================================================================ (0.8.5) окно «Смена владельца ЛК»
+// То же, что вкладка «Смена владельца ЛК» (index.html: поиск аккаунта, базовая анкета ↔ заявление, новый владелец и
+// «Заполнить автоматически»): её содержимое (#ownBox) переносится в окно, пока оно открыто, и возвращается на вкладку
+// при её открытии и при закрытии окна. Окно открывается при любой операции; «→ ЛК» у домена - сразу с аккаунтом.
+function adoptOwn(w){
+  const box = document.getElementById('ownBox'), pad = q('.ws-own', w.el);
+  if (box && pad && box.parentNode !== pad) pad.appendChild(box);
+}
+function openOwn(acc){
+  const D = q('#wsDesk').getBoundingClientRect();
+  const fresh = !WM.get('own');
+  const w = WM.open('own', 'Смена владельца ЛК <small>· аккаунт и базовая анкета в manager</small>', {kind: 'panel', closable: true,
+    fr: {x: .16, y: .03, w: Math.min(.66, 940 / Math.max(1, D.width)), h: .94}});
+  if (fresh){
+    q('.body', w.el).innerHTML = '<div class="ws-own"></div>';
+    w.beforeClose = () => { if (typeof ownHome === 'function') ownHome(); };
+  }
+  adoptOwn(w);
+  const qi = document.getElementById('ownQuery');
+  if (acc){
+    qi.value = acc; ownParse(); ownLoad();
+  } else if (qi && !qi.value.trim()){
+    // подсказка: аккаунт первого найденного домена дела (загрузить - Enter или «Загрузить из manager»)
+    const a = (resDomains().find(d => d.status === 'found' && d.account) || {}).account;
+    if (a){ qi.value = a; ownParse(); }
+  }
+  if (!acc && qi) setTimeout(() => qi.focus(), 50);
+}
 function renderLoa(){
   const w = WM.get('loa'); if (!w || !W.ws) return;
   const b = q('.body', w.el);
@@ -1422,7 +1454,7 @@ function renderLoa(){
   const S = loaSources(), ls = st().loa || {};
   const src = S.find(x => x.id === ls.src) || S[0] || null;
   const sid = src ? src.id : '';
-  // правки оператора относятся к своему источнику: другой источник (или загруженные домены) — значения из него
+  // правки оператора относятся к своему источнику: другой источник (или загруженные домены) - значения из него
   const ed = ls.edit_src === sid ? (ls.edit || {}) : {};
   const kind = src ? src.kind : '';
   const lab = {...LOA_LABEL[kind], ...LOA_LABEL_ALL};
@@ -1434,17 +1466,17 @@ function renderLoa(){
   const pDiff = src && src.id !== '@docs' && kind === 'person' && docs.passport && src.passport_inn
     && docs.passport.replace(/\s/g, '') !== src.passport_inn.replace(/\s/g, '');
   b.innerHTML = `<div class="ws-pad">
-    <p class="hint" style="margin:0 0 8px">Страница manager «Добавить новый документ от пользователя» (Документы → Доверенности → Добавить). Поля — как на странице.</p>
-    <label class="f">Данные администратора из <select id="lSrc" ${S.length ? '' : 'disabled'}>${S.length ? S.map(x => `<option value="${esc(x.id)}" ${x.id === sid ? 'selected' : ''}>${esc(srcText(x))}</option>`).join('') : '<option value="">нет данных — впишите вручную</option>'}</select></label>
-    ${S.length ? '' : '<p class="hint" style="margin:6px 0 0">Загрузите домены в окне «Домены» (данные возьмутся из Sd) или добавьте паспорт в дело — или впишите поля ниже.</p>'}
-    ${nAdm > 1 ? `<p class="hint" style="margin:6px 0 0">У доменов разные администраторы (${nAdm}): доверенность на каждого добавляется отдельно — выберите, чьи данные вписать.</p>` : ''}
-    ${pDiff ? `<div class="msg warn" style="margin-top:6px">В документах дела другой паспорт: ${esc(docs.passport)}. По паспорту и ФИО manager ищет домены администратора — сверьте.</div>` : ''}
+    <p class="hint" style="margin:0 0 8px">Страница manager «Добавить новый документ от пользователя» (Документы → Доверенности → Добавить). Поля - как на странице.</p>
+    <label class="f">Данные администратора из <select id="lSrc" ${S.length ? '' : 'disabled'}>${S.length ? S.map(x => `<option value="${esc(x.id)}" ${x.id === sid ? 'selected' : ''}>${esc(srcText(x))}</option>`).join('') : '<option value="">нет данных - впишите вручную</option>'}</select></label>
+    ${S.length ? '' : '<p class="hint" style="margin:6px 0 0">Загрузите домены в окне «Домены» (данные возьмутся из Sd) или добавьте паспорт в дело - или впишите поля ниже.</p>'}
+    ${nAdm > 1 ? `<p class="hint" style="margin:6px 0 0">У доменов разные администраторы (${nAdm}): доверенность на каждого добавляется отдельно - выберите, чьи данные вписать.</p>` : ''}
+    ${pDiff ? `<div class="msg warn" style="margin-top:6px">В документах дела другой паспорт: ${esc(docs.passport)}. По паспорту и ФИО manager ищет домены администратора - сверьте.</div>` : ''}
     <table style="margin-top:8px"><tr><th style="width:42%">Поле страницы</th><th>Значение</th></tr>
       ${LOA_KEYS.map(k => `<tr><td>${esc(lab[k])} <span class="mono">${k}</span></td><td><input type="text" data-lf="${k}" value="${esc(val(k))}" style="width:100%"${k === 'email' ? ' list="lMails"' : ''}>${k in ed ? '<small class="hint">изменено вручную</small>' : ''}</td></tr>`).join('')}
-      <tr><td>Вид документа, «Документ действителен С / ПО», список доменов, внутренний номер документа</td><td class="c-info">расширение не трогает — выбираете и вписываете вы</td></tr></table>
+      <tr><td>Вид документа, «Документ действителен С / ПО», список доменов, внутренний номер документа</td><td class="c-info">расширение не трогает - выбираете и вписываете вы</td></tr></table>
     <datalist id="lMails">${(src ? src.emails : []).map(e => `<option value="${esc(e)}">`).join('')}</datalist>
     <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap"><button class="primary" id="lFill">Вписать на странице manager</button>
-      <span class="hint">Расширение откроет страницу доверенности и впишет поля. Проверить домены — «Показать домены, на которые будет выдана доверенность»; <b>«Добавить документ» нажимаете вы.</b></span></div>
+      <span class="hint">Расширение откроет страницу доверенности и впишет поля. Проверить домены - «Показать домены, на которые будет выдана доверенность»; <b>«Добавить документ» нажимаете вы.</b></span></div>
     <div id="lMsg">${ls.step >= 1 ? '<div class="msg ok">Поля вписаны на странице manager.</div>' : ''}</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap"><button id="lDone">Документ добавлен → строка таблицы</button>
       <span class="hint">Нажмите после «Добавить документ» в manager.</span></div></div>`;
@@ -1466,7 +1498,7 @@ function renderLoa(){
       const r = await api(`/api/ws/${W.id}/manager/loa_fill`, {fields});
       if (!r.ok){
         const er = r.error || {};
-        q('#lMsg', b).innerHTML = `<div class="msg fail">${er.code === 'unknown_cmd' ? 'Расширение старой версии — обновите его: chrome://extensions → PySimpleManager → «Обновить» (⟳), затем повторите.' : esc(er.message || 'ошибка')}</div>`;
+        q('#lMsg', b).innerHTML = `<div class="msg fail">${er.code === 'unknown_cmd' ? 'Расширение старой версии - обновите его: chrome://extensions → PySimpleManager → «Обновить» (⟳), затем повторите.' : esc(er.message || 'ошибка')}</div>`;
       } else {
         const d = r.data || {};
         saveState({loa: {step: 1}}); renderSteps();
@@ -1481,8 +1513,8 @@ function renderLoa(){
 
 // ================================================================ (0.8.0) строка «Поиск» и сайт рядом
 // Кнопка «Поиск» или Ctrl+K: строка запроса над окнами. Сайт (Google, ЕГРЮЛ, Госуслуги, быстрые ссылки из
-// config/workspace.yaml) открывает расширение — во второй половине окна Chrome (разделённый экран), окном справа или
-// вкладкой (/api/site/open). Без расширения — обычным окном браузера. Файлы дела перетаскиваются на сайт: со страницы
+// config/workspace.yaml) открывает расширение - во второй половине окна Chrome (разделённый экран), окном справа или
+// вкладкой (/api/site/open). Без расширения - обычным окном браузера. Файлы дела перетаскиваются на сайт: со страницы
 // уходит ссылка на файл (application/x-pysm-file), файл на страницу кладёт расширение (content/drop.js).
 const FILE_MARK = 'application/x-pysm-file';
 const SR = {on: false, drop: false, last: null};
@@ -1506,7 +1538,7 @@ function showSearch(){
   q('#wsSbar').classList.remove('hidden'); q('#wsSearchBtn').classList.add('on'); q('#wsMiniSearch').classList.add('on');
   renderSbar();
   const last = (st().search || {}).last;
-  // сайт этого дела был открыт и его убрали — вернуть на место без перезагрузки страницы
+  // сайт этого дела был открыт и его убрали - вернуть на место без перезагрузки страницы
   if (last && last.url && SR.hidden) api('/api/site/open', {url: last.url, ...siteOpts({keep: true})}).catch(() => {});
   SR.hidden = false;
   setTimeout(() => { const i = q('#wsQ'); if (i){ i.focus(); i.select(); } }, 0);
@@ -1532,7 +1564,7 @@ function renderSbar(){
     <span class="ws-sright"><select id="wsOpenIn" title="Где открывать сайт (запоминается в этом браузере)">${Object.entries(OPEN_IN_RU).map(([k, v]) => `<option value="${k}" ${k === openIn() ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <button type="button" class="sm" data-sa="help" title="Как это устроено">?</button>
       <button type="button" class="wb" data-sa="hide" title="Убрать строку поиска и сайт рядом (Ctrl+K)">${ICON.close}</button></span></div>
-    <div class="ws-srow ws-srow2"><div class="ws-sfiles" id="wsSfiles" title="Перетащите файл на страницу сайта (проверка ЭП, Контур.Крипто, Nextcloud) — его положит туда расширение"></div>
+    <div class="ws-srow ws-srow2"><div class="ws-sfiles" id="wsSfiles" title="Перетащите файл на страницу сайта (проверка ЭП, Контур.Крипто, Nextcloud) - его положит туда расширение"></div>
       <div class="ws-sst" id="wsSst"></div></div>
     <div class="ws-sdrop hidden" id="wsSdrop"></div>`;
   renderSfiles(); renderSst();
@@ -1541,21 +1573,21 @@ function renderSfiles(){
   const box = q('#wsSfiles'); if (!box) return;
   const files = dragFiles();
   box.innerHTML = files.length ? '<span class="hint">Файлы:</span>' + files.map(f =>
-    `<span class="ws-fchip" draggable="true" data-dragfile="${esc(f.id)}" title="${esc(baseName(f.name))} — перетащите на страницу сайта">${esc(baseName(f.name))}</span>`).join('') : '';
+    `<span class="ws-fchip" draggable="true" data-dragfile="${esc(f.id)}" title="${esc(baseName(f.name))} - перетащите на страницу сайта">${esc(baseName(f.name))}</span>`).join('') : '';
   box.classList.toggle('hidden', !files.length);
 }
 function renderSst(){
   const box = q('#wsSst'); if (!box) return;
   const s = SR.last;
   let h = '';
-  if (!s) h = `<span class="hint">Enter — ${esc((searchCfg().services[0] || {}).title || 'поиск')}; значения дела и прошлые запросы — под строкой</span>`;
+  if (!s) h = `<span class="hint">Enter - ${esc((searchCfg().services[0] || {}).title || 'поиск')}; значения дела и прошлые запросы - под строкой</span>`;
   else if (s.error) h = `<span class="badge s-fail">${esc(s.title)}</span> ${esc(s.error)}`;
   else if (s.pending) h = `<span class="badge s-info">${esc(s.title)}</span> <span class="hint">открываю…</span>`;
-  else if (s.kind === 'gos') h = `<span class="badge s-review">Госуслуги</span> вписано — <b>«Продолжить» нажимаете вы</b>${s.where ? ' ' + esc(s.where) : ''}`;
+  else if (s.kind === 'gos') h = `<span class="badge s-review">Госуслуги</span> вписано - <b>«Продолжить» нажимаете вы</b>${s.where ? ' ' + esc(s.where) : ''}`;
   else if (s.fill){
-    h = s.fillOk ? `<span class="badge s-review">${esc(s.title)}</span> вписано «${esc(s.q)}» — <b>«Найти» нажимаете вы</b>${s.where ? ' ' + esc(s.where) : ''}`
+    h = s.fillOk ? `<span class="badge s-review">${esc(s.title)}</span> вписано «${esc(s.q)}» - <b>«Найти» нажимаете вы</b>${s.where ? ' ' + esc(s.where) : ''}`
       : `<span class="badge s-warn">${esc(s.title)}</span> ${esc(s.fillErr || 'запрос не вписан')} <button type="button" class="sm" data-sa="copyq">Копировать запрос</button>`;
-  } else h = `<span class="hint">Открыто ${esc(s.where || '')}: ${esc(s.title)}${s.q ? ' — «' + esc(s.q) + '»' : ''}</span>`;
+  } else h = `<span class="hint">Открыто ${esc(s.where || '')}: ${esc(s.title)}${s.q ? ' - «' + esc(s.q) + '»' : ''}</span>`;
   if (s && s.notes && s.notes.length) h += ` <span class="hint" title="${esc(s.notes.join('\n'))}">· ${esc(s.notes[0].slice(0, 90))}${s.notes[0].length > 90 ? '…' : ''}</span>`;
   box.innerHTML = h;
 }
@@ -1586,9 +1618,9 @@ function renderDrop(){
   const d = q('#wsSdrop'); if (!d) return;
   const chips = caseChips(), hist = (st().search || {}).hist || [];
   if (!chips.length && !hist.length){ d.classList.add('hidden'); return; }
-  d.innerHTML = (chips.length ? `<div class="hint">Из дела — щелчок: вставить, Shift+щелчок: добавить к запросу</div>
+  d.innerHTML = (chips.length ? `<div class="hint">Из дела - щелчок: вставить, Shift+щелчок: добавить к запросу</div>
     <div class="ws-chips">${chips.map(([v, l]) => `<button type="button" class="ws-chip" data-chip="${esc(v)}">${esc(v)} <small>${esc(l)}</small></button>`).join('')}</div>` : '')
-    + (hist.length ? `<div class="hint" style="margin-top:6px">Запросы по делу — щелчок: открыть снова</div>`
+    + (hist.length ? `<div class="hint" style="margin-top:6px">Запросы по делу - щелчок: открыть снова</div>`
       + hist.slice(0, 8).map((h, i) => `<button type="button" class="ws-hrow" data-hist="${i}">${esc(h.t)} · ${esc(h.title)}${h.q ? ' · ' + esc(h.q) : ''}</button>`).join('') : '');
   d.classList.remove('hidden');
 }
@@ -1612,14 +1644,14 @@ async function openSite(entry, extra){
   } catch (e) {
     const oldExt = /Неизвестная команда/.test(e.message);
     if (/не подключено|409/.test(e.message) || oldExt){
-      // без расширения (или со старым, до 0.8.0) — обычное окно браузера справа; запрос для формы — в буфер обмена
+      // без расширения (или со старым, до 0.8.0) - обычное окно браузера справа; запрос для формы - в буфер обмена
       const a = screenArea(), w = Math.round(a.width * (searchCfg().window_share || 40) / 100);
       const pop = window.open(entry.url, 'pysm_site', `popup,left=${a.left + a.width - w},top=${a.top},width=${w},height=${a.height}`);
       SR.last.where = MODE_RU.popup;
-      SR.last.notes = [oldExt ? 'расширение старой версии — обновите его (chrome://extensions → «Обновить»); пока сайт открыт обычным окном'
+      SR.last.notes = [oldExt ? 'расширение старой версии - обновите его (chrome://extensions → «Обновить»); пока сайт открыт обычным окном'
         : 'расширение не подключено: сайт открыт обычным окном, файлы на него не перетаскиваются'];
-      if (entry.fill){ SR.last.fillOk = false; SR.last.fillErr = 'расширение не подключено — запрос скопирован, вставьте его (Ctrl+V)'; copyText(entry.q); }
-      if (!pop) SR.last.error = 'браузер не дал открыть окно — разрешите всплывающие окна для этой страницы';
+      if (entry.fill){ SR.last.fillOk = false; SR.last.fillErr = 'расширение не подключено - запрос скопирован, вставьте его (Ctrl+V)'; copyText(entry.q); }
+      if (!pop) SR.last.error = 'браузер не дал открыть окно - разрешите всплывающие окна для этой страницы';
     } else SR.last.error = e.message;
   }
   SR.last.pending = false;
@@ -1648,7 +1680,7 @@ function gosFromQuery(s){
   const cap = w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '';
   return {series: m[1].replace(/\s/g, ''), number: m[2], surname: cap(words[0]), name: cap(words[1])};
 }
-// без прочитанного паспорта (дело без файлов, скан не прочитан) — паспорт администратора из Sd найденного домена
+// без прочитанного паспорта (дело без файлов, скан не прочитан) - паспорт администратора из Sd найденного домена
 function gosFromSd(){
   const d = resDomains().find(x => x.status === 'found' && x.kind === 'person' && /^\d{4}\s?\d{6}$/.test(String(x.passport || '').trim()));
   if (!d) return null;
@@ -1656,13 +1688,13 @@ function gosFromSd(){
   return {series: pp.slice(0, 4), number: pp.slice(4), surname: fio[0] || '', name: fio[1] || ''};
 }
 async function gosFill(btn){
-  // «Госуслуги · паспорт» (строка поиска): расширение вписывает серию, номер, фамилию и имя; «Продолжить» — оператор.
+  // «Госуслуги · паспорт» (строка поиска): расширение вписывает серию, номер, фамилию и имя; «Продолжить» - оператор.
   // Откуда: серия и номер в строке запроса → паспорт (заявление) дела → Sd найденного домена.
   const fromQ = gosFromQuery(q('#wsQ') ? q('#wsQ').value : SR.q);
   const g = (W.res && W.res.gos) || {};
   const extra = fromQ || (g.series && g.number ? {} : gosFromSd());
   if (!extra){
-    toast('Серия и номер паспорта не прочитаны — впишите их в строку «Поиск» (например, «4012 654321 Иванова Анна») и нажмите «Госуслуги · паспорт» ещё раз', 9000);
+    toast('Серия и номер паспорта не прочитаны - впишите их в строку «Поиск» (например, «4012 654321 Иванова Анна») и нажмите «Госуслуги · паспорт» ещё раз', 9000);
     if (!SR.on) showSearch(); else { const i = q('#wsQ'); if (i) i.focus(); }
     return;
   }
@@ -1687,15 +1719,15 @@ function searchHelp(anchor){
   fetch('/api/manager/status').then(r => r.json()).catch(() => ({})).then(s => {
     const ch = s.chrome ? `Chrome ${s.chrome}` : 'версия Chrome неизвестна';
     const pop = winPopAt(anchor, `<h5>Где открывается сайт</h5>
-      <p style="margin:0 0 6px"><b>Рядом (авто)</b> — во второй половине окна Chrome рядом с программой (разделённый экран). Расширение делает это само
-        в Chrome 155+; в Chrome 145–154 соберите пару один раз вручную (правый щелчок по вкладке программы → разделённый экран) —
-        дальше сайты открываются во второй вкладке пары. Иначе — окном справа.</p>
-      <p style="margin:0 0 6px"><b>Окном справа</b> — отдельное окно Chrome, окно программы сдвигается влево; «убрать» возвращает его на место.</p>
+      <p style="margin:0 0 6px"><b>Рядом (авто)</b> - во второй половине окна Chrome рядом с программой (разделённый экран). Расширение делает это само
+        в Chrome 155+; в Chrome 145–154 соберите пару один раз вручную (правый щелчок по вкладке программы → разделённый экран) -
+        дальше сайты открываются во второй вкладке пары. Иначе - окном справа.</p>
+      <p style="margin:0 0 6px"><b>Окном справа</b> - отдельное окно Chrome, окно программы сдвигается влево; «убрать» возвращает его на место.</p>
       <p style="margin:0 0 6px">Следующий запрос открывается там же. На страницы проверки ЭП, Контур.Крипто и Nextcloud можно перетащить файлы дела
-        («Файлы:» в строке, лента страниц, список файлов) — их положит туда расширение. Кнопки на сайтах («Найти», «Продолжить»,
+        («Файлы:» в строке, лента страниц, список файлов) - их положит туда расширение. Кнопки на сайтах («Найти», «Продолжить»,
         «Проверить») нажимаете вы.</p>
-      <p class="hint" style="margin:0">Сейчас: ${s.connected ? `расширение подключено, ${esc(ch)}, разделённый экран для расширения — ${s.split_api ? 'есть' : 'нет (нужен Chrome 155+)'}` : 'расширение не подключено — сайты открываются обычным окном браузера'}.
-        Сервисы и ссылки — config/workspace.yaml, раздел search.</p>`);
+      <p class="hint" style="margin:0">Сейчас: ${s.connected ? `расширение подключено, ${esc(ch)}, разделённый экран для расширения - ${s.split_api ? 'есть' : 'нет (нужен Chrome 155+)'}` : 'расширение не подключено - сайты открываются обычным окном браузера'}.
+        Сервисы и ссылки - config/workspace.yaml, раздел search.</p>`);
     pop.style.maxWidth = '460px';
   });
 }
@@ -1723,9 +1755,9 @@ function sbarClick(e){
   else if (k === 'hide') hideSearch();
   else if (k === 'help'){ e.stopPropagation(); searchHelp(a); }
   else if (k === 'gos') gosFill(a);
-  else if (k === 'copyq') copyText((SR.last && SR.last.q) || '').then(ok => toast(ok ? 'Запрос скопирован — вставьте его на сайте (Ctrl+V)' : 'Не удалось скопировать'));
+  else if (k === 'copyq') copyText((SR.last && SR.last.q) || '').then(ok => toast(ok ? 'Запрос скопирован - вставьте его на сайте (Ctrl+V)' : 'Не удалось скопировать'));
 }
-// перетаскивание файлов дела на сайт: ссылка на файл + имя; для папки Windows — DownloadURL (Chrome)
+// перетаскивание файлов дела на сайт: ссылка на файл + имя; для папки Windows - DownloadURL (Chrome)
 function setFileDrag(dt, f){
   if (!f || !W.id) return;
   const name = baseName(f.name), ext = (name.split('.').pop() || '').toLowerCase();
@@ -1759,6 +1791,7 @@ function winList(){
   [['app', 'Заявление'], ['pas', 'Паспорт'], ['dom', 'Домены'], ['row', 'Строка таблицы']].forEach(([id, t]) => L.push({id, t, s: stOf(WM.get(id))}));
   L.push({id: 'mgr', t: 'manager · смена администратора', s: stOf(WM.get('mgr'))});
   L.push({id: 'loa', t: 'manager · безбумажные операции', s: stOf(WM.get('loa'))});
+  L.push({id: 'own', t: 'Смена владельца ЛК', s: stOf(WM.get('own'))});
   WM.all().filter(w => w.kind === 'page' || w.id === 'oth').forEach(w => L.push({id: w.id, t: w.title.replace(/<[^>]+>/g, ''), s: stOf(w)}));
   resDomains().filter(d => d.status === 'found').forEach(d => {
     const id = 'sd_' + d.domain.replace(/[^\w.-]/g, '_');
@@ -1790,9 +1823,10 @@ function showWin(id, sd){
   if (sd){ openSd(sd); return; }
   if (id === 'mgr'){ gateClick({target: q('#wsOpenMgr')}); return; }
   if (id === 'loa'){ openLoa(); return; }
+  if (id === 'own'){ openOwn(); return; }
 }
 function showAllWins(){
-  // свёрнутые окна возвращаются на свои места — раскладка не применяется, окно заявления не сдвигается
+  // свёрнутые окна возвращаются на свои места - раскладка не применяется, окно заявления не сдвигается
   WM.all().forEach(w => { if (w.min && !(w.pop && !w.pop.closed)) WM.restore(w.id); });
   WM.dock();
   toast('Все окна показаны на своих местах');

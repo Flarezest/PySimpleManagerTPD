@@ -1,26 +1,26 @@
-"""Рабочее место оператора (0.7.6): дело из архива тикетницы — страницы, их разбор по документам, сверка.
+"""Рабочее место оператора (0.7.6): дело из архива тикетницы - страницы, их разбор по документам, сверка.
 
 Порядок работы (веб-интерфейс, вкладка «Рабочее место», API /api/ws/*):
 
 1. Приём: архив (zip, rar, 7z) или файлы → распаковка (archive.py) → документы: PDF, изображения, DOCX
-   (и картинки, вставленные в DOCX), подписи .sig (только список — программа их не проверяет), прочие файлы.
-2. Страницы: каждая страница PDF / изображение — отдельная страница с превью (JPEG) и миниатюрой.
+   (и картинки, вставленные в DOCX), подписи .sig (только список - программа их не проверяет), прочие файлы.
+2. Страницы: каждая страница PDF / изображение - отдельная страница с превью (JPEG) и миниатюрой.
 3. Разбор страниц (classify_page): заявление (бланк, продолжение), паспорт (разворот, прописка, ранее выданные),
    прочее (конверт, опись, нотариус), не определено, скрытые (пустые страницы и повторы). Без нейросети:
    текстовый слой PDF / быстрый OCR, заголовок бланка, слова паспорта, строки MRZ, поворот страницы.
    Оператор может перенести страницу в другую группу, повернуть её или вырезать рамкой паспорт со страницы
-   заявления (crop) — после этого проверка запускается заново.
+   заявления (crop) - после этого проверка запускается заново.
 4. Проверка: обычный run_case по выбранным страницам (CaseInput.app_sources / pas_sources) + загрузка Sd, S и ЕСИА
    доменов из manager (JobManager, manager_autoload).
-5. Сверка (matrix): строки ФИО, дата рождения, паспорт, … — значения Sd, ЕСИА, заявления и паспорта рядом,
+5. Сверка (matrix): строки ФИО, дата рождения, паспорт, … - значения Sd, ЕСИА, заявления и паспорта рядом,
    с подсветкой совпадений, и места полей на страницах (boxes) для подсветки в просмотре.
 
 Состояние дела (номер тикета, тип операции, способ получения, отметки оператора, строка таблицы, результат
-проверки на Госуслугах, с 0.8.0 — запросы строки «Поиск») хранится в ws.json в папке дела рабочего места:
+проверки на Госуслугах, с 0.8.0 - запросы строки «Поиск») хранится в ws.json в папке дела рабочего места:
 results/_workspace/<время>_<id>/. С 0.8.0 дело можно удалить из «Недавних дел» (WorkspaceManager.delete): папка дела
 и папки результатов его проверок (result_dirs) стираются с диска. С 0.8.1 дело можно начать без файлов и добавлять
-файлы в открытое дело (WorkspaceManager.add — разбираются только новые страницы); у страниц PDF с текстовым слоем —
-слова с координатами для выделения текста в просмотре (Workspace.text_layer). С 0.8.4 — ручное выделение текста
+файлы в открытое дело (WorkspaceManager.add - разбираются только новые страницы); у страниц PDF с текстовым слоем -
+слова с координатами для выделения текста в просмотре (Workspace.text_layer). С 0.8.4 - ручное выделение текста
 рамкой (Workspace.read_zone): слова текстового слоя PDF или печатный текст скана (ocr.read_printed).
 """
 from __future__ import annotations
@@ -52,7 +52,7 @@ DOC_EXT = IMAGE_EXT | {".pdf", ".docx"}
 SIG_EXT = {".sig", ".p7s", ".sgn", ".p7m", ".p7b"}
 CLASSES = {"application": "Заявление", "passport": "Паспорт", "other": "Прочее", "unknown": "Не определено",
            "hidden": "Скрытые"}
-PREVIEW_DPI = 170                  # превью страницы PDF для просмотра (извлечение полей — 300 dpi)
+PREVIEW_DPI = 170                  # превью страницы PDF для просмотра (извлечение полей - 300 dpi)
 PREVIEW_MAX = 2400                 # превью изображения: длинная сторона, px
 THUMB_W = 120
 EXTRACT_DPI = 300                  # ocr.load_document
@@ -211,7 +211,7 @@ def classify_image(img: np.ndarray, forms: list[dict]) -> tuple[str, str, float,
     kws = PASSPORT_KW + sorted({k.upper() for f in forms for k in f["detect"]["keywords"]})
     try:
         angle, score = best_orientation(img, kws)
-    except Exception:  # noqa: BLE001 — OSD Tesseract может не сработать на странной картинке
+    except Exception:  # noqa: BLE001 - OSD Tesseract может не сработать на странной картинке
         angle, score = 0, 0
     if angle and score >= 3:
         txt2, _ = tesseract_text(rotate(gray, angle), psm=3)
@@ -221,7 +221,7 @@ def classify_image(img: np.ndarray, forms: list[dict]) -> tuple[str, str, float,
     if r:
         return (*r, 0)
     if len(re.sub(r"\W", "", txt)) < 30:
-        return "unknown", "мало текста", 0.3, "мало текста — фото, штамп или рукопись", 0
+        return "unknown", "мало текста", 0.3, "мало текста - фото, штамп или рукопись", 0
     return "unknown", "?", 0.35, "не похоже ни на бланк, ни на паспорт", 0
 
 
@@ -239,14 +239,14 @@ class Workspace:
         self.notes: list[str] = []
         self.job_id = ""
         self.job_ids: list[str] = []
-        self.result_dirs: list[str] = []   # (0.8.0) папки результатов проверок дела (results/<время>_<дело>) — для удаления
+        self.result_dirs: list[str] = []   # (0.8.0) папки результатов проверок дела (results/<время>_<дело>) - для удаления
         self.created = _now()
         self.state: dict = {"ticket": "", "operation": "", "via": "", "marks": {}, "gos": {}, "row": {}, "mgr": {},
                             "search": {}, "loa": {}}
         self.lock = threading.RLock()
         self._text: dict[str, dict] = {}   # (0.8.1) текстовый слой страниц PDF (text_layer)
-        self._zone_src: tuple | None = None   # (0.8.4) (id страницы, изображение для проверки) — последняя для read_zone
-        self.version = 0               # растёт при каждом изменении — интерфейс перечитывает состояние
+        self._zone_src: tuple | None = None   # (0.8.4) (id страницы, изображение для проверки) - последняя для read_zone
+        self.version = 0               # растёт при каждом изменении - интерфейс перечитывает состояние
 
     # ---- хранение
     @property
@@ -278,7 +278,7 @@ class Workspace:
         ws.created = data.get("created", ws.created)
         ws.status = data.get("status", "ready")
         if ws.status not in ("ready", "error"):
-            ws.status = "ready"            # разбор прервался (программу закрыли) — показываем, что есть
+            ws.status = "ready"            # разбор прервался (программу закрыли) - показываем, что есть
         ws.error = data.get("error", "")
         ws.files = [WsFile(**f) for f in data.get("files", [])]
         keys = WsPage.__dataclass_fields__.keys()
@@ -288,6 +288,8 @@ class Workspace:
         ws.job_ids = data.get("job_ids", [])
         ws.result_dirs = data.get("result_dirs", [])
         ws.state = {**ws.state, **(data.get("state") or {})}
+        if ws.state.get("operation"):                   # (0.8.5) «Смена владельца аккаунта» → «Смена владельца ЛК»
+            ws.state["operation"] = wsconfig.op_title(ws.state["operation"])
         return ws
 
     def logmsg(self, msg: str) -> None:
@@ -309,7 +311,7 @@ class Workspace:
 
     # ---- приём файлов
     def add_upload(self, name: str, path: Path) -> None:
-        """Загруженный файл: архив распаковывается, остальное — как есть."""
+        """Загруженный файл: архив распаковывается, остальное - как есть."""
         name = Path(name).name
         if archive.is_archive(name):
             self.logmsg(f"Распаковываю архив {name}…")
@@ -324,7 +326,7 @@ class Workspace:
             self.notes += notes
             for f in files:
                 self._add_file(f"{name}/{f.relative_to(dest).as_posix()}", f)
-            self.logmsg(f"{name}: файлов в архиве — {len(files)}")
+            self.logmsg(f"{name}: файлов в архиве - {len(files)}")
         else:
             self._add_file(name, path)
 
@@ -335,7 +337,7 @@ class Workspace:
         f = WsFile(id=f"f{len(self.files) + 1}", name=name, path=str(path), kind=kind,
                    size=Path(path).stat().st_size if Path(path).exists() else 0)
         if kind == "other":
-            f.note = "формат не поддерживается — только в списке файлов"
+            f.note = "формат не поддерживается - только в списке файлов"
         if kind == "sig":
             f.note = "подпись: проверяется вручную, программа её не трогает"
         self.files.append(f)
@@ -347,7 +349,7 @@ class Workspace:
         return p
 
     def build_pages(self, files: list[WsFile] | None = None) -> None:
-        """Превью страниц файлов (по умолчанию — всех; при добавлении файлов в дело — только новых)."""
+        """Превью страниц файлов (по умолчанию - всех; при добавлении файлов в дело - только новых)."""
         import pymupdf
         self.pages_dir.mkdir(parents=True, exist_ok=True)
         for f in list(self.files if files is None else files):
@@ -355,7 +357,7 @@ class Workspace:
                 if f.kind == "pdf":
                     with pymupdf.open(f.path) as doc:
                         if doc.needs_pass:
-                            f.note = "PDF защищён паролем — откройте и сохраните без пароля"
+                            f.note = "PDF защищён паролем - откройте и сохраните без пароля"
                             self.notes.append(f"{f.name}: {f.note}")
                             continue
                         f.pages = doc.page_count
@@ -392,7 +394,7 @@ class Workspace:
                     p = self._new_page(f, 0, "docx")
                     p.text = True
                     self._docx_images(f)
-            except Exception as e:  # noqa: BLE001 — один плохой файл не должен ронять разбор остальных
+            except Exception as e:  # noqa: BLE001 - один плохой файл не должен ронять разбор остальных
                 f.note = f"не открылся: {e}"
                 self.notes.append(f"{f.name}: {f.note}")
                 traceback.print_exc()
@@ -420,7 +422,7 @@ class Workspace:
         p.pv = [w, h]                  # после записи файлов: to_api отдаёт только страницы с готовым превью
 
     def _docx_images(self, f: WsFile) -> None:
-        """Фото, вставленные в Word (часто — паспорт), — отдельные страницы-изображения."""
+        """Фото, вставленные в Word (часто - паспорт), - отдельные страницы-изображения."""
         try:
             with zipfile.ZipFile(f.path) as z:
                 media = [n for n in z.namelist() if n.startswith("word/media/")
@@ -428,7 +430,7 @@ class Workspace:
                 for n in sorted(media, key=archive.natural_key):
                     data = z.read(n)
                     img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
-                    if img is None or min(img.shape[:2]) < 300:      # значки, подписи, логотипы — пропускаем
+                    if img is None or min(img.shape[:2]) < 300:      # значки, подписи, логотипы - пропускаем
                         continue
                     fp = Path(f.path).with_name(f"{Path(f.path).stem}_{Path(n).name}")
                     fp.write_bytes(data)
@@ -458,8 +460,8 @@ class Workspace:
     # ---- текст страницы PDF для выделения в просмотре (0.8.1)
     def text_layer(self, pid: str) -> dict:
         """Слова текстового слоя страницы PDF по строкам в px превью: {"rot": поворот страницы (/Rotate),
-        "lines": [[[x, y, w, h, "слово"], …], …]} — (x, y) — левый верхний угол слова на превью, w×h — размер вдоль
-        строки и поперёк; при rot ≠ 0 строка на превью идёт под этим углом. У сканов и не-PDF — пусто."""
+        "lines": [[[x, y, w, h, "слово"], …], …]} - (x, y) - левый верхний угол слова на превью, w×h - размер вдоль
+        строки и поперёк; при rot ≠ 0 строка на превью идёт под этим углом. У сканов и не-PDF - пусто."""
         p = self.page(pid)
         if p.kind != "pdf" or not p.text or not (p.pv and p.pv[0]):
             return {"rot": 0, "lines": []}
@@ -473,7 +475,7 @@ class Workspace:
             pg = doc[p.index]
             sx, sy = p.pv[0] / pg.rect.width, p.pv[1] / pg.rect.height
             s = (sx + sy) / 2
-            m = pg.rotation_matrix                       # слова — в координатах страницы без поворота
+            m = pg.rotation_matrix                       # слова - в координатах страницы без поворота
             rot = pg.rotation % 360
             for x0, y0, x1, y1, word, b, ln, _ in pg.get_text("words", sort=False):
                 pt = pymupdf.Point(x0, y0) * m
@@ -483,16 +485,16 @@ class Workspace:
         self._text[pid] = res
         return res
 
-    # ---- (0.8.4) ручное выделение текста: рамка на странице → текст (в интерфейсе — сразу в буфер обмена)
+    # ---- (0.8.4) ручное выделение текста: рамка на странице → текст (в интерфейсе - сразу в буфер обмена)
     def read_zone(self, pid: str, rect: list) -> dict:
-        """Текст в рамке. rect — [x, y, w, h] в px показанного превью с учётом поворота страницы (как у add_crop).
-        PDF с текстовым слоем — слова слоя, центр которых в рамке (точно, без распознавания); если таких слов нет
-        (картинка внутри PDF), а также у сканов, фото и вырезок — печатный текст Tesseract по изображению в разрешении
+        """Текст в рамке. rect - [x, y, w, h] в px показанного превью с учётом поворота страницы (как у add_crop).
+        PDF с текстовым слоем - слова слоя, центр которых в рамке (точно, без распознавания); если таких слов нет
+        (картинка внутри PDF), а также у сканов, фото и вырезок - печатный текст Tesseract по изображению в разрешении
         проверки (ocr.read_printed; рукопись не читается). → {"text", "source": "pdf" | "ocr", "conf", "ms", …}."""
         t0 = time.monotonic()
         p = self.page(pid)
         if p.kind == "docx":
-            raise WsError("в документе Word текст выделяется мышью — рамка не нужна")
+            raise WsError("в документе Word текст выделяется мышью - рамка не нужна")
         try:
             x, y, w, h = (float(v) for v in rect)
         except (TypeError, ValueError):
@@ -509,15 +511,15 @@ class Workspace:
                 "tries": res["tries"], "ms": round((time.monotonic() - t0) * 1000)}
 
     def _zone_words(self, p: WsPage, box: list) -> str:
-        """Слова текстового слоя PDF в рамке (box — x0, y0, x1, y1 в px показанного превью): строки — как их видит
-        оператор (по высоте на показанной странице), слова в строке — слева направо."""
+        """Слова текстового слоя PDF в рамке (box - x0, y0, x1, y1 в px показанного превью): строки - как их видит
+        оператор (по высоте на показанной странице), слова в строке - слева направо."""
         import pymupdf
         W0, H0 = p.pv
         words = []
         with pymupdf.open(self.file(p.file).path) as doc:
             pg = doc[p.index]
             sx, sy = W0 / pg.rect.width, H0 / pg.rect.height
-            m = pg.rotation_matrix                       # слова — в координатах страницы без /Rotate
+            m = pg.rotation_matrix                       # слова - в координатах страницы без /Rotate
             for x0, y0, x1, y1, word, *_ in pg.get_text("words", sort=False):
                 r = (pymupdf.Rect(x0, y0, x1, y1) * m).normalize()
                 b = rot_box([r.x0 * sx, r.y0 * sy, r.x1 * sx, r.y1 * sy], W0, H0, p.rot)
@@ -544,7 +546,7 @@ class Workspace:
         return img
 
     def _zone_image(self, p: WsPage, box: list) -> np.ndarray:
-        """Область рамки в разрешении проверки (PDF — 300 dpi, изображение — исходное), с поворотом страницы."""
+        """Область рамки в разрешении проверки (PDF - 300 dpi, изображение - исходное), с поворотом страницы."""
         if p.kind == "crop":
             src = self.page(p.src)
             base = rotate(self._source_image(src), p.crop_rot)
@@ -562,7 +564,7 @@ class Workspace:
 
     # ---- разбор страниц
     def classify(self, start: int = 0) -> None:
-        """Группы страниц. start — с какой страницы разбирать (при добавлении файлов — только новые; повторы
+        """Группы страниц. start - с какой страницы разбирать (при добавлении файлов - только новые; повторы
         ищутся и среди прежних страниц)."""
         forms = load_forms()
         hashes: list[tuple[str, int]] = []
@@ -589,11 +591,11 @@ class Workspace:
                     dup = next((pid for pid, hh in hashes if _hamming(h, hh) <= 6), None)
                     hashes.append((p.id, h))
                     if dup and self.page(dup).cls != "hidden" and float((gray < 140).mean()) >= 0.002:
-                        # повтор уже разобранной страницы — без OCR (быстрее; и не зависит от ошибок Tesseract)
+                        # повтор уже разобранной страницы - без OCR (быстрее; и не зависит от ошибок Tesseract)
                         orig = self.page(dup)
                         p.cls, p.sub, p.conf, p.why, p.dup_of = ("hidden", f"повтор: {self._label(dup)}", 0.95,
                                                                 "та же страница уже есть", dup)
-                        p.rot, p.auto_rot = orig.rot, orig.auto_rot      # перенесут из «Скрытых» — уже повёрнута
+                        p.rot, p.auto_rot = orig.rot, orig.auto_rot      # перенесут из «Скрытых» - уже повёрнута
                         self.save()
                         continue
                     r = None
@@ -622,7 +624,7 @@ class Workspace:
         return f.name.split("/")[-1] + (f", стр. {p.index + 1}" if f.pages > 1 else "")
 
     def _fix_order(self) -> None:
-        """Не узнанные страницы после страницы паспорта в том же файле — тоже паспорт (прописка, ранее выданные…);
+        """Не узнанные страницы после страницы паспорта в том же файле - тоже паспорт (прописка, ранее выданные…);
         имя файла как подсказка: «паспорт…» / «заявление…»."""
         seen: dict[str, bool] = {}
         for p in self.pages:
@@ -640,7 +642,7 @@ class Workspace:
                     p.cls, p.sub, p.conf, p.why = "application", "страница заявления?", 0.5, "по имени файла"
 
     def _extract_image(self, p: WsPage) -> np.ndarray:
-        """Изображение страницы в том разрешении, в каком её читает проверка (PDF — 300 dpi)."""
+        """Изображение страницы в том разрешении, в каком её читает проверка (PDF - 300 dpi)."""
         f = self.file(p.file)
         if p.kind == "pdf":
             import pymupdf
@@ -665,16 +667,16 @@ class Workspace:
     def set_rotation(self, pid: str, rot: int) -> WsPage:
         p = self.page(pid)
         if p.kind == "crop":
-            raise WsError("вырезку не повернуть — поверните исходную страницу и выделите заново")
+            raise WsError("вырезку не повернуть - поверните исходную страницу и выделите заново")
         p.rot, p.auto_rot = int(rot) % 360, False
         self.save()
         return p
 
     def add_crop(self, pid: str, rect: list, cls: str = "passport") -> WsPage:
-        """Вырезка рамкой на странице (rect — [x, y, w, h] в px показанного превью, с учётом поворота)."""
+        """Вырезка рамкой на странице (rect - [x, y, w, h] в px показанного превью, с учётом поворота)."""
         src = self.page(pid)
         if src.kind == "docx":
-            raise WsError("в документе Word рамкой не выделить — у него нет изображения страницы")
+            raise WsError("в документе Word рамкой не выделить - у него нет изображения страницы")
         x, y, w, h = (float(v) for v in rect)
         if w < 20 or h < 20:
             raise WsError("рамка слишком маленькая")
@@ -704,7 +706,9 @@ class Workspace:
             for k in ("ticket", "operation", "via"):
                 if k in data:
                     self.state[k] = str(data[k] or "")
-            for k in ("marks", "gos", "row", "mgr", "search", "loa"):   # loa — (0.8.2) доверенность
+            if self.state.get("operation"):
+                self.state["operation"] = wsconfig.op_title(self.state["operation"])
+            for k in ("marks", "gos", "row", "mgr", "search", "loa"):   # loa - (0.8.2) доверенность
                 if isinstance(data.get(k), dict):
                     self.state[k] = {**(self.state.get(k) or {}), **data[k]}
         self.save()
@@ -737,7 +741,7 @@ class Workspace:
             files = [asdict(f) for f in self.files]
             pages = []
             for p in self.pages:
-                if not (p.pv and p.pv[0]) and p.kind != "docx":     # превью ещё пишется — страница появится в следующем опросе
+                if not (p.pv and p.pv[0]) and p.kind != "docx":     # превью ещё пишется - страница появится в следующем опросе
                     continue
                 d = asdict(p)
                 d["url"], d["thumb"] = page_url(p.id, False), page_url(p.id, True)
@@ -796,7 +800,7 @@ def _esia_value(d: dict, path: str) -> str:
 
 
 def reference_domain(domains: list[dict], name: str | None = None) -> dict | None:
-    """Домен, с Sd которого сверяется дело: выбранный оператором или первый найденный (физлицо — в приоритете)."""
+    """Домен, с Sd которого сверяется дело: выбранный оператором или первый найденный (физлицо - в приоритете)."""
     found = [d for d in domains if d.get("status") == "found"]
     if name:
         hit = next((d for d in found if d.get("domain") == name), None)
@@ -806,7 +810,7 @@ def reference_domain(domains: list[dict], name: str | None = None) -> dict | Non
 
 
 def matrix(rows: list[dict], domains: list[dict], domain: str | None = None) -> dict:
-    """Строки сверки для рабочего места. rows — service.table_rows (+ crop_url), domains — DomainInfo.to_dict()."""
+    """Строки сверки для рабочего места. rows - service.table_rows (+ crop_url), domains - DomainInfo.to_dict()."""
     ref = reference_domain(domains, domain)
     by_id = {r["id"]: r for r in rows}
     out = []
@@ -823,7 +827,7 @@ def matrix(rows: list[dict], domains: list[dict], domain: str | None = None) -> 
             if len(admins) > 1:
                 sd += " · администраторы разные"
         if rid == "fio" and ref and ref.get("kind") != "person":
-            sd = f"{ref.get('holder') or ''} ({ref.get('kind_ru') or 'не физлицо'}) — сверка вручную"
+            sd = f"{ref.get('holder') or ''} ({ref.get('kind_ru') or 'не физлицо'}) - сверка вручную"
         if not (r or sd or es):
             continue
         base_name, base = next(((n, v) for n, v in (("sd", sd), ("pas", pas), ("esia", es)) if v), ("", ""))
@@ -848,8 +852,8 @@ def matrix(rows: list[dict], domains: list[dict], domain: str | None = None) -> 
 
 def field_boxes(ws: Workspace, res) -> dict:
     """Где поля заявления на страницах: {строка: [{page, box: [x0, y0, x1, y1]} | {page, text}]}.
-    box — в px показанного превью (с учётом поворота страницы). Скан — область поля на бланке (application.debug
-    boxes), PDF с текстом — поиск значения на странице, DOCX — текст для подсветки."""
+    box - в px показанного превью (с учётом поворота страницы). Скан - область поля на бланке (application.debug
+    boxes), PDF с текстом - поиск значения на странице, DOCX - текст для подсветки."""
     from .service import rows_for
     out: dict[str, list] = {}
     if res is None or res.app is None:
@@ -947,14 +951,14 @@ def gosuslugi_data(res) -> dict:
 
 
 # (0.8.2) Безбумажные операции: поля формы «Добавить новый документ от пользователя» (manager /userdocs/loa_add,
-# доверенность), которые вписывает расширение. passport_inn — «Номер паспорта (физ.лицо) / Код cтраны регистрации
-# компании (RU, ...)», fullname — «ФИО Администратора / ИНН компании», email — «Высылать письма об окончании срока
-# доверенности на указанный email», customer_phone — «Телефон (опционально)».
+# доверенность), которые вписывает расширение. passport_inn - «Номер паспорта (физ.лицо) / Код cтраны регистрации
+# компании (RU, ...)», fullname - «ФИО Администратора / ИНН компании», email - «Высылать письма об окончании срока
+# доверенности на указанный email», customer_phone - «Телефон (опционально)».
 LOA_FIELDS = ("passport_inn", "fullname", "email", "customer_phone")
 
 
 def loa_doc(res) -> dict:
-    """(0.8.2) Паспорт и ФИО из документов дела (паспорт, иначе заявление) — запасной источник для доверенности,
+    """(0.8.2) Паспорт и ФИО из документов дела (паспорт, иначе заявление) - запасной источник для доверенности,
     если у доменов нет Sd: {"passport": "4012 654321", "fio": "Иванов Иван Иванович"}."""
     out = {"passport": "", "fio": ""}
     if res is None:
@@ -1044,12 +1048,14 @@ class WorkspaceManager:
         self.lock = threading.Lock()
 
     def create(self, uploads: list[tuple[str, Path]], state: dict | None = None) -> Workspace:
-        """Новое дело. uploads может быть пустым (0.8.1): окна рабочего места — сразу, файлы — потом (add)."""
+        """Новое дело. uploads может быть пустым (0.8.1): окна рабочего места - сразу, файлы - потом (add)."""
         ws_id = uuid.uuid4().hex[:10]
         folder = self.root / f"{datetime.now():%Y%m%d_%H%M%S}_{ws_id}"
         (folder / "files").mkdir(parents=True, exist_ok=True)
         ws = Workspace(ws_id, folder)
         ws.state.update({k: v for k, v in (state or {}).items() if k in ("ticket", "operation", "via")})
+        if ws.state.get("operation"):
+            ws.state["operation"] = wsconfig.op_title(ws.state["operation"])
         moved = self._move_in(ws, uploads)
         ws.status = "unpacking"
         ws.save()
@@ -1061,7 +1067,7 @@ class WorkspaceManager:
     def add(self, ws: Workspace, uploads: list[tuple[str, Path]]) -> Workspace:
         """(0.8.1) Файлы в открытое дело: разбираются только новые страницы, затем проверка запускается заново."""
         if self.busy(ws):
-            raise WsError("дело ещё разбирается — добавьте файлы, когда разбор закончится")
+            raise WsError("дело ещё разбирается - добавьте файлы, когда разбор закончится")
         moved = self._move_in(ws, uploads)
         ws.status, ws.error = "unpacking", ""
         ws.save()
@@ -1095,7 +1101,7 @@ class WorkspaceManager:
             ws.classify(start=npg)
             ws.status = "ready"
             n = {c: sum(1 for p in ws.pages if p.cls == c) for c in CLASSES}
-            ws.logmsg("Страницы разобраны: " + ", ".join(f"{CLASSES[c].lower()} — {k}" for c, k in n.items() if k)
+            ws.logmsg("Страницы разобраны: " + ", ".join(f"{CLASSES[c].lower()} - {k}" for c, k in n.items() if k)
                       if ws.pages else "Дело без файлов: архив или файлы можно перетащить в рабочее место позже")
             ws.save()
             if self.on_ready:
@@ -1122,7 +1128,7 @@ class WorkspaceManager:
         return ws
 
     def note_result_dir(self, ws: Workspace, case_dir) -> None:
-        """(0.8.0) Запомнить папку результата проверки дела — она удаляется вместе с делом."""
+        """(0.8.0) Запомнить папку результата проверки дела - она удаляется вместе с делом."""
         case_dir = str(Path(case_dir).resolve()) if case_dir else ""
         if case_dir and case_dir not in ws.result_dirs:
             with ws.lock:
@@ -1139,7 +1145,7 @@ class WorkspaceManager:
         if ws is None:
             raise WsError("нет такого дела")
         if self.busy(ws):
-            raise WsError("дело ещё разбирается — удалите его, когда разбор закончится")
+            raise WsError("дело ещё разбирается - удалите его, когда разбор закончится")
         out_root = self.root.parent.resolve()
         removed = []
         targets = [ws.dir] + [Path(d) for d in (ws.result_dirs + list(extra_dirs or []))]
@@ -1179,5 +1185,5 @@ class WorkspaceManager:
                 continue
             st = data.get("state") or {}
             out.append({"id": data.get("id"), "created": data.get("created"), "ticket": st.get("ticket", ""),
-                        "operation": st.get("operation", ""), "files": [x.get("name") for x in data.get("files", [])][:4]})
+                        "operation": wsconfig.op_title(st.get("operation", "")), "files": [x.get("name") for x in data.get("files", [])][:4]})
         return out

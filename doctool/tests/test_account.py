@@ -1,5 +1,5 @@
 """Смена владельца ЛК (account.py): что ввели в «Пользователь», сверка базовой анкеты с заявлением,
-подготовка значений для автозаполнения — без сети и без браузера."""
+подготовка значений для автозаполнения - без сети и без браузера."""
 import sys
 from pathlib import Path
 
@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from doctool import account  # noqa: E402
 
-# Ответ расширения на account — как content/manager.js возвращает его на обезличенных страницах manager
+# Ответ расширения на account - как content/manager.js возвращает его на обезличенных страницах manager
 BA = {"ru_pp.birth_date": "15.03.1990", "ru_pp.country": "RU", "ru_pp.e_mail": "person@example.com", "ru_pp.fax": "",
       "ru_pp.p_addr_city": "Москва", "ru_pp.passport_date": "20.04.2010", "ru_pp.passport_number": "4509123456",
       "ru_pp.passport_place": "ГУ МВД РОССИИ ПО Г. МОСКВЕ", "ru_pp.person_r_name": "Пётр",
@@ -38,12 +38,12 @@ def test_account_from_extension():
     assert a["ba"]["person_r_surname"] == "Тестов" and a["ba"]["passport_number"] == "4509123456"
     assert a["esia_account"] == "Идентификация через Госуслуги пройдена" and a["servicing_org"] == 'ООО "РДХ"'
     assert not a["notes"]
-    # с 0.7.3 у юрлица и ИП тоже автозаполнение — пометки «только для физлиц» нет; формы анкеты — обе
+    # с 0.7.3 у юрлица и ИП тоже автозаполнение - пометки «только для физлиц» нет; формы анкеты - обе
     org = account.account_from_extension({**ACCOUNT_DATA, "runic": {"type": "org", "values": {"org_r": "ООО «Тест»"},
                                                                      "values_pp": {}, "values_org": {"org_r": "ООО «Тест»"}}})
     assert org["type"] == "org" and not org["notes"]
     assert org["runic"] == {"org_r": "ООО «Тест»"} and org["runic_forms"]["org"]["org_r"] == "ООО «Тест»"
-    # без страницы анкеты тип — по группе базовой анкеты и флажку ИП
+    # без страницы анкеты тип - по группе базовой анкеты и флажку ИП
     ip = account.account_from_extension({**ACCOUNT_DATA, "runic": {}, "is_entrepreneur": True})
     assert ip["type"] == "ip"
 
@@ -62,7 +62,7 @@ def test_compare_owner():
     assert r["ok"] == 8 and r["total"] == 9
     empty = account.compare_owner(ba, {"phone": ""})
     assert all(x["status"] == "" for x in empty["rows"]) and empty["total"] == 0
-    # «кем выдан» написан по-разному, но похоже — жёлтый
+    # «кем выдан» написан по-разному, но похоже - жёлтый
     w = account.compare_owner(ba, {"passport_place": "Главное управление МВД России по г. Москве"})
     assert {x["field"]: x["status"] for x in w["rows"]}["passport_place"] in ("warn", "fail")
 
@@ -105,7 +105,7 @@ def test_prepare_fill():
     assert f["phone"] == "+79215551234" and f["e_mail"] == "anna@example.com"
     assert "p_addr_zip" not in f and any("Индекс" in n for n in r["notes"])                  # пусто → останется прежний
     assert set(f) <= {k for k, _ in account.FILL_FIELDS}
-    # гражданство, страна почтового адреса, область, SMS-безопасность — не заполняются
+    # гражданство, страна почтового адреса, область, SMS-безопасность - не заполняются
     assert not {"country", "p_addr_country", "p_addr_area", "sms_security_number"} & set(f)
     # отдельные поля важнее строки «кем и когда выдан»; город и получатель можно задать руками
     r2 = account.prepare_fill({"issued": "ОВД г. Перми, 01.02.2003", "passport_date": "02.02.2003", "city": "Пермь",
@@ -113,7 +113,7 @@ def test_prepare_fill():
     assert r2["fields"]["passport_date"] == "02.02.2003" and r2["fields"]["passport_place"] == "ОВД г. Перми"
     assert r2["fields"]["p_addr_city"] == "Пермь" and r2["fields"]["p_addr_recipient"] == "Иванов И. И."
     assert r2["fields"]["p_addr_zip"] == "614000"
-    # иностранный паспорт — как есть, с пометкой
+    # иностранный паспорт - как есть, с пометкой
     r3 = account.prepare_fill({"passport": "AB 1234567"})
     assert r3["fields"]["passport_number"] == "AB 1234567" and r3["notes"]
     assert account.prepare_fill({})["fields"] == {}

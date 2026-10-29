@@ -1,6 +1,6 @@
-"""WHOIS: статус домена в реестре — для доменов, которых нет в manager.
+"""WHOIS: статус домена в реестре - для доменов, которых нет в manager.
 
-Запрос идёт напрямую к WHOIS-серверу реестра (TCP-порт 43). Для .RU/.SU/.РФ — whois.tcinet.ru.
+Запрос идёт напрямую к WHOIS-серверу реестра (TCP-порт 43). Для .RU/.SU/.РФ - whois.tcinet.ru.
 Для остальных зон сервер берётся из whois.iana.org; если порт 43 закрыт, для них пробуется RDAP
 (https://rdap.org). Наружу уходит только имя домена.
 """
@@ -66,7 +66,7 @@ class WhoisInfo:
             parts = [f"регистратор {self.registrar}" if self.registrar else "",
                      f"статус {self.state}" if self.state else "",
                      f"оплачен до {self.paid_till[:10]}" if self.paid_till else ""]
-            return "WHOIS: зарегистрирован" + (" — " + ", ".join(p for p in parts if p) if any(parts) else "")
+            return "WHOIS: зарегистрирован" + (" - " + ", ".join(p for p in parts if p) if any(parts) else "")
         return f"WHOIS недоступен: {self.error}" if self.error else "WHOIS не выполнялся"
 
 
@@ -89,7 +89,7 @@ def _query(server: str, query: str, timeout: float) -> str:
 
 
 class NoSuchZone(Exception):
-    """Доменной зоны нет в корневой зоне (ответ IANA) — например, «.pd» вместо «.рф» из-за ошибки распознавания."""
+    """Доменной зоны нет в корневой зоне (ответ IANA) - например, «.pd» вместо «.рф» из-за ошибки распознавания."""
 
 
 def server_for(tld: str, timeout: float = 8) -> str:
@@ -154,8 +154,8 @@ def _rdap(domain: str, timeout: float) -> WhoisInfo:
 
 
 def lookup(domain: str, timeout: float = 10) -> WhoisInfo:
-    """WHOIS по домену. Ошибки сети не выбрасываются — возвращается status="error".
-    Несуществующая зона («.pd» из-за ошибки распознавания) — тоже status="error", а не «свободен»
+    """WHOIS по домену. Ошибки сети не выбрасываются - возвращается status="error".
+    Несуществующая зона («.pd» из-за ошибки распознавания) - тоже status="error", а не «свободен»
     (RDAP на неизвестную зону отвечает 404, и раньше такой домен считался свободным)."""
     d = parsers.to_punycode(domain.strip().lower().rstrip("."))
     tld = d.rsplit(".", 1)[-1]
@@ -167,14 +167,14 @@ def lookup(domain: str, timeout: float = 10) -> WhoisInfo:
         return parse(domain, _query(server, d, timeout), server)
     except NoSuchZone:
         return WhoisInfo(domain=domain, status="error", server="whois.iana.org",
-                         error=f"зоны .{tld} не существует — проверьте написание домена",
+                         error=f"зоны .{tld} не существует - проверьте написание домена",
                          manual_url=MANUAL_URL.format(domain=domain))
     except OSError as e:
-        err = f"{server or 'whois'}:43 — {e}"
+        err = f"{server or 'whois'}:43 - {e}"
     if tld not in ("ru", "su", "xn--p1ai"):
         try:
             return _rdap(d, timeout)
         except Exception as e:  # noqa: BLE001
-            err += f"; RDAP — {e}"
+            err += f"; RDAP - {e}"
     return WhoisInfo(domain=domain, status="error", server=server, error=err + " (возможно, порт 43 закрыт в сети)",
                      manual_url=MANUAL_URL.format(domain=domain))

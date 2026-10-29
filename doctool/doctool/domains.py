@@ -1,23 +1,23 @@
 """Данные доменов из manager (Sd и S) и их сверка с заявлением и паспортом.
 
 Данные приходят от расширения Chrome «PySimpleManager» (см. manager_bridge.py и doctool_extension/).
-Этот модуль не зависит от способа получения данных: на входе — словари от расширения, на выходе —
+Этот модуль не зависит от способа получения данных: на входе - словари от расширения, на выходе -
 строки таблицы доменов и проверки для вердикта.
 
-Домены в таблице (веб-интерфейс, отчёт) выводятся по «проблемности» — см. PROBLEMS и sort_by_problem():
+Домены в таблице (веб-интерфейс, отчёт) выводятся по «проблемности» - см. PROBLEMS и sort_by_problem():
 сначала свободные по WHOIS, затем те, у которых данные в Sd не сходятся с документами, и т. д.
-В выгрузке (export.json) порядок доменов — как в заявлении.
+В выгрузке (export.json) порядок доменов - как в заявлении.
 
 С 0.6.0 у доменов физлиц есть статус идентификации через Госуслуги (ЕСИА): расширение открывает ссылку
 «Идентификация через Госуслуги» со страницы Sd домена (идентификация относится к администратору домена,
-а не к аккаунту), берёт поле state последней записи и файл данных ЕСИА. Сверка Sd ↔ ЕСИА — esia_compare().
-С 0.7.2 — и у доменов юрлиц (ru_org): ИНН, КПП, название организации, юридический адрес (дом, улица, индекс).
+а не к аккаунту), берёт поле state последней записи и файл данных ЕСИА. Сверка Sd ↔ ЕСИА - esia_compare().
+С 0.7.2 - и у доменов юрлиц (ru_org): ИНН, КПП, название организации, юридический адрес (дом, улица, индекс).
 На вердикт дела ЕСИА не влияет.
 
-С 0.7.6 со страницы S берутся комментарий администратора (admin_comment — в таблице буква «К») и логин аккаунта,
+С 0.7.6 со страницы S берутся комментарий администратора (admin_comment - в таблице буква «К») и логин аккаунта,
 а проверки домена для рабочего места (domain_flags: «стоп / внимание / к сведению») задаются в config/workspace.yaml.
 
-С 0.8.4 — MO (matches owner, «matches account owner contacts»): сверка Sd домена с базовой анкетой владельца
+С 0.8.4 - MO (matches owner, «matches account owner contacts»): сверка Sd домена с базовой анкетой владельца
 аккаунта, в котором домен лежит (owner_compare, owner_summary). На вердикт, как и ЕСИА, не влияет.
 """
 from __future__ import annotations
@@ -42,7 +42,7 @@ _RANK = {FAIL: 4, REVIEW: 3, WARN: 2, INFO: 1, OK: 0, "": -1}
 
 def split_domains(text: str) -> list[str]:
     """Список доменов из строки, введённой вручную: через пробел, запятую, точку с запятой или с новой строки.
-    Имя, перенесённое на следующую строку после дефиса («business-⏎dvd.ru» — так бывает при копировании
+    Имя, перенесённое на следующую строку после дефиса («business-⏎dvd.ru» - так бывает при копировании
     из PDF), сначала склеивается."""
     out = []
     for tok in re.split(r"[\s,;]+", parsers.join_wrapped_domains(text or "")):
@@ -81,7 +81,7 @@ def split_emails(s: str) -> list[str]:
 
 
 def intl_holder(sd: dict) -> str:
-    """Администратор (владелец) домена международной зоны — группа o_* в Sd: организация или ФИО."""
+    """Администратор (владелец) домена международной зоны - группа o_* в Sd: организация или ФИО."""
     g = sd.get
     org = g("o_company_ru") or g("o_company")
     if org:
@@ -138,7 +138,7 @@ class DomainInfo:
 
     @property
     def admin_comment(self) -> str:
-        """(0.7.6) Комментарий администратора из S (поле admin_comment): в таблице — буква «К»."""
+        """(0.7.6) Комментарий администратора из S (поле admin_comment): в таблице - буква «К»."""
         return (self.s.get("admin_comment") or "").strip()
 
     @property
@@ -169,9 +169,9 @@ class DomainInfo:
 
 # ------------------------------------------------------------------ «проблемность» домена (порядок вывода)
 
-# (код, заголовок группы в таблице) — сверху вниз от самого проблемного
+# (код, заголовок группы в таблице) - сверху вниз от самого проблемного
 PROBLEMS = (
-    ("free", "Свободен по WHOIS — домена нет в реестре"),
+    ("free", "Свободен по WHOIS - домена нет в реестре"),
     ("mismatch", "Данные в Sd не сходятся с документами"),
     ("not_found", "Нет в manager (занят у другого регистратора или WHOIS не проверен)"),
     ("error", "Данные из manager не получены"),
@@ -196,7 +196,7 @@ def problem(info: "DomainInfo") -> str:
 
 
 def sort_by_problem(items: list) -> list:
-    """Домены по убыванию проблемности; внутри группы — порядок заявления. Принимает DomainInfo или
+    """Домены по убыванию проблемности; внутри группы - порядок заявления. Принимает DomainInfo или
     их to_dict() (по ключу problem_rank)."""
     def rank(x):
         if isinstance(x, dict):
@@ -224,7 +224,7 @@ def from_extension(domain: str, reply: dict) -> DomainInfo:
     info.login = str(data.get("login") or info.s.get("login") or "")
     info.account_email = str(data.get("account_email") or "")
     info.esia = data.get("esia") or {}
-    # (0.8.4) анкета владельца аккаунта для MO; нет ключа — расширение старше 0.8.4
+    # (0.8.4) анкета владельца аккаунта для MO; нет ключа - расширение старше 0.8.4
     info.owner = (data.get("account_owner") or {}) if "account_owner" in data else {"missing": True}
     info.provider = info.s.get("provider", "")
     info.group = sd.get("group", "") or info.s.get("contype", "")
@@ -258,7 +258,7 @@ def _days_since(s: str, today: date) -> int | None:
 
 
 def domain_flags(info: "DomainInfo", cfg: dict | None = None, today: date | None = None) -> list[dict]:
-    """Проверки домена (config/workspace.yaml, раздел domain_checks): [{code, level, text}] — stop / warn / info.
+    """Проверки домена (config/workspace.yaml, раздел domain_checks): [{code, level, text}] - stop / warn / info.
     Только для найденных доменов; на вердикт дела не влияют (их видит оператор на рабочем месте и в таблице)."""
     if info.status != FOUND:
         return []
@@ -303,7 +303,7 @@ def domain_flags(info: "DomainInfo", cfg: dict | None = None, today: date | None
     if info.kind in ("person", "org") and (info.esia or {}).get("count") == 0:
         add("esia_none")
     if info.bill_owner and info.login and info.bill_owner.strip().lower() != info.login.strip().lower():
-        add("bill_owner_differs", f"счёт — {info.bill_owner}, услуга — {info.login}")
+        add("bill_owner_differs", f"счёт - {info.bill_owner}, услуга - {info.login}")
     return out
 
 
@@ -314,7 +314,7 @@ def flags_level(flags: list[dict]) -> str:
 
 # ------------------------------------------------------------------ ЕСИА (идентификация через Госуслуги)
 
-# Sd (группа ru_pp) ↔ файл данных ЕСИА. В ЕСИА last_name — фамилия, middle_name — отчество.
+# Sd (группа ru_pp) ↔ файл данных ЕСИА. В ЕСИА last_name - фамилия, middle_name - отчество.
 # (поле Sd, поле ЕСИА, название, вид значения для fieldnorm.same)
 ESIA_MAP = (
     ("person_r_surname", "last_name", "Фамилия", "text"),
@@ -328,7 +328,7 @@ ESIA_MAP = (
     ("passport_place", "rf_passport.issued_by", "Кем выдан", "issuer"),
 )
 # Sd (группа ru_org) ↔ файл данных ЕСИА организации (0.7.2). Название: «ООО» = «Общество с ограниченной
-# ответственностью» и т. п. (fieldnorm.same_org). Дом в Sd — address_r_house; если отдельно заполнены корпус
+# ответственностью» и т. п. (fieldnorm.same_org). Дом в Sd - address_r_house; если отдельно заполнены корпус
 # (Sd address_r_frame, ЕСИА frame) или строение (address_r_building, building), они тоже учитываются (_house_variants).
 ESIA_MAP_ORG = (
     ("code", "inn", "ИНН", "digits"),
@@ -361,14 +361,14 @@ def _house_variants(house, frame, building) -> list[str]:
 
 def esia_compare(info: "DomainInfo") -> list[dict]:
     """Строки сверки Sd ↔ ЕСИА: [{field, esia_field, title, sd, esia, status, detail}] (status: ok/warn/fail/"").
-    Физлицо (ru_pp) — ESIA_MAP, юрлицо (ru_org) — ESIA_MAP_ORG."""
+    Физлицо (ru_pp) - ESIA_MAP, юрлицо (ru_org) - ESIA_MAP_ORG."""
     data = (info.esia or {}).get("data") or {}
     if info.kind not in ("person", "org") or not data:
         return []
     rows = []
     la = data.get("legal_address") or {}
     for sd_key, es_key, title, kind in (ESIA_MAP if info.kind == "person" else ESIA_MAP_ORG):
-        if sd_key == "address_r_house":      # корпус и строение бывают отдельными полями — и в Sd, и в ЕСИА
+        if sd_key == "address_r_house":      # корпус и строение бывают отдельными полями - и в Sd, и в ЕСИА
             sd_vars = _house_variants(info.sd.get(sd_key), info.sd.get("address_r_frame"), info.sd.get("address_r_building"))
             es_vars = _house_variants(la.get("house"), la.get("frame"), la.get("building"))
         else:
@@ -387,7 +387,7 @@ def esia_compare(info: "DomainInfo") -> list[dict]:
 
 
 def esia_summary(info: "DomainInfo") -> dict:
-    """Итог ЕСИА домена: {status, state, text, rows}. status — ключ ESIA_STATUS_RU """
+    """Итог ЕСИА домена: {status, state, text, rows}. status - ключ ESIA_STATUS_RU """
     e = info.esia or {}
     out = {"status": "", "state": e.get("state", "") or "", "text": "", "rows": []}
     if info.status != FOUND or info.kind not in ("person", "org"):
@@ -415,7 +415,7 @@ def esia_summary(info: "DomainInfo") -> dict:
         elif bad:
             out["status"], out["text"] = "mismatch", f"Sd ≠ ЕСИА: {', '.join(bad)}"
         elif warn:
-            out["status"], out["text"] = "warn", f"Sd ≈ ЕСИА: {', '.join(warn)} — написано по-разному"
+            out["status"], out["text"] = "warn", f"Sd ≈ ЕСИА: {', '.join(warn)} - написано по-разному"
         else:
             out["status"], out["text"] = "match", f"Sd = ЕСИА ({n} из {n})"
     if not out["text"]:
@@ -429,9 +429,9 @@ def esia_summary(info: "DomainInfo") -> dict:
 
 # Sd домена ↔ базовая анкета владельца аккаунта, в котором лежит домен («matches account owner contacts»). Анкету
 # расширение берёт из скрытого блока страницы «Данные пользователя» (её же читает ради e-mail аккаунта), а если блока
-# нет — из формы /user/N/runic_details. Поля называются одинаково, кроме паспорта (в Sd серия и номер — отдельно,
-# в анкете — 10 цифр одним полем) и адреса (в Sd улица, дом, корпус, строение, квартира — по полям, в анкете — одной
-# строкой «Садовая, д 3, кв 4»). (поле Sd, поле анкеты, название, вид значения); «@…» — значение Sd собирается
+# нет - из формы /user/N/runic_details. Поля называются одинаково, кроме паспорта (в Sd серия и номер - отдельно,
+# в анкете - 10 цифр одним полем) и адреса (в Sd улица, дом, корпус, строение, квартира - по полям, в анкете - одной
+# строкой «Садовая, д 3, кв 4»). (поле Sd, поле анкеты, название, вид значения); «@…» - значение Sd собирается
 # из нескольких полей (_sd_value).
 MO_MAP = (
     ("person_r_surname", "person_r_surname", "Фамилия", "text"),
@@ -473,7 +473,7 @@ _SD_PARTS = {"@passport": "passport_series + passport_number_short", "@p_addr": 
 
 
 def _sd_address(sd: dict, prefix: str) -> str:
-    """Адрес из полей Sd (улица, дом, корпус, строение, квартира) — так, как он записан в базовой анкете:
+    """Адрес из полей Sd (улица, дом, корпус, строение, квартира) - так, как он записан в базовой анкете:
     «Садовая, д 3, кв 4»."""
     g = lambda k: str(sd.get(f"{prefix}_{k}") or "").strip()  # noqa: E731
     parts = [g("street")]
@@ -493,13 +493,13 @@ def _sd_value(sd: dict, key: str) -> str:
 
 
 def _split_multi(kind: str, v: str) -> list[str]:
-    """Несколько телефонов / e-mail в одном поле (Sd — по строке, в анкете бывает через запятую)."""
+    """Несколько телефонов / e-mail в одном поле (Sd - по строке, в анкете бывает через запятую)."""
     rx = r"[\s,;]+" if kind == "emails" else r"[\n,;]+"
     return [x.strip() for x in re.split(rx, v or "") if x.strip()]
 
 
 def _multi_same(kind: str, a: str, b: str) -> tuple[str, str]:
-    """Телефоны / e-mail: совпадает, если есть общее значение; остальные — в пояснении."""
+    """Телефоны / e-mail: совпадает, если есть общее значение; остальные - в пояснении."""
     one = "phone" if kind == "phones" else "email"
     la, lb = _split_multi(kind, a), _split_multi(kind, b)
     if not la or not lb:
@@ -514,8 +514,8 @@ def _multi_same(kind: str, a: str, b: str) -> tuple[str, str]:
 
 
 def owner_ba(info: "DomainInfo") -> tuple[str, dict]:
-    """Базовая анкета владельца аккаунта: (группа ru_pp / ru_org, {поле: значение}). Группа — та, что заполнена;
-    если заполнены обе — та, что совпадает с группой Sd домена."""
+    """Базовая анкета владельца аккаунта: (группа ru_pp / ru_org, {поле: значение}). Группа - та, что заполнена;
+    если заполнены обе - та, что совпадает с группой Sd домена."""
     groups: dict[str, dict] = {}
     for k, v in ((info.owner or {}).get("ba") or {}).items():
         g, _, f = str(k).partition(".")
@@ -552,10 +552,10 @@ def owner_compare(info: "DomainInfo") -> list[dict]:
     rows = []
     sd_group = "ru_org" if info.kind == "org" else "ru_pp"
     if group != sd_group:
-        # администратор — физлицо, а аккаунт на юрлице (или наоборот): это заведомо разные лица; сверяются только
-        # контакты — они бывают общими (сотрудник организации)
+        # администратор - физлицо, а аккаунт на юрлице (или наоборот): это заведомо разные лица; сверяются только
+        # контакты - они бывают общими (сотрудник организации)
         rows.append({"field": "group", "ba_field": "group", "title": "Тип контактов", "sd": sd_group, "ba": group,
-                     "status": fieldnorm.FAIL, "detail": f"администратор — {KIND_RU[info.kind]}, владелец аккаунта — "
+                     "status": fieldnorm.FAIL, "detail": f"администратор - {KIND_RU[info.kind]}, владелец аккаунта - "
                                                          f"{'юрлицо' if group == 'ru_org' else 'физлицо'}"})
         mapping = [m for m in MO_MAP if m[0] in ("phone", "e_mail")]
     else:
@@ -575,7 +575,7 @@ def owner_compare(info: "DomainInfo") -> list[dict]:
 
 
 def owner_summary(info: "DomainInfo") -> dict:
-    """Итог MO домена: {status, text, rows, type}. status — ключ MO_STATUS_RU; пусто — сверка не выполнялась
+    """Итог MO домена: {status, text, rows, type}. status - ключ MO_STATUS_RU; пусто - сверка не выполнялась
     (домен не найден, другая зона, данные загружены до 0.8.4)."""
     o = info.owner or {}
     out = {"status": "", "text": "", "rows": [], "type": ""}
@@ -583,7 +583,7 @@ def owner_summary(info: "DomainInfo") -> dict:
         return out
     out["type"] = owner_type(info)
     if o.get("missing"):
-        out["status"], out["text"] = "no_data", "анкета владельца не загружена — обновите расширение до 0.8.4"
+        out["status"], out["text"] = "no_data", "анкета владельца не загружена - обновите расширение до 0.8.4"
     elif o.get("error"):
         out["status"], out["text"] = "error", f"ошибка: {o['error']}"
     elif not owner_ba(info)[1]:
@@ -601,7 +601,7 @@ def owner_summary(info: "DomainInfo") -> dict:
         elif bad:
             out["status"], out["text"] = "mismatch", f"Sd ≠ анкета: {', '.join(bad)}"
         elif warn:
-            out["status"], out["text"] = "warn", f"Sd ≈ анкета: {', '.join(warn)} — написано по-разному"
+            out["status"], out["text"] = "warn", f"Sd ≈ анкета: {', '.join(warn)} - написано по-разному"
         else:
             out["status"], out["text"] = "match", f"Sd = анкета ({n} из {n})"
     return out
@@ -610,7 +610,7 @@ def owner_summary(info: "DomainInfo") -> dict:
 # ------------------------------------------------------------------ сверка одного домена
 
 def reference(app: Extraction | None, pas: Extraction | None, previous: list | None = None) -> dict:
-    """С чем сверять Sd: данные заявителя — из паспорта, если он есть, иначе из заявления."""
+    """С чем сверять Sd: данные заявителя - из паспорта, если он есть, иначе из заявления."""
     ag = Fields(app).get if app is not None else (lambda k, d=None: d)
     pg = pas.get if pas is not None else (lambda k, d=None: d)
     fio = " ".join(x for x in (pg("surname"), pg("given_name"), pg("patronymic")) if x)
@@ -660,10 +660,10 @@ def compare_domain(info: DomainInfo, ref: dict) -> None:
                 rows.append(_row("passport", "Паспорт", sd_sn, doc_sn, OK))
             elif _digits(sd_sn) in {_digits(x) for x in ref["previous"]}:
                 rows.append(_row("passport", "Паспорт", sd_sn, doc_sn, INFO,
-                                 "в Sd прежний паспорт (есть в «ранее выданных») — данные в Sd нужно обновить"))
+                                 "в Sd прежний паспорт (есть в «ранее выданных») - данные в Sd нужно обновить"))
             elif person_ok:
                 rows.append(_row("passport", "Паспорт", sd_sn, doc_sn, INFO,
-                                 "в Sd другой паспорт: вероятно, паспорт заменён — данные в Sd нужно обновить"))
+                                 "в Sd другой паспорт: вероятно, паспорт заменён - данные в Sd нужно обновить"))
             else:
                 rows.append(_row("passport", "Паспорт", sd_sn, doc_sn, FAIL, "другой паспорт и другое лицо"))
         else:
@@ -685,10 +685,10 @@ def compare_domain(info: DomainInfo, ref: dict) -> None:
             same = _digits(inn_sd) == _digits(inn_doc)
             rows.append(_row("code", "ИНН", inn_sd, inn_doc, OK if same else FAIL))
         rows.append(_row("org_r", "Организация", org, ref["fio"], REVIEW,
-                         "домен зарегистрирован на организацию, заявление — от физлица: сверьте вручную"))
+                         "домен зарегистрирован на организацию, заявление - от физлица: сверьте вручную"))
     else:
         rows.append(_row("group", "Тип контактов", info.group, "", REVIEW,
-                         f"тип контактов «{info.group or '?'}» не поддерживается — сверьте вручную"))
+                         f"тип контактов «{info.group or '?'}» не поддерживается - сверьте вручную"))
     if info.trustee.lower() == "да":
         rows.append(_row("trustee", "Trustee", "Да", "", INFO, "подключена услуга Trustee"))
     info.compare = rows
@@ -698,7 +698,7 @@ def compare_domain(info: DomainInfo, ref: dict) -> None:
 # ------------------------------------------------------------------ проверки для вердикта
 
 CHECK_FOUND = "Домены в manager"
-CHECK_ADMIN = "Заявитель — администратор доменов (Sd)"
+CHECK_ADMIN = "Заявитель - администратор доменов (Sd)"
 CHECK_PASSPORT = "Паспорт в Sd"
 CHECK_SAME = "Администратор у доменов один"
 CHECK_NAMES = (CHECK_FOUND, CHECK_ADMIN, CHECK_PASSPORT, CHECK_SAME)
@@ -739,7 +739,7 @@ def domain_checks(items: list[DomainInfo], ref: dict) -> tuple[list[Check], set[
     if pas_rows:
         st = WARN if any(r["status"] == WARN for _, r in pas_rows) else INFO
         checks.append(Check(CHECK_PASSPORT, st, ref["passport"], "; ".join(f"{i.domain}: {i.passport}" for i, _ in pas_rows),
-                            "; ".join(f"{i.domain}: {r['title']} — {r['detail'] or (r['sd'] + ' ≠ ' + r['doc'])}"
+                            "; ".join(f"{i.domain}: {r['title']} - {r['detail'] or (r['sd'] + ' ≠ ' + r['doc'])}"
                                       for i, r in pas_rows)))
     elif persons and all(any(r["field"] == "passport" and r["status"] == OK for r in i.compare) for i in persons):
         checks.append(Check(CHECK_PASSPORT, OK, ref["passport"], persons[0].passport, "паспорт в Sd тот же"))
@@ -751,22 +751,22 @@ def domain_checks(items: list[DomainInfo], ref: dict) -> tuple[list[Check], set[
 
 
 def _check_found(items: list[DomainInfo]) -> Check:
-    """«Домены в manager»: все ли домены найдены (не найденные — свободные по WHOIS первыми)."""
+    """«Домены в manager»: все ли домены найдены (не найденные - свободные по WHOIS первыми)."""
     found = [i for i in items if i.status == FOUND]
     missing = [i for i in items if i.status == NOT_FOUND]
     errors = [i for i in items if i.status == ERROR]
     if missing:
-        missing = sort_by_problem(missing)    # свободные по WHOIS — первыми
+        missing = sort_by_problem(missing)    # свободные по WHOIS - первыми
         det = "; ".join(f"{i.domain}" + (f" ({_whois_short(i.whois)})" if i.whois else "") for i in missing)
         return Check(CHECK_FOUND, FAIL, ", ".join(i.domain for i in items), "", f"не найдены в manager: {det}")
     if errors:
         return Check(CHECK_FOUND, REVIEW, ", ".join(i.domain for i in items), "",
-                     "не удалось получить данные: " + "; ".join(f"{i.domain} — {i.error}" for i in errors))
+                     "не удалось получить данные: " + "; ".join(f"{i.domain} - {i.error}" for i in errors))
     return Check(CHECK_FOUND, OK, ", ".join(i.domain for i in items), "", f"найдены все ({len(found)})")
 
 
 def _check_same(found: list[DomainInfo]) -> Check | None:
-    """«Администратор у доменов один» — по паспорту (физлицо) или ИНН (юрлицо)."""
+    """«Администратор у доменов один» - по паспорту (физлицо) или ИНН (юрлицо)."""
     if len(found) < 2:
         return None
     keys = {(i.kind, _digits(i.passport) or names.norm(i.fio)) if i.kind == "person"
@@ -794,7 +794,7 @@ def summary_checks(items: list[DomainInfo]) -> list[Check]:
             for i in items:
                 if i.status == FOUND:
                     groups[i.holder or "(не заполнено)"] = groups.get(i.holder or "(не заполнено)", 0) + 1
-            c.passport = "; ".join(f"{h} — {n}" for h, n in groups.items())
+            c.passport = "; ".join(f"{h} - {n}" for h, n in groups.items())
     return out
 
 
@@ -827,7 +827,7 @@ def lookup_domains(request, domains: list[str], log=print, whois_lookup=None, ca
                    timeout: float = 240, task: str = "") -> list[DomainInfo]:
     """Загружает данные доменов по одному. request(cmd, params, timeout, on_progress) → ответ расширения
     (см. manager_bridge.ExtensionBridge.request_sync). whois_lookup(domain) → WhoisInfo для ненайденных.
-    task — номер загрузки: в её пределах расширение читает страницу и файл ЕСИА одной персоны один раз."""
+    task - номер загрузки: в её пределах расширение читает страницу и файл ЕСИА одной персоны один раз."""
     out: list[DomainInfo] = []
     stop_reason = ""
     for n, d in enumerate(domains, 1):
@@ -848,22 +848,22 @@ def lookup_domains(request, domains: list[str], log=print, whois_lookup=None, ca
             reply = {"ok": False, "error": {"code": "timeout", "message": "расширение не ответило вовремя"}}
         info = from_extension(d, reply)
         if info.status == FOUND:
-            log(f"manager: {uni} — найден, {KIND_RU.get(info.kind, '?')}, {info.holder or '—'}, provider {info.provider or '—'}")
+            log(f"manager: {uni} - найден, {KIND_RU.get(info.kind, '?')}, {info.holder or '-'}, provider {info.provider or '-'}")
             es = esia_summary(info)
             if es["status"]:
-                log(f"manager: {uni} — ЕСИА: {es['text']}")
+                log(f"manager: {uni} - ЕСИА: {es['text']}")
             mo = owner_summary(info)
             if mo["status"]:
-                log(f"manager: {uni} — MO (владелец аккаунта #{info.account or '?'}): {mo['text']}")
+                log(f"manager: {uni} - MO (владелец аккаунта #{info.account or '?'}): {mo['text']}")
         elif info.status == NOT_FOUND:
-            log(f"manager: {uni} — не найден в manager")
+            log(f"manager: {uni} - не найден в manager")
             if whois_lookup is not None:
                 log(f"WHOIS: {uni}…")
                 w = whois_lookup(d)
                 info.whois = w.to_dict()
                 log(w.summary)
         else:
-            log(f"[!] manager: {uni} — {info.error}")
+            log(f"[!] manager: {uni} - {info.error}")
             if info.error_code in ("not_logged_in", "no_extension"):
                 stop_reason = info.error
         out.append(info)

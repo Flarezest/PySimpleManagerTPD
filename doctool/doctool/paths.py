@@ -2,14 +2,14 @@
 
 Два режима:
 
-- **Запуск из исходников** (`python -m doctool …`, `doctool_web.bat`) — как до 0.7.5: результаты в `results/`
-  текущей папки, бланки — `forms/`, правила — `config/case_types.yaml` рядом с пакетом.
-- **Установленная программа** (сборка PyInstaller) или переменная `DOCTOOL_HOME` — папка данных пользователя:
+- **Запуск из исходников** (`python -m doctool …`, `doctool_web.bat`) - как до 0.7.5: результаты в `results/`
+  текущей папки, бланки - `forms/`, правила - `config/case_types.yaml` рядом с пакетом.
+- **Установленная программа** (сборка PyInstaller) или переменная `DOCTOOL_HOME` - папка данных пользователя:
   `Документы/PySimpleManager` (или путь из `DOCTOOL_HOME`):
 
       results/                 результаты проверок и реестр_проверок.xlsx
       forms/<id>/              свои модули заявлений; модуль с тем же id заменяет встроенный
-      config/case_types.yaml   свои типы заявлений и правила вердикта (если файла нет — встроенные)
+      config/case_types.yaml   свои типы заявлений и правила вердикта (если файла нет - встроенные)
       config/workspace.yaml    (0.7.6) своя строка таблицы и проверки доменов рабочего места
       ПРОЧТИ.txt               что где лежит
 
@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 APP_FOLDER = "PySimpleManager"
-# корень программы: forms/, config/ (в сборке PyInstaller — папка _internal)
+# корень программы: forms/, config/ (в сборке PyInstaller - папка _internal)
 APP_DIR = Path(__file__).resolve().parent.parent
 FROZEN = bool(getattr(sys, "frozen", False))
 BUNDLED_FORMS = APP_DIR / "forms"
@@ -69,13 +69,13 @@ def documents_dir() -> Path:
             found = _windows_documents()
         elif sys.platform.startswith("linux"):
             found = _xdg_documents()
-    except Exception:                       # не мешаем запуску: ниже — обычная папка Documents
+    except Exception:                       # не мешаем запуску: ниже - обычная папка Documents
         found = None
     return found or Path.home() / "Documents"
 
 
 def user_dir() -> Path | None:
-    """Папка данных пользователя или None (запуск из исходников без DOCTOOL_HOME — всё как до 0.7.5)."""
+    """Папка данных пользователя или None (запуск из исходников без DOCTOOL_HOME - всё как до 0.7.5)."""
     env = os.environ.get("DOCTOOL_HOME")
     if env:
         return Path(env).expanduser()
@@ -117,7 +117,7 @@ def workspace_config_file() -> Path:
 
 
 def ensure_user_dir() -> Path | None:
-    """Создаёт папку данных (results, forms, config) и ПРОЧТИ.txt. None — режим исходников."""
+    """Создаёт папку данных (results, forms, config) и ПРОЧТИ.txt. None - режим исходников."""
     u = user_dir()
     if u is None:
         return None
@@ -128,7 +128,7 @@ def ensure_user_dir() -> Path | None:
     readme = u / README_NAME
     try:
         if not readme.exists() or readme.read_text(encoding="utf-8-sig") != text:
-            readme.write_text(text, encoding="utf-8-sig")      # с BOM — чтобы Блокнот не путал кодировку
+            readme.write_text(text, encoding="utf-8-sig")      # с BOM - чтобы Блокнот не путал кодировку
     except OSError:
         pass
     return u
@@ -138,33 +138,33 @@ def describe() -> list[str]:
     """Строки для вывода: какие папки и файлы использует программа."""
     from .formspec import forms_dirs as dirs
     u = user_dir()
-    return [f"Папка данных: {u}" if u else "Папка данных: нет (запуск из исходников, results — в текущей папке)",
+    return [f"Папка данных: {u}" if u else "Папка данных: нет (запуск из исходников, results - в текущей папке)",
             "Модули заявлений: " + "; ".join(str(d) for d in dirs()),
             f"Типы заявлений и правила: {config_file()}",
             f"Рабочее место (строка таблицы, проверки доменов, строка «Поиск»): {workspace_config_file()}"]
 
 
 README_TEXT = """\
-PySimpleManager — папка данных
+PySimpleManager - папка данных
 ==============================
 
 {data}
 
 results\\        результаты проверок: папка на каждое дело (report.html, export.json, result.json, crops)
                 и общий реестр_проверок.xlsx
-forms\\          свои модули заявлений (необязательно). Модуль — папка forms\\<id>\\ с form.yaml
-                (README.md в папке программы, раздел «Как добавить новое заявление»).
+forms\\          свои модули заявлений (необязательно). Модуль - папка forms\\<id>\\ с form.yaml
+                (docs\\USAGE.md в папке программы, раздел 3.1 «Как добавить новое заявление»).
                 Модуль с тем же id, что у встроенного, заменяет встроенный.
 config\\         свои типы заявлений и правила вердикта (необязательно): файл config\\case_types.yaml.
                 Если файла нет, действуют встроенные правила.
-                Своя строка таблицы и проверки доменов рабочего места — config\\workspace.yaml
+                Своя строка таблицы и проверки доменов рабочего места - config\\workspace.yaml
                 (копия встроенного workspace.yaml из папки программы).
 
 Встроенные модули заявлений: {forms}
 Встроенные правила:          {config}
 
 Чтобы изменить правила, скопируйте встроенный case_types.yaml в папку config\\ и правьте копию.
-Учтите: пока лежит своя копия, изменения правил в новых версиях программы к вам не попадут —
+Учтите: пока лежит своя копия, изменения правил в новых версиях программы к вам не попадут -
 после обновления сравните свою копию со встроенным файлом.
 
 Проверить свои описания (в командной строке): {exe} validate

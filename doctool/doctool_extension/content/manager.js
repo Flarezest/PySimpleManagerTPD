@@ -1,62 +1,62 @@
-/* doctool — чтение данных из manager.reg.ru и заполнение базовой анкеты.
+/* doctool - чтение данных из manager.reg.ru и заполнение базовой анкеты.
  *
  * Скрипт внедряется расширением во вкладку https://manager.reg.ru/ (изолированный мир расширения).
- * Страницы manager загружаются отсюда обычными GET-запросами того же сайта — с входом оператора,
+ * Страницы manager загружаются отсюда обычными GET-запросами того же сайта - с входом оператора,
  * как при открытии ссылок вручную. Скрипт ничего не нажимает и ничего не отправляет в manager.
  *
  * Порядок для одного домена (lookup):
- *   1) /bill/bills?searchstring=<домен>&from_head=1&_csrf=<токен>  — строка домена, service_id;
- *   2) /tech/srv_details?service_id=<id>                           — Sd: данные администратора;
- *   3) /tech/service_details?service_id=<id>                       — S: provider, user_id, dname;
- *   4) (0.6.0 — физлица, с 0.7.2 — и юрлица) ссылка «Идентификация через Госуслуги» со страницы Sd — state
- *      и ссылка на JSON ЕСИА. Сам JSON лежит на другом сайте (identity.reg.ru) — его загружает background.js.
+ *   1) /bill/bills?searchstring=<домен>&from_head=1&_csrf=<токен>  - строка домена, service_id;
+ *   2) /tech/srv_details?service_id=<id>                           - Sd: данные администратора;
+ *   3) /tech/service_details?service_id=<id>                       - S: provider, user_id, dname;
+ *   4) (0.6.0 - физлица, с 0.7.2 - и юрлица) ссылка «Идентификация через Госуслуги» со страницы Sd - state
+ *      и ссылка на JSON ЕСИА. Сам JSON лежит на другом сайте (identity.reg.ru) - его загружает background.js.
  *
- * Аккаунт (account, 0.6.0): /manager/user_details?user_id=N (базовая анкета — скрытый блок страницы,
+ * Аккаунт (account, 0.6.0): /manager/user_details?user_id=N (базовая анкета - скрытый блок страницы,
  * логин, обслуживающая организация) и /user/N/runic_details (тип анкеты, значения формы).
  * По логину/e-mail номер аккаунта находится через /user/<логин>/runic_details.
  *
  * Заполнение (fillRunic, 0.6.0): только во вкладке «Базовая анкета пользователя #N», которую видит оператор:
  * вписывает значения в поля формы и вызывает события страницы (input/change/blur), чтобы она
  * подсветила изменённые поля и пересчитала English name. Кнопку «Сохранить» не нажимает.
- * С 0.7.3 — формы ИП и юрлица: если новый владелец другого типа, переключатель «Физик / ИП / Юрик» на странице
+ * С 0.7.3 - формы ИП и юрлица: если новый владелец другого типа, переключатель «Физик / ИП / Юрик» на странице
  * переводится на нужный тип (страница сама показывает нужную форму), затем заполняется эта форма.
  *
- * С 0.7.6 — смена администратора домена (рабочее место программы), только во вкладке оператора:
- *   domainMoveFill        — шаг 1 «Перенос доменов между аккаунтами»: домены, «смена администратора»,
+ * С 0.7.6 - смена администратора домена (рабочее место программы), только во вкладке оператора:
+ *   domainMoveFill        - шаг 1 «Перенос доменов между аккаунтами»: домены, «смена администратора»,
  *                           «перенос на другой аккаунт» и принимающий аккаунт, документы в «Загрузить документы»;
- *   domainMoveRead        — шаг 2 «данные нового администратора»: прочитать данные на странице;
- *   domainMoveMark        — подсветить их по итогам сверки с заявлением (зелёный / красный);
- *   domainMoveFillContacts — шаг 2, «заполнить вручную»: ФИО, телефон, e-mail из заявления.
+ *   domainMoveRead        - шаг 2 «данные нового администратора»: прочитать данные на странице;
+ *   domainMoveMark        - подсветить их по итогам сверки с заявлением (зелёный / красный);
+ *   domainMoveFillContacts - шаг 2, «заполнить вручную»: ФИО, телефон, e-mail из заявления.
  * Кнопки «Далее», «Использовать» и остальные флажки страницы скрипт не трогает.
  *
- * С 0.8.2 — безбумажные операции: loaFill — «Добавить новый документ от пользователя» (/userdocs/loa_add,
+ * С 0.8.2 - безбумажные операции: loaFill - «Добавить новый документ от пользователя» (/userdocs/loa_add,
  * доверенность): номер паспорта / код страны компании, ФИО / ИНН компании, e-mail, телефон. «Добавить документ»,
- * «Показать домены…», вид документа и срок действия — оператор.
+ * «Показать домены…», вид документа и срок действия - оператор.
  *
- * С 0.8.4 — MO (matches owner): вместе с e-mail аккаунта из той же страницы «Данные пользователя» берётся базовая
- * анкета владельца аккаунта (скрытый блок; нет блока — форма /user/N/runic_details), только поля сверки (OWNER_FIELDS),
- * и почтовый / юридический адрес из Sd — программа сверяет администратора домена с владельцем аккаунта.
+ * С 0.8.4 - MO (matches owner): вместе с e-mail аккаунта из той же страницы «Данные пользователя» берётся базовая
+ * анкета владельца аккаунта (скрытый блок; нет блока - форма /user/N/runic_details), только поля сверки (OWNER_FIELDS),
+ * и почтовый / юридический адрес из Sd - программа сверяет администратора домена с владельцем аккаунта.
  */
 (() => {
-  const VERSION = '0.8.4';
+  const VERSION = '0.8.5';
   if (window.__doctoolManager && window.__doctoolManager.version === VERSION) return;
 
-  // Поля Sd, которые передаются в doctool. authinfo и служебные поля не передаются; адреса — только для сверок
-  // (юридический адрес юрлица — ЕСИА, с 0.8.4 почтовый адрес — MO, сверка с базовой анкетой владельца аккаунта).
-  // E-mail администратора передаётся (с 0.5.0): e_mail — зоны .RU/.РФ/.SU, o_email — остальные зоны.
-  // Телефон администратора (phone / o_phone) — с 0.8.2, для доверенности (безбумажные операции).
-  // Юридический адрес юрлица (улица, дом, корпус, строение, индекс) — с 0.7.2, для сверки с ЕСИА.
+  // Поля Sd, которые передаются в doctool. authinfo и служебные поля не передаются; адреса - только для сверок
+  // (юридический адрес юрлица - ЕСИА, с 0.8.4 почтовый адрес - MO, сверка с базовой анкетой владельца аккаунта).
+  // E-mail администратора передаётся (с 0.5.0): e_mail - зоны .RU/.РФ/.SU, o_email - остальные зоны.
+  // Телефон администратора (phone / o_phone) - с 0.8.2, для доверенности (безбумажные операции).
+  // Юридический адрес юрлица (улица, дом, корпус, строение, индекс) - с 0.7.2, для сверки с ЕСИА.
   const SD_FIELDS = [
     // физлицо (.RU/.РФ/.SU)
     'person_r_surname', 'person_r_name', 'person_r_patronimic', 'person_surname', 'person_name', 'person_patronimic',
     'birth_date', 'passport_series', 'passport_number_short', 'passport_date', 'passport_place', 'passport_place_id',
     'passport_expiration_date', 'is_entrepreneur',
-    // юрлицо (.RU/.РФ/.SU); юридический адрес — для сверки с ЕСИА (0.7.2)
+    // юрлицо (.RU/.РФ/.SU); юридический адрес - для сверки с ЕСИА (0.7.2)
     'org_r', 'org', 'kpp', 'address_r_street', 'address_r_house', 'address_r_frame', 'address_r_building', 'address_r_zip',
     // (0.8.4) для MO: город и квартира юридического адреса, почтовый адрес (физлица и юрлица)
     'address_r_city', 'address_r_flat', 'address_r_additional', 'p_addr_zip', 'p_addr_city', 'p_addr_street',
     'p_addr_house', 'p_addr_frame', 'p_addr_building', 'p_addr_flat', 'p_addr_additional',
-    // администратор (владелец) в остальных зонах — группа o_* (o_deti_org, o_gtld…)
+    // администратор (владелец) в остальных зонах - группа o_* (o_deti_org, o_gtld…)
     'o_company', 'o_company_ru', 'o_first_name', 'o_first_name_ru', 'o_last_name', 'o_last_name_ru',
     'o_patronimic', 'o_patronimic_ru', 'o_country_code', 'o_birth_date',
     // контактный e-mail; (0.8.2) телефон
@@ -70,7 +70,7 @@
     return names.find(g => g === 'ru_pp' || g === 'ru_org') || names.find(g => /^o_/.test(g))
       || (Object.entries(groups).sort((a, b) => b[1] - a[1])[0] || [''])[0];
   };
-  // S: с 0.7.6 — комментарий администратора (admin_comment, в программе — буква «К») и поля для проверок домена
+  // S: с 0.7.6 - комментарий администратора (admin_comment, в программе - буква «К») и поля для проверок домена
   // на рабочем месте (запреты, заморозка, блокировки). Комментарий пользователя (comment) не передаётся.
   const S_FIELDS = ['provider', 'dname', 'contype', 'state', 'substate', 'user_id', 'expiration_date', 'creation_date',
     'trans_in_from', 'admin_comment', 'changeProhibited', 'clientHold', 'serverHold', 'clientUpdateProhibited',
@@ -102,7 +102,7 @@
     if (!r.ok) throw new LookupError('http', `manager вернул HTTP ${r.status} на ${path}`);
     const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
     if (!isManagerPage(doc)) {
-      throw new LookupError('not_logged_in', 'Вместо страницы manager открылась другая страница — вероятно, нужен вход.');
+      throw new LookupError('not_logged_in', 'Вместо страницы manager открылась другая страница - вероятно, нужен вход.');
     }
     lastToken = tokenOf(doc) || lastToken;
     return doc;
@@ -192,8 +192,8 @@
     const body = text(doc.querySelector('#content'));
     const trustee = /Trustee:\s*(Да|Нет)/i.exec(body);
     const status = /Статус услуги:\s*(.+?\([A-Z]+\))/.exec(body);
-    // ссылки со страницы Sd: «Данные персоны услуги» и «Идентификация через Госуслуги» (у физлица — ?user_id=,
-    // у персоны/юрлица — ?person_id=; идентификация относится к администратору домена, а не к аккаунту)
+    // ссылки со страницы Sd: «Данные персоны услуги» и «Идентификация через Госуслуги» (у физлица - ?user_id=,
+    // у персоны/юрлица - ?person_id=; идентификация относится к администратору домена, а не к аккаунту)
     const href = sel => { const a = doc.querySelector(sel); return a ? absUrl(a.getAttribute('href')) : ''; };
     const links = {
       person: href('a[href*="/manager/user_details?"], a[href*="/manager/person?"]'),
@@ -227,7 +227,7 @@
       delete r.file;
       if (r.state !== undefined) rows.push(r);
     }
-    // последняя попытка — по дате создания (формат «ГГГГ-ММ-ДД чч:мм:сс» сортируется как строка)
+    // последняя попытка - по дате создания (формат «ГГГГ-ММ-ДД чч:мм:сс» сортируется как строка)
     const latest = rows.length ? [...rows].sort((a, b) => (b.creation_date || '').localeCompare(a.creation_date || ''))[0] : null;
     return { rows, latest };
   }
@@ -256,7 +256,7 @@
     };
     const first = det && det.querySelector('tr td');
     const login = first ? text(first.querySelector('b')) : '';
-    // (0.8.1) e-mail аккаунта — поле «E-mail» (input name=email); с логином может не совпадать
+    // (0.8.1) e-mail аккаунта - поле «E-mail» (input name=email); с логином может не совпадать
     const em = det && det.querySelector('input[name="email"]');
     const emRow = row('E-mail');
     const email = em ? (em.value || '').trim() : emRow ? text(emRow.querySelector('td')).split(/\s/)[0] : '';
@@ -282,7 +282,7 @@
   }
 
   // Поля форм на странице базовой анкеты (/user/N/runic_details), которые читает программа.
-  // Форма «Физик»/«ИП» — form#ru_pp_contacts (у ИП видны ещё ИНН и адрес регистрации), «Юрик» — form#ru_org_contacts.
+  // Форма «Физик»/«ИП» - form#ru_pp_contacts (у ИП видны ещё ИНН и адрес регистрации), «Юрик» - form#ru_org_contacts.
   const RUNIC_FIELDS = ['person_r_surname', 'person_r_name', 'person_r_patronimic', 'person', 'passport_number',
     'passport_date', 'passport_place', 'code', 'birth_date', 'p_addr_r_zip', 'p_addr_r_area', 'p_addr_r_city',
     'p_addr_r_addr', 'country', 'p_addr_country', 'p_addr_zip', 'p_addr_area', 'p_addr_city', 'p_addr_addr',
@@ -290,7 +290,7 @@
   const RUNIC_ORG_FIELDS = ['country', 'org_r', 'org', 'parent_org_r', 'code', 'kpp', 'address_r_zip', 'address_r_area',
     'address_r_city', 'address_r_addr', 'p_addr_country', 'p_addr_zip', 'p_addr_area', 'p_addr_city', 'p_addr_addr',
     'p_addr_recipient', 'phone', 'sms_security_number', 'fax', 'e_mail', 'actt_e_mail'];
-  // Что заполняет программа — по типу нового владельца, в порядке полей на странице. Гражданство / страна
+  // Что заполняет программа - по типу нового владельца, в порядке полей на странице. Гражданство / страна
   // регистрации, страна почтового адреса, область, SMS-безопасность, факс, English name, родительская организация
   // и флажок «Внесены данные нового владельца» не заполняются.
   const RUNIC_FILL = {
@@ -334,7 +334,7 @@
   }
 
   // Переключатель «Физик / ИП / Юрик» на странице базовой анкеты. Обработчик страницы на change показывает нужную
-  // форму (у ИП — строки ИНН и адреса регистрации, is_entrepreneur = 1). Ничего не сохраняется.
+  // форму (у ИП - строки ИНН и адреса регистрации, is_entrepreneur = 1). Ничего не сохраняется.
   function setRunicType(doc, type) {
     const radios = [...doc.querySelectorAll('input[name="type"]')];
     const r = radios.find(x => x.value === type);
@@ -358,11 +358,11 @@
     return true;
   }
 
-  // Заполнение формы на открытой странице базовой анкеты (вкладка оператора). fields — {имя поля: значение};
-  // пустые значения пропускаются (кроме restore — возврата прежних значений). «Сохранить» не нажимается.
-  // opts.type — тип нового владельца (pp / ip / org, с 0.7.3): если на странице другой, переключатель типа
-  // переводится на нужный. Без opts.type — как в 0.6.0: только физлицо, другой тип — ошибка not_person.
-  // opts.back_type (с restore) — после возврата значений вернуть и прежний тип анкеты.
+  // Заполнение формы на открытой странице базовой анкеты (вкладка оператора). fields - {имя поля: значение};
+  // пустые значения пропускаются (кроме restore - возврата прежних значений). «Сохранить» не нажимается.
+  // opts.type - тип нового владельца (pp / ip / org, с 0.7.3): если на странице другой, переключатель типа
+  // переводится на нужный. Без opts.type - как в 0.6.0: только физлицо, другой тип - ошибка not_person.
+  // opts.back_type (с restore) - после возврата значений вернуть и прежний тип анкеты.
   function fillRunic(expectedId, fields, opts) {
     opts = opts || {};
     const info = parseRunic(document);
@@ -377,7 +377,7 @@
       if (!opts.type) {
         const who = TYPE_RU[info.type] || (info.type || 'неизвестный тип');
         return { ok: false, error: { code: 'not_person', type: info.type,
-          message: `Аккаунт #${expectedId} оформлен на ${who}: автозаполнение без типа нового владельца — только для физлиц. Вкладка базовой анкеты открыта.` } };
+          message: `Аккаунт #${expectedId} оформлен на ${who}: автозаполнение без типа нового владельца - только для физлиц. Вкладка базовой анкеты открыта.` } };
       }
       if (!setRunicType(document, target)) {
         return { ok: false, error: { code: 'bad_page', message: `На странице нет переключателя типа «${TYPE_PAGE[target]}».` } };
@@ -407,11 +407,11 @@
       fire(el, 'input');
       fire(el, 'change');      // страница помечает поле как изменённое (класс unsaved)
       try { el.blur(); } catch (e) { /* ничего */ }
-      fire(el, 'blur');        // у ФИО и названия организации — пересчёт English name (translit_pers_org)
+      fire(el, 'blur');        // у ФИО и названия организации - пересчёт English name (translit_pers_org)
       el.style.outline = opts.restore ? '' : '2px solid #f0ad4e';
       changed.push({ name, label, old, new: value });
     }
-    // «Вернуть как было» после переключения типа: значения формы возвращены — возвращаем и прежний тип
+    // «Вернуть как было» после переключения типа: значения формы возвращены - возвращаем и прежний тип
     let typeBack = false;
     if (opts.restore && opts.back_type && opts.back_type !== target && RUNIC_FILL[opts.back_type]) {
       typeBack = setRunicType(document, opts.back_type);
@@ -459,8 +459,8 @@
     }
   }
 
-  // (0.8.1) e-mail аккаунта владельца услуги — поле «E-mail» страницы «Данные пользователя»; (0.8.4) с той же
-  // страницы — базовая анкета владельца аккаунта для MO (скрытый блок .user_contacts_block; если его нет — форма
+  // (0.8.1) e-mail аккаунта владельца услуги - поле «E-mail» страницы «Данные пользователя»; (0.8.4) с той же
+  // страницы - базовая анкета владельца аккаунта для MO (скрытый блок .user_contacts_block; если его нет - форма
   // /user/N/runic_details). Аккаунт у доменов обычно общий: страница читается один раз за 10 минут.
   // Из анкеты передаются только поля сверки MO (паспорт, ФИО, контакты, адрес), остальное остаётся в manager.
   const OWNER_FIELDS = ['person_r_surname', 'person_r_name', 'person_r_patronimic', 'birth_date', 'country',
@@ -484,7 +484,7 @@
     try {
       det = parseUserDetails(await getDoc(`/manager/user_details?user_id=${encodeURIComponent(uid)}`));
     } catch (e) {
-      // страница не открылась — домен всё равно показываем, без e-mail аккаунта и анкеты
+      // страница не открылась - домен всё равно показываем, без e-mail аккаунта и анкеты
       return { email: '', owner: { user_id: uid, urls, error: String((e && e.message) || e) } };
     }
     let ba = ownerFields(det.ba), source = 'user_details', type = '';
@@ -494,7 +494,7 @@
         const grp = r.type === 'org' ? 'ru_org' : 'ru_pp';
         ba = ownerFields(Object.fromEntries(Object.entries(r.values || {}).map(([k, v]) => [`${grp}.${k}`, v])));
         source = 'runic'; type = r.type || '';
-      } catch (e) { /* анкета не открылась — программа покажет «анкета пуста» */ }
+      } catch (e) { /* анкета не открылась - программа покажет «анкета пуста» */ }
     }
     const value = { email: det.email || '', owner: { user_id: uid, source, type, is_entrepreneur: !!det.is_entrepreneur,
                                                      ba, urls } };
@@ -503,7 +503,7 @@
     return value;
   }
 
-  // Страница идентификации общая у доменов одной персоны — в пределах одной загрузки читается один раз.
+  // Страница идентификации общая у доменов одной персоны - в пределах одной загрузки читается один раз.
   const esiaCache = new Map();   // url → {t, value}
   async function esiaFor(url, task) {
     const key = `${task || ''}|${url}`;
@@ -564,7 +564,7 @@
         if (pick.service) { found = { ...pick.service, total: bills.total, query: q }; break; }
       }
       if (!found) {
-        const s = searched.map(x => `«${x.query}» — позиций ${x.total}`).join('; ');
+        const s = searched.map(x => `«${x.query}» - позиций ${x.total}`).join('; ');
         const more = searched.some(x => x.total > x.rows) ? ' (просмотрена только первая страница выдачи)' : '';
         return { ok: false, error: { code: 'not_found', message: `Домен не найден в счетах manager: ${s}${more}`, searched } };
       }
@@ -575,11 +575,11 @@
       if (s.dname && !names.includes(norm(s.dname))) {
         throw new LookupError('mismatch', `Страница S относится к другому домену: ${s.dname}`);
       }
-      // ЕСИА — у физлиц (ru_pp) и юрлиц (ru_org, с 0.7.2): по ссылке со страницы Sd этого домена
+      // ЕСИА - у физлиц (ru_pp) и юрлиц (ru_org, с 0.7.2): по ссылке со страницы Sd этого домена
       const accId = s.user_id || found.user_id;
       let accountEmail = '', accountOwner = null;
       if (accId && opts.account_email !== false) {
-        progress('user_details', `${domain}: аккаунт #${accId} — e-mail и базовая анкета`);
+        progress('user_details', `${domain}: аккаунт #${accId} - e-mail и базовая анкета`);
         const a = await accountInfoFor(accId);
         accountEmail = a.email; accountOwner = a.owner;
       } else if (!accId) {
@@ -614,7 +614,7 @@
   const fireEv = (el, type) => el.dispatchEvent(new Event(type, { bubbles: type !== 'blur' && type !== 'focus' }));
   const mark = (el, color) => { if (el) { el.style.outline = color ? `2px solid ${color}` : ''; el.style.outlineOffset = color ? '1px' : ''; } };
 
-  // Шаг 1: /manager/domain_move — form с textarea[name=domains]. p: {domains: [], change_admin, change_account,
+  // Шаг 1: /manager/domain_move - form с textarea[name=domains]. p: {domains: [], change_admin, change_account,
   // login_to, files: [{name, type, b64}]}. Формы не отправляются.
   function domainMoveFill(p) {
     p = p || {};
@@ -644,9 +644,9 @@
       }
       mark(el.closest('label') || el, '#f0ad4e');
     };
-    // (0.8.2) список пуст — поле «Домены» не трогается (оператор впишет сам)
+    // (0.8.2) список пуст - поле «Домены» не трогается (оператор впишет сам)
     if ((p.domains || []).length) setVal(ta, p.domains.join('\n'), 'Домены');
-    else notes.push('домены не вписаны — список в программе пуст');
+    else notes.push('домены не вписаны - список в программе пуст');
     check('do_change_admin', p.change_admin !== false, 'смена администратора');
     check('do_change_account', !!p.change_account, 'перенос на другой аккаунт');
     if (p.change_account) setVal(form.querySelector('input[name="login_to"]'), String(p.login_to || ''), 'Принимающий аккаунт');
@@ -673,8 +673,8 @@
       untouched: ['не проверять наличие контактов и документов', 'allow_rereg_only_bill', 'сохранить ЧУ', 'расторгнуть сделку в Магазине доменов'] } };
   }
 
-  // Шаг 2: form[name=contacts_form] (POST /manager/domain_move_contacts). Блок #base-contacts — «изменить на данные
-  // нового аккаунта» (только чтение, значения в <b>), #fill-contacts — «заполнить вручную» (поля формы).
+  // Шаг 2: form[name=contacts_form] (POST /manager/domain_move_contacts). Блок #base-contacts - «изменить на данные
+  // нового аккаунта» (только чтение, значения в <b>), #fill-contacts - «заполнить вручную» (поля формы).
   const BASE_LABELS = [
     [/^Гражданство/, 'citizenship'], [/^Ф\.?И\.?О/, 'fio'], [/^Паспорт/, 'passport'], [/^ИНН/, 'inn'],
     [/^Дата рождения/, 'birth_date'], [/^Почтовый адрес/, 'address'], [/^Телефон/, 'phone'],
@@ -773,7 +773,7 @@
       fireEv(el, 'input');
       fireEv(el, 'change');
       try { el.blur(); } catch (e) { /* ничего */ }
-      fireEv(el, 'blur');               // у ФИО — пересчёт имени по-английски (translit_pers_org)
+      fireEv(el, 'blur');               // у ФИО - пересчёт имени по-английски (translit_pers_org)
       mark(el, '#f0ad4e');
       changed.push({ name, old, new: value });
     }
@@ -783,10 +783,10 @@
   // ------------------------------------------------------------------ безбумажные операции: доверенность (0.8.2)
 
   // «Документы → Доверенности → Добавить» (/userdocs/loa_add, «Добавить новый документ от пользователя»).
-  // Поля, которые вписываются (только переданные непустые): passport_inn — «Номер паспорта (физ.лицо) / Код cтраны
-  // регистрации компании», fullname — «ФИО Администратора / ИНН компании», email, customer_phone. Из них страница
+  // Поля, которые вписываются (только переданные непустые): passport_inn - «Номер паспорта (физ.лицо) / Код cтраны
+  // регистрации компании», fullname - «ФИО Администратора / ИНН компании», email, customer_phone. Из них страница
   // собирает идентификатор администратора (паспорт:ФИО без пробелов) для «Показать домены…». Вид документа, срок
-  // действия, список доменов, внутренний номер — оператор; «Добавить документ» не нажимается.
+  // действия, список доменов, внутренний номер - оператор; «Добавить документ» не нажимается.
   const LOA_FIELDS = [['passport_inn', 'Номер паспорта (физ.лицо) / Код cтраны регистрации компании'],
     ['fullname', 'ФИО Администратора / ИНН компании'], ['email', 'email'], ['customer_phone', 'Телефон']];
   function loaFill(fields) {

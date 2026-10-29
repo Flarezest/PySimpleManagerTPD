@@ -14,7 +14,7 @@ PASSPORT_RE = re.compile(r"(?<![\d+])(\d{2})\s?(\d{2})\s?[№N]?\s?(\d{6})(?!\d)
 INN_RE = re.compile(r"(?<![\d+])(\d{12}|\d{10})(?!\d)")
 EMAIL_RE = re.compile(r"[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+", re.U)
 PHONE_RE = re.compile(r"(?<![\d\w])(?:\+7|8)[\s\-(]*\d{3}[\s\-)]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}(?!\d)")
-DEPT_RE = re.compile(r"(?<!\d)(\d{3})\s?[-—–]\s?(\d{3})(?!\d)")
+DEPT_RE = re.compile(r"(?<!\d)(\d{3})\s?[-\u2014\u2013]\s?(\d{3})(?!\d)")
 DOMAIN_RE = re.compile(
     r"(?<![@\w.\-])((?:[a-zа-яё0-9](?:[a-zа-яё0-9\-]{0,61}[a-zа-яё0-9])?\.)+"
     r"(?:рф|рус|дети|москва|онлайн|сайт|орг|su|ru|com|net|org|info|biz|pro|me|io|xn--p1ai|[a-z]{2,10}))(?![\w\-@])",
@@ -86,7 +86,7 @@ def parse_date_words(s: str) -> date | None:
             mm, pos = v, m
             break
     if not mm:
-        # рукопись: месяц прочитан с ошибками («сентябре», «сешпября») — нечёткое сравнение
+        # рукопись: месяц прочитан с ошибками («сентябре», «сешпября») - нечёткое сравнение
         from rapidfuzz import fuzz
         full = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа",
                 "сентября", "октября", "ноября", "декабря"]
@@ -137,7 +137,7 @@ def parse_date_words(s: str) -> date | None:
 # ----------------------------------------------------------- проверки форматов
 
 def inn_valid(inn: str) -> bool:
-    """Контрольные разряды ИНН (10 цифр — юрлицо, 12 — физлицо/ИП)."""
+    """Контрольные разряды ИНН (10 цифр - юрлицо, 12 - физлицо/ИП)."""
     if not re.fullmatch(r"\d{10}|\d{12}", inn or ""):
         return False
     d = list(map(int, inn))
@@ -190,11 +190,11 @@ def to_punycode(domain: str) -> str:
 # Где кончается имя домена. Имя состоит из меток [буквы, цифры, дефис], разделённых точками, и кончается зоной
 # (.ru, .рф …). Метка не может начинаться или кончаться дефисом. Отсюда правила для длинных списков,
 # где имя переносится на следующую строку:
-#   «business-⏎dvd.ru»  — строка кончается дефисом: имя не закончено, продолжение — на следующей строке.
+#   «business-⏎dvd.ru»  - строка кончается дефисом: имя не закончено, продолжение - на следующей строке.
 #                         Дефис остаётся: Word переносит строку после дефиса, который входит в имя;
-#   «example.⏎ru», «example⏎.ru» — разрыв у точки перед зоной;
-#   «info-dvd.ru-⏎…»     — слева уже полное имя с зоной: это не перенос, ничего не склеиваем.
-# Перенос без дефиса посреди метки («cybersant⏎investor.ru») по тексту не отличить от двух слов — такой кусок
+#   «example.⏎ru», «example⏎.ru» - разрыв у точки перед зоной;
+#   «info-dvd.ru-⏎…»     - слева уже полное имя с зоной: это не перенос, ничего не склеиваем.
+# Перенос без дефиса посреди метки («cybersant⏎investor.ru») по тексту не отличить от двух слов - такой кусок
 # без зоны попадает в «обрывки», и поле уходит на ручную проверку.
 
 # зоны, на которых имя заканчивается (склейка «example.⏎ru» и проверка «слева уже полное имя»)
@@ -203,7 +203,7 @@ WRAP_TLDS = ("xn--p1ai", "online", "moscow", "store", "info", "shop", "site", "c
 _TLD_ALT = "|".join(WRAP_TLDS)
 _LBL = r"[a-zа-яё0-9]"
 _TCH = r"[a-zа-яё0-9.\-]"
-_HYPHENS_NL = "-\u2010\u2011\u2012–—\u00ad"   # дефис, его юникод-варианты, тире (OCR), мягкий перенос
+_HYPHENS_NL = "-\u2010\u2011\u2012\u2013\u2014\u00ad"   # дефис, его юникод-варианты, тире (OCR), мягкий перенос
 _HYPHENS_SP = "-\u2010\u2011\u00ad"
 # дефис в конце строки: «business-⏎dvd.ru»
 _WRAP_HYPHEN_NL = re.compile(rf"(?<![\w.\-@])({_LBL}{_TCH}*?)([{_HYPHENS_NL}])[ \t]*\r?\n\s*({_LBL}{_TCH}*)", re.I)
@@ -216,14 +216,14 @@ _FULL_DOMAIN = re.compile(rf"(?:{_LBL}[a-zа-яё0-9\-]*\.)+(?:{_TLD_ALT})\.?", 
 
 
 def join_wrapped_domains(text: str, joined: list | None = None) -> str:
-    """Склеивает доменные имена, разорванные переносом строки (правила — выше). В joined (если передан)
-    добавляются склеенные имена — их стоит показать оператору."""
+    """Склеивает доменные имена, разорванные переносом строки (правила - выше). В joined (если передан)
+    добавляются склеенные имена - их стоит показать оператору."""
     text = text or ""
 
     def hyphen(m: re.Match) -> str:
         left, dash, right = m.group(1), m.group(2), m.group(3)
         if _FULL_DOMAIN.fullmatch(left):
-            return m.group(0)          # слева уже полное имя — это не перенос
+            return m.group(0)          # слева уже полное имя - это не перенос
         sep = "" if dash == "\u00ad" else "-"   # мягкий перенос в имя не входит
         if joined is not None:
             joined.append((left + sep + right).lower().strip(".-"))
@@ -231,7 +231,7 @@ def join_wrapped_domains(text: str, joined: list | None = None) -> str:
 
     def dot(m: re.Match) -> str:
         if _FULL_DOMAIN.fullmatch(m.group(1)):
-            return m.group(0)          # «example.ru.⏎Info …» — конец предложения, а не разрыв имени
+            return m.group(0)          # «example.ru.⏎Info …» - конец предложения, а не разрыв имени
         if joined is not None:
             joined.append(f"{m.group(1)}.{m.group(2)}".lower())
         return f"{m.group(1)}.{m.group(2)}"
@@ -269,9 +269,9 @@ def _count_from_words(s: str) -> int | None:
 
 
 def stated_domain_count(text: str) -> int | None:
-    """Сколько доменов заявитель указал сам: «— всего 76 (семьдесят шесть) доменов», «в количестве 3 шт.»."""
+    """Сколько доменов заявитель указал сам: «- всего 76 (семьдесят шесть) доменов», «в количестве 3 шт.»."""
     t = (text or "").lower().replace("ё", "е")
-    m = (re.search(r"(?:всего|итого|в\s+количестве|количество\s+доменов)\s*[:\-—–]?\s*(\d{1,4})(?!\d|\.\w)", t)
+    m = (re.search(r"(?:всего|итого|в\s+количестве|количество\s+доменов)\s*[:\-\u2014\u2013]?\s*(\d{1,4})(?!\d|\.\w)", t)
          or re.search(r"(?<![\w.\-])(\d{1,4})\s*(?:\([^)]{0,60}\)\s*)?(?:шт\.?\s*)?домен", t))
     if m:
         return int(m.group(1))
@@ -306,7 +306,7 @@ def _domain_fragments(text: str, domains: list[str]) -> list[str]:
     dalnum = {alnum(d) for d in domains}
     for tok in re.split(r"[\s,;]+", text or ""):
         t = tok.strip("()[]{}«»\"'“”„:!?|").lower()
-        core = t.strip(".-\u2010\u2011–—")
+        core = t.strip(".-\u2010\u2011\u2013\u2014")
         if len(core) < 2 or "@" in t or "/" in t or re.fullmatch(r"[\d.,\-]+", core):
             continue
         # входит в найденный домен (в т. ч. исправленный: рукописное «distobR-RU» → distobr.ru)
@@ -319,7 +319,7 @@ def _domain_fragments(text: str, domains: list[str]) -> list[str]:
             cut = t.endswith((".", "-")) and len(core) >= 3 and ("-" in core or not _known_word(core))
             odd_zone = re.fullmatch(r"[а-яё0-9\-]{2,}\.[а-яё]{2,}", core) is not None
             if cut or odd_zone:
-                out.append(t)          # «инфоклуб.» — зона не прочитана; «инфо-клуб.рр» — неизвестная зона
+                out.append(t)          # «инфоклуб.» - зона не прочитана; «инфо-клуб.рр» - неизвестная зона
     return list(dict.fromkeys(out))
 
 

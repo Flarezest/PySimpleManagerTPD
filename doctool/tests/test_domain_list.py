@@ -21,7 +21,7 @@ WRAPPED = """alpha-site.ru, beta.ru, gamma-
 delta.ru, epsilon.ru, info-
 store.ru, zeta.su, take-profit-
 fx.ru, пример-сайт.рф, тест-
-магазин.рф — всего 8 (восемь) доменов"""
+магазин.рф \u2014 всего 8 (восемь) доменов"""
 EXPECTED = ["alpha-site.ru", "beta.ru", "gamma-delta.ru", "epsilon.ru", "info-store.ru", "zeta.su",
             "take-profit-fx.ru", "пример-сайт.рф", "тест-магазин.рф"]
 
@@ -35,7 +35,7 @@ def test_wrapped_domain_names_are_joined():
 
 
 def test_wrapped_names_after_lines_were_merged_with_spaces():
-    # интерфейс или OCR уже склеили строки пробелом: «gamma- delta.ru» — метка не может кончаться дефисом
+    # интерфейс или OCR уже склеили строки пробелом: «gamma- delta.ru» - метка не может кончаться дефисом
     assert parsers.find_domains("a.ru, gamma- delta.ru, b.ru") == ["a.ru", "gamma-delta.ru", "b.ru"]
 
 
@@ -43,24 +43,24 @@ def test_where_the_domain_name_ends():
     f = parsers.find_domains
     assert f("example.\nru, b.ru") == ["example.ru", "b.ru"]                 # разрыв после точки
     assert f("example\n.ru") == ["example.ru"]                               # зона на новой строке
-    assert f("infofi\u00ad\nnances.ru") == ["infofinances.ru"]               # мягкий перенос — не часть имени
+    assert f("infofi\u00ad\nnances.ru") == ["infofinances.ru"]               # мягкий перенос - не часть имени
     assert f("a.ru -\nb.ru") == ["a.ru", "b.ru"]                             # тире-разделитель, не перенос
-    assert f("a.ru, тест.рф —\nвсего 2 домена") == ["a.ru", "тест.рф"]
+    assert f("a.ru, тест.рф \u2014\nвсего 2 домена") == ["a.ru", "тест.рф"]
     assert f("example.ru.\nInfo") == ["example.ru"]                          # конец предложения, а не разрыв
     assert f("distobR-RU") == ["distobr.ru"] and f("distobr. ru") == ["distobr.ru"]   # рукопись, как раньше
 
 
 def test_fragments_and_stated_count():
     # так Tesseract прочитал конец списка: подчёркивание срезало «рф»
-    dl = parsers.parse_domain_list("alpha.ru, beta-\ngamma.ru, клуб-инфо.\nинфоклуб. — всего 4 (четыре) домена")
+    dl = parsers.parse_domain_list("alpha.ru, beta-\ngamma.ru, клуб-инфо.\nинфоклуб. \u2014 всего 4 (четыре) домена")
     assert dl.domains == ["alpha.ru", "beta-gamma.ru"]
     assert dl.fragments == ["клуб-инфо.", "инфоклуб."]
     assert dl.stated_count == 4 and dl.count_mismatch
-    # перенос без дефиса посреди имени по тексту не отличить — кусок без зоны остаётся «обрывком»
+    # перенос без дефиса посреди имени по тексту не отличить - кусок без зоны остаётся «обрывком»
     dl = parsers.parse_domain_list("cybersant\ninvestor.ru")
     assert dl.domains == ["investor.ru"] and dl.fragments == ["cybersant"]
-    # обычные слова и числа — не обрывки
-    assert parsers.parse_domain_list("a.ru и b.ru — всего 2 (два) домена.").fragments == []
+    # обычные слова и числа - не обрывки
+    assert parsers.parse_domain_list("a.ru и b.ru \u2014 всего 2 (два) домена.").fragments == []
     assert parsers.stated_domain_count("всего семьдесят шесть доменов") == 76
     assert parsers.stated_domain_count("в количестве 3 шт.") == 3
     assert parsers.stated_domain_count("trading-pips100.ru, a.ru") is None
@@ -89,7 +89,7 @@ def test_domains_check_and_verdict():
     c = _domains_check(app)
     assert c.status == "ok" and "gamma-delta.ru" in c.detail and "доменов: 9" in c.detail
     # домены потеряны: число не сходится, есть обрывки → ручная проверка с понятной причиной
-    app = _app_with_domains("alpha.ru, beta-\ngamma.ru, инфоклуб. — всего 3 (три) домена")
+    app = _app_with_domains("alpha.ru, beta-\ngamma.ru, инфоклуб. \u2014 всего 3 (три) домена")
     c = _domains_check(app)
     assert c.status == "review" and "указано доменов: 3, распознано: 2" in c.detail and "инфоклуб." in c.detail
     d = decide(ct, [c], set(), app.fields)
@@ -97,7 +97,7 @@ def test_domains_check_and_verdict():
 
 
 def test_operator_edit_replaces_domain_subfields():
-    app = _app_with_domains("alpha.ru, инфоклуб. — всего 2 (два) домена")
+    app = _app_with_domains("alpha.ru, инфоклуб. \u2014 всего 2 (два) домена")
     assert app.get("domains.fragments") == ["инфоклуб."]
     application._store(app, "domains", "domains", "alpha.ru, инфоклуб.рф", 1.0, "manual")   # правка оператора
     assert app.get("domains.list") == ["alpha.ru", "инфоклуб.рф"]
@@ -114,8 +114,8 @@ FORM_TOP = ["Заявление в ООО «Регистратор доменн�
 PARA = ["прошу передать права по администрированию домена(ов)"]
 LABEL = ["(наименование домена(ов))", "новому Администратору:"]
 # OCR всей страницы: «.рф» срезано подчёркиванием, «digitalproduct» прочитано как «digitaloroduct»
-PAGE_LIST = ["alpha.ru, beta-", "gamma.ru, digitaloroduct.ru, клуб.", "инфо-клуб. — всего 5 (пять) доменов"]
-BAND_LIST = ["alpha.ru, beta-", "gamma.ru, digitalproduct.ru, клуб.рф,", "инфо-клуб.рф — всего 5 (пять) доменов"]
+PAGE_LIST = ["alpha.ru, beta-", "gamma.ru, digitaloroduct.ru, клуб.", "инфо-клуб. \u2014 всего 5 (пять) доменов"]
+BAND_LIST = ["alpha.ru, beta-", "gamma.ru, digitalproduct.ru, клуб.рф,", "инфо-клуб.рф \u2014 всего 5 (пять) доменов"]
 
 
 def _lines(texts, y0=100):
@@ -149,18 +149,18 @@ def test_scan_rereads_domain_paragraph(monkeypatch, tmp_path):
     assert ex.get("domains.list") == ["alpha.ru", "beta-gamma.ru", "digitalproduct.ru", "клуб.рф", "инфо-клуб.рф"]
     assert ex.get("domains.joined") == ["beta-gamma.ru"]
     assert ex.get("domains.fragments") is None and ex.get("domains.uncertain") is None
-    # страница + 2 прочтения абзаца (совпали — третье не нужно) + раздел «новому Администратору» (пустой в тесте)
+    # страница + 2 прочтения абзаца (совпали - третье не нужно) + раздел «новому Администратору» (пустой в тесте)
     assert calls == [4, 6, 6, 6]
     assert ex.debug["domains_reread"]["выбрано"] == "абзац"
     assert any("перечитан" in n for n in ex.notes)
-    assert ex.fields["domains"].crop.endswith("scan_domains_list.png")   # фрагмент — весь абзац
+    assert ex.fields["domains"].crop.endswith("scan_domains_list.png")   # фрагмент - весь абзац
 
 
 def test_scan_reread_disagreement_goes_to_review(monkeypatch, tmp_path):
-    other = ["alpha.ru, beta-", "gamma.ru, digitalpraduct.ru, клуб.рф,", "инфо-клуб.рф — всего 5 (пять) доменов"]
-    third = ["alpha.ru, beta-", "gamma.ru, digitalprodukt.ru, клуб.рф,", "инфо-клуб.рф — всего 5 (пять) доменов"]
+    other = ["alpha.ru, beta-", "gamma.ru, digitalpraduct.ru, клуб.рф,", "инфо-клуб.рф \u2014 всего 5 (пять) доменов"]
+    third = ["alpha.ru, beta-", "gamma.ru, digitalprodukt.ru, клуб.рф,", "инфо-клуб.рф \u2014 всего 5 (пять) доменов"]
     ex, calls = _run_scan(monkeypatch, tmp_path, [BAND_LIST, other, third])
-    assert calls == [4, 6, 6, 4, 6]            # прочтения не сошлись — все три прохода (+ раздел нового админа)
+    assert calls == [4, 6, 6, 4, 6]            # прочтения не сошлись - все три прохода (+ раздел нового админа)
     assert len(ex.get("domains.list")) == 5
     assert ex.get("domains.uncertain") == ["digitalproduct.ru"]   # большинство это имя не подтвердило
     assert _domains_check(ex).status == "review"

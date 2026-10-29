@@ -1,4 +1,4 @@
-"""Данные доменов из manager (Sd, S), сверка с документами, WHOIS — без сети и без браузера."""
+"""Данные доменов из manager (Sd, S), сверка с документами, WHOIS - без сети и без браузера."""
 import sys
 import threading
 from pathlib import Path
@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from doctool import domains, whois  # noqa: E402
 from doctool.models import Extraction  # noqa: E402
 
-# Ответы расширения — как content/manager.js возвращает их на обезличенных страницах manager
+# Ответы расширения - как content/manager.js возвращает их на обезличенных страницах manager
 SD_PP = {"group": "ru_pp", "trustee": "Нет", "status": "Активна (A)", "fields": {
     "birth_date": "15.03.1990", "code": "500100732259", "country": "RU", "last_admin_change": "2025-11-20 10:00:00",
     "passport_date": "20.04.2010", "passport_number_short": "123456", "passport_place": "ГУ МВД РОССИИ ПО Г. МОСКВЕ",
@@ -183,7 +183,7 @@ def _sample_items():
 
 def test_problem_codes_and_sorting():
     items = _sample_items()
-    # до сверки с документами у найденных доменов нет вердикта — «сверка не выполнялась»
+    # до сверки с документами у найденных доменов нет вердикта - «сверка не выполнялась»
     assert [domains.problem(i) for i in items] == ["unchecked", "free", "not_found", "unchecked", "error",
                                                     "unchecked", "free"]
     checks_for(items)   # сверка с паспортом заявителя заполняет verdict
@@ -214,11 +214,11 @@ def test_report_domains_table_grouped():
     pos = [html_.index(h) for h in heads]
     assert pos == sorted(pos)
     assert html_.index("free2.ru") < html_.index("other.ru") < html_.index("busy.ru") < html_.index("ok.ru")
-    assert f"{domains.PROBLEM_RU['free']} — 2" in html_
+    assert f"{domains.PROBLEM_RU['free']} - 2" in html_
 
 
 def test_whois_unknown_zone_is_not_free(monkeypatch):
-    # «chi.pd» (ошибка распознавания «.рф»): IANA такой зоны не знает — это не «свободен», а ошибка
+    # «chi.pd» (ошибка распознавания «.рф»): IANA такой зоны не знает - это не «свободен», а ошибка
     monkeypatch.setattr(whois, "_query", lambda server, q, t: "% This query returned 0 objects." if server == "whois.iana.org"
                         else "")
     w = whois.lookup("chi.pd")
@@ -259,7 +259,7 @@ def test_esia_match():
     assert d["esia_status"] == "match" and d["esia_state"] == "approved"
     assert d["esia_ru"] == "approved · Sd = ЕСИА (9 из 9)"
     rows = {r["field"]: r for r in d["esia_rows"]}
-    # фамилия — last_name, отчество — middle_name; гражданство RU ↔ RUS
+    # фамилия - last_name, отчество - middle_name; гражданство RU ↔ RUS
     assert rows["person_r_surname"]["esia_field"] == "last_name" and rows["person_r_surname"]["esia"] == "Тестов"
     assert rows["person_r_patronimic"]["esia_field"] == "middle_name" and rows["person_r_patronimic"]["status"] == "ok"
     assert rows["country"]["status"] == "ok" and rows["passport_place"]["status"] == "ok"
@@ -281,14 +281,14 @@ def test_esia_mismatch_and_states():
     assert with_esia(None).to_dict()["esia_status"] == "no_link"
     assert with_esia({**ESIA_PAGE, "data": {"status": "error"}}).to_dict()["esia_status"] == "error"
     assert with_esia({**ESIA_PAGE, "data": {"status": "success", "rf_passport": None}}).to_dict()["esia_status"] == "no_data"
-    # юрлица (с 0.7.2) — тоже со статусом ЕСИА; без ссылки на странице Sd — «нет ссылки»
+    # юрлица (с 0.7.2) - тоже со статусом ЕСИА; без ссылки на странице Sd - «нет ссылки»
     org = domains.from_extension("testdomain-org.ru", reply(SD_ORG, S_ORG, "testdomain-org.ru"))
     assert org.to_dict()["esia_status"] == "no_link"
-    # остальные зоны (группа o_*) — без ЕСИА
+    # остальные зоны (группа o_*) - без ЕСИА
     intl = domains.from_extension("x.com", reply({"group": "o_gtld", "fields": {"o_company": "X"}},
                                                 {"provider": "x", "dname": "x.com", "contype": "o_gtld", "user_id": "1"}, "x.com"))
     assert intl.to_dict()["esia_status"] == ""
-    # значения нет с одной стороны — не красный, а «нет в ЕСИА»
+    # значения нет с одной стороны - не красный, а «нет в ЕСИА»
     part = with_esia({**ESIA_PAGE, "data": {**ESIA_JSON, "middle_name": ""}}).to_dict()
     row = next(r for r in part["esia_rows"] if r["field"] == "person_r_patronimic")
     assert row["status"] == "" and row["detail"] == "нет в ЕСИА" and part["esia_status"] == "match"
@@ -307,7 +307,7 @@ def test_esia_in_reports():
     assert "ЕСИА: approved" in report.domains_table([good])
 
 
-# ------------------------------------------------------------------ 0.8.4: MO — администратор домена ↔ владелец аккаунта
+# ------------------------------------------------------------------ 0.8.4: MO - администратор домена ↔ владелец аккаунта
 
 SD_PP_MO = {**SD_PP, "fields": {**SD_PP["fields"], "phone": "+79990000000\n79990000000",
                                 "e_mail": "person@example.com\nperson2@example.com", "p_addr_zip": "101000",
@@ -331,11 +331,11 @@ def test_mo_match_person():
     d = with_owner({"user_id": "1000", "source": "user_details", "type": "", "ba": BA_PP}).to_dict()
     assert d["mo_status"] == "match" and d["mo_ru"] == "Sd = анкета (13 из 13)" and d["mo_type"] == "pp"
     rows = {r["title"]: r for r in d["mo_rows"]}
-    # паспорт: серия и номер Sd ↔ 10 цифр анкеты; адрес Sd по полям ↔ одной строкой; ИНН только в Sd — без цвета
+    # паспорт: серия и номер Sd ↔ 10 цифр анкеты; адрес Sd по полям ↔ одной строкой; ИНН только в Sd - без цвета
     assert rows["Серия и номер паспорта"]["sd"] == "4509 123456" and rows["Серия и номер паспорта"]["status"] == "ok"
     assert rows["Почтовый адрес"]["sd"] == "Тестовая, д 1, кв 1" and rows["Почтовый адрес"]["status"] == "ok"
     assert rows["ИНН"]["status"] == "" and rows["ИНН"]["detail"] == "нет в анкете"
-    # телефоны и e-mail — по общему значению, лишние — в пояснении
+    # телефоны и e-mail - по общему значению, лишние - в пояснении
     assert rows["E-mail"]["status"] == "ok" and rows["E-mail"]["detail"] == "в Sd ещё person2@example.com"
     assert rows["Телефон"]["status"] == "ok"
     assert domains.DomainInfo.from_dict(d).owner["ba"]["ru_pp.phone"] == "+79990000000"
@@ -346,15 +346,15 @@ def test_mo_mismatch_and_states():
                                                  "ru_pp.p_addr_addr": "ул. Тестовая, д. 1, кв. 7"}}).to_dict()
     assert bad["mo_status"] == "mismatch" and bad["mo_ru"] == "Sd ≠ анкета: Телефон, Почтовый адрес"
     assert "номера не совпадают" in next(r for r in bad["mo_rows"] if r["title"] == "Почтовый адрес")["detail"]
-    # «кем выдан» написан по-разному — жёлтый
+    # «кем выдан» написан по-разному - жёлтый
     warn = with_owner({"user_id": "1000", "ba": {**BA_PP, "ru_pp.passport_place": "ГУ МВД РОССИИ ПО ГОРОДУ МОСКВЕ"}}).to_dict()
     assert warn["mo_status"] == "warn" and "Кем выдан" in warn["mo_ru"]
-    # администратор — физлицо, аккаунт — на юрлице: другое лицо; контакты всё равно сверяются
+    # администратор - физлицо, аккаунт - на юрлице: другое лицо; контакты всё равно сверяются
     org_acc = with_owner({"user_id": "2000", "ba": {"ru_org.org_r": "ООО «Тест»", "ru_org.phone": "+79990000000"}}).to_dict()
-    assert org_acc["mo_status"] == "mismatch" and "владелец аккаунта — юрлицо" in org_acc["mo_ru"]
+    assert org_acc["mo_status"] == "mismatch" and "владелец аккаунта - юрлицо" in org_acc["mo_ru"]
     assert [r["title"] for r in org_acc["mo_rows"]] == ["Тип контактов", "Телефон", "E-mail"] and org_acc["mo_type"] == "org"
     # старое расширение (нет account_owner), ошибка страницы, пустая анкета, данные до 0.8.4, другая зона
-    assert with_owner(...).to_dict()["mo_ru"] == "анкета владельца не загружена — обновите расширение до 0.8.4"
+    assert with_owner(...).to_dict()["mo_ru"] == "анкета владельца не загружена - обновите расширение до 0.8.4"
     assert with_owner({"user_id": "1000", "error": "HTTP 500"}).to_dict()["mo_status"] == "error"
     assert with_owner({"user_id": "1000", "ba": {"ru_pp.fax": ""}}).to_dict()["mo_ru"] == "базовая анкета владельца аккаунта пуста"
     assert with_owner(None).to_dict()["mo_status"] == ""

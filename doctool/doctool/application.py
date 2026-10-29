@@ -1,12 +1,12 @@
 """Извлечение полей из заявлений по YAML-конфигам форм.
 
 Два режима:
-- документ с текстовым слоем (PDF из Word, DOCX) — регулярные выражения из конфига;
-- скан/фото — поиск печатных подписей полей (якорей) и распознавание области рядом с ними:
+- документ с текстовым слоем (PDF из Word, DOCX) - регулярные выражения из конфига;
+- скан/фото - поиск печатных подписей полей (якорей) и распознавание области рядом с ними:
   Tesseract для печатного текста, локальная VLM (если включена) для рукописного.
   Вырезанные фрагменты сохраняются, чтобы человек мог быстро проверить их в отчёте.
 
-Бланк — модуль заявления forms/<id>/ (formspec.py): form.yaml (поля, подписи бланка для эталона `reference:`,
+Бланк - модуль заявления forms/<id>/ (formspec.py): form.yaml (поля, подписи бланка для эталона `reference:`,
 регулярные выражения `text:`, области на скане, роли полей), необязательный hooks.py с особой логикой бланка
 (ядро вызывает его через formspec.call_hook) и образцы samples/. Разбор значения выбирается по `type:` поля из
 реестра FIELD_PARSERS; новый тип значения добавляется функцией с @field_type("имя").
@@ -24,7 +24,7 @@ import numpy as np
 from rapidfuzz import fuzz
 
 from . import formspec, llm_extract, names, parsers, reference
-from .formspec import FORMS_DIR, load_forms  # noqa: F401  (load_forms — прежний адрес, им пользуются скрипты)
+from .formspec import FORMS_DIR, load_forms  # noqa: F401  (load_forms - прежний адрес, им пользуются скрипты)
 from .models import Extraction
 from .models import FieldValue
 from .ocr import (Line, OllamaVLM, Page, downscale, keyword_score, remove_lines, remove_lines_soft, straighten_photo,
@@ -49,8 +49,8 @@ def detect_form(text: str, forms: list[dict]) -> dict | None:
 # ------------------------------------------------------------------ разбор значений
 
 def _clean(s: str, keep_lines: bool = False) -> str:
-    """Убирает подчёркивания и печатные подписи полей бланка («(кем выдан)» и т. п. — `labels_re` в YAML
-    бланков). keep_lines=True — переводы строк сохраняются (нужны для списка доменов: по ним видно, где
+    """Убирает подчёркивания и печатные подписи полей бланка («(кем выдан)» и т. п. - `labels_re` в YAML
+    бланков). keep_lines=True - переводы строк сохраняются (нужны для списка доменов: по ним видно, где
     имя домена перенесено на следующую строку)."""
     s = re.sub(r"_{2,}", " ", s or "")
     labels = formspec.labels_regex()
@@ -62,8 +62,8 @@ def _clean(s: str, keep_lines: bool = False) -> str:
     return re.sub(r"\s+", " ", s).strip(" ,;:/|")
 
 
-# Разбор значения поля по его type: функция (s — очищенное значение в одну строку, raw — как прочитано)
-# → {подполе: значение}, ключ "" — основное значение. Новый тип: функция с @field_type("имя").
+# Разбор значения поля по его type: функция (s - очищенное значение в одну строку, raw - как прочитано)
+# → {подполе: значение}, ключ "" - основное значение. Новый тип: функция с @field_type("имя").
 FIELD_PARSERS: dict[str, Callable[[str, str], dict]] = {}
 
 
@@ -83,7 +83,7 @@ FIELD_PARSERS["services"] = _p_text
 FIELD_PARSERS["org"] = _p_text
 
 
-# В шапке после ФИО и даты рождения обычно идут паспортные данные — дату рождения ищем до них
+# В шапке после ФИО и даты рождения обычно идут паспортные данные - дату рождения ищем до них
 _HEADER_STOP = re.compile(r"паспорт|серия|(?<![\d+])\d{2}\s?\d{2}\s?[№N]?\s?\d{6}(?!\d)|\bвыдан|\bИНН\b|"
                           r"зарегистр|адрес|\(ФИО|место\s+рожд", re.I)
 
@@ -130,7 +130,7 @@ def _p_passport(s: str, raw: str) -> dict:
 @field_type("issuer")
 def _p_issuer(s: str, raw: str) -> dict:
     s = re.sub(r"(?:паспорт\s+)?\bвыдан[а-я]*\b\s*:?", " ", s, flags=re.I)
-    s = re.sub(r"\bкод\s+подразделения\s*:?\s*\d{3}\s?[-—–]\s?\d{3}", " ", s, flags=re.I)
+    s = re.sub(r"\bкод\s+подразделения\s*:?\s*\d{3}\s?[-\u2014\u2013]\s?\d{3}", " ", s, flags=re.I)
     s = re.sub(r"\bдата\s+выдачи\s*:?", " ", s, flags=re.I)
     yr = r"(?:\s*(?:года|г\.?)(?=[\s,.;]|$))?"          # «… 03 июня 2009 года», «… 25.05.2010 г.»
     s = re.sub(parsers.DATE_WORDS_RE.pattern + yr, " ", s, flags=re.I)
@@ -140,7 +140,7 @@ def _p_issuer(s: str, raw: str) -> dict:
 
 @field_type("domains")
 def _p_domains(s: str, raw: str) -> dict:
-    # переводы строк сохраняем: «business-⏎dvd.ru» — одно имя, а не «business-» и «dvd.ru»
+    # переводы строк сохраняем: «business-⏎dvd.ru» - одно имя, а не «business-» и «dvd.ru»
     dl = parsers.parse_domain_list(_clean(raw, keep_lines=True))
     doms = dl.domains
     return {"": ", ".join(doms), "list": doms, "punycode": [parsers.to_punycode(d) for d in doms],
@@ -175,7 +175,7 @@ def _p_date_words(s: str, raw: str) -> dict:
 
 
 def parse_value(ftype: str, raw: str) -> dict:
-    """Возвращает словарь {подполе: значение}. Ключ "" — основное значение."""
+    """Возвращает словарь {подполе: значение}. Ключ "" - основное значение."""
     s = _clean(raw)
     if not s:
         return {}
@@ -223,8 +223,8 @@ def _usable(key: str, value) -> bool:
 
 def extract_from_text(text: str, form: dict, source_file: str, conf: float = 0.98, source: str = "text") -> Extraction:
     """Поля бланка из текста. Документ с текстом (source="text"), похожий на бланк, читается по подписям бланка
-    (раздел `reference:`, модуль reference.py); поля, которые так не прочитались, и всё остальное — регулярками
-    `text:`. В конце — хук бланка after_text (особая логика модуля заявления, forms/<id>/hooks.py)."""
+    (раздел `reference:`, модуль reference.py); поля, которые так не прочитались, и всё остальное - регулярками
+    `text:`. В конце - хук бланка after_text (особая логика модуля заявления, forms/<id>/hooks.py)."""
     ex = Extraction(doc_type=form["id"], source_file=source_file)
     ex.debug["mode"] = "text-layer"
     by_ref: set[str] = set()
@@ -239,11 +239,11 @@ def extract_from_text(text: str, form: dict, source_file: str, conf: float = 0.9
                 _store(ex, key, spec["type"], raw, conf, source)
                 if key in ex.fields and ex.fields[key].value:
                     by_ref.add(key)
-                else:                                  # не разобралось — пусть читают регулярки
+                else:                                  # не разобралось - пусть читают регулярки
                     for k in [k for k in ex.fields if k == key or k.startswith(key + ".")]:
                         del ex.fields[k]
             ex.debug["reader"] = "reference"
-            # подпись нашлась, а значения нет (строка бланка не заполнена) — поле пустое, регулярки не нужны
+            # подпись нашлась, а значения нет (строка бланка не заполнена) - поле пустое, регулярки не нужны
             by_ref |= {k for k, raw in rd.values.items() if raw == ""}
     for key, spec in form["fields"].items():
         if key in by_ref:
@@ -260,20 +260,20 @@ def extract_from_text(text: str, form: dict, source_file: str, conf: float = 0.9
 
 def text_fields(text: str, form: dict, source_file: str, conf: float = 0.98, source: str = "text",
                 only: list[str] | None = None) -> Extraction:
-    """Поля из текста заявления: регулярками бланка или — если для дела включена галка «Поля заявления —
-    нейросетью» (llm_extract.session) — локальной моделью. Модель не ответила → регулярки, с пометкой в замечаниях."""
+    """Поля из текста заявления: регулярками бланка или - если для дела включена галка «Поля заявления -
+    нейросетью» (llm_extract.session) - локальной моделью. Модель не ответила → регулярки, с пометкой в замечаниях."""
     if llm_extract.enabled() and len(re.sub(r"\W", "", text or "")) >= 40:
         try:
             return llm_extract.extract(text, form, source_file, conf=conf, source=source, only=only)
         except llm_extract.LLMError as e:
-            log(f"   модель не ответила: {e} — читаю поля регулярками бланка")
+            log(f"   модель не ответила: {e} - читаю поля регулярками бланка")
             ex = extract_from_text(text, form, source_file, conf, source)
-            ex.notes.append(f"Модель для полей заявления не ответила ({e}) — поля прочитаны регулярками бланка.")
+            ex.notes.append(f"Модель для полей заявления не ответила ({e}) - поля прочитаны регулярками бланка.")
             ex.debug["llm_error"] = str(e)
             return ex
     ex = extract_from_text(text, form, source_file, conf, source)
     if not any(sp.get("text") for sp in form["fields"].values()):
-        ex.notes.append("У бланка нет регулярок для полей (`text:`) — включите «Поля заявления — нейросетью».")
+        ex.notes.append("У бланка нет регулярок для полей (`text:`) - включите «Поля заявления - нейросетью».")
     return ex
 
 
@@ -305,7 +305,7 @@ def _find_anchor(lines: list[Line], variants: list[str], min_y: int = 0) -> Anch
                 cand = " ".join(w.text for w in ws[i:j])
                 for v in variants:
                     sc = fuzz.ratio(cand.lower(), v.lower())
-                    need = 85 if len(v) <= 8 else 72   # короткие подписи — почти точное совпадение
+                    need = 85 if len(v) <= 8 else 72   # короткие подписи - почти точное совпадение
                     if sc >= need and (best is None or sc > best.score):
                         box = (min(w.x for w in ws[i:j]), min(w.y for w in ws[i:j]),
                                max(w.x + w.w for w in ws[i:j]), max(w.y + w.h for w in ws[i:j]))
@@ -334,7 +334,7 @@ def crop_for_vlm(crop: np.ndarray) -> np.ndarray:
 
 
 def _ink_ratio(crop: np.ndarray) -> tuple[float, float]:
-    """Доля «синих» и вообще тёмных пикселей — признак рукописного заполнения."""
+    """Доля «синих» и вообще тёмных пикселей - признак рукописного заполнения."""
     hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
     blue = cv2.inRange(hsv, (95, 60, 40), (135, 255, 255))
     dark = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) < 140
@@ -344,15 +344,15 @@ def _ink_ratio(crop: np.ndarray) -> tuple[float, float]:
 
 def extract_from_scan(page: Page, form: dict, out_dir: Path, vlm: OllamaVLM | None = None,
                       handwritten_mode: bool | None = None, prefer: Extraction | None = None) -> Extraction:
-    """handwritten_mode: True — все заполненные поля считаем рукописными (VLM, если есть);
-    False — рукописи нет, только Tesseract; None — определяем по каждому полю (синие чернила / уверенность)."""
+    """handwritten_mode: True - все заполненные поля считаем рукописными (VLM, если есть);
+    False - рукописи нет, только Tesseract; None - определяем по каждому полю (синие чернила / уверенность)."""
     img = page.image
     H, W = img.shape[:2]
     ex = Extraction(doc_type=form["id"], source_file=page.source)
     ex.debug["mode"] = "scan"
     log("Заявление (скан): ищу подписи полей на бланке…")
     lines = _label_lines(img)
-    # «печатные строки бланка» — только подписи полей и постоянный текст формы. Значения, напечатанные
+    # «печатные строки бланка» - только подписи полей и постоянный текст формы. Значения, напечатанные
     # на компьютере, сюда попадать не должны, иначе область значения обрежется (так было на заявлении Аверина).
     form_labels = [a for spec in form["fields"].values() for a in (spec.get("scan") or {}).get("anchor", [])]
     form_labels += form.get("static_text", []) + form["detect"]["keywords"]
@@ -390,7 +390,7 @@ def extract_from_scan(page: Page, form: dict, out_dir: Path, vlm: OllamaVLM | No
                 if by0 < y0 - 0.8 * h and by1 > ry0 and min(bx1, rx1) - max(bx0, rx0) > 0.3 * (bx1 - bx0):
                     ry0 = max(ry0, (by0 + by1) // 2)  # рукопись часто наезжает на строку выше
         overlay_boxes.append((key, (rx0, ry0, rx1, ry1), a.box))
-        # (0.7.6) где поле на странице — рабочее место подсвечивает это место в просмотре документа
+        # (0.7.6) где поле на странице - рабочее место подсвечивает это место в просмотре документа
         ex.debug.setdefault("boxes", {})[key] = {"page": page.index, "box": [rx0, ry0, rx1, ry1], "size": [W, H]}
         if ry1 - ry0 < 10 or rx1 - rx0 < 10:
             continue
@@ -402,7 +402,7 @@ def extract_from_scan(page: Page, form: dict, out_dir: Path, vlm: OllamaVLM | No
         if blue < 0.002 and dark < 0.01:
             ex.set(key, "", 0.9, "scan", raw="(пусто)", crop=str(crop_path))
             continue
-        # печатный текст: Tesseract (без подчёркиваний — они сильно портят распознавание)
+        # печатный текст: Tesseract (без подчёркиваний - они сильно портят распознавание)
         txt, conf = tesseract_text(remove_lines(crop), lang="rus+eng", psm=6)
         txt = txt.replace("\n", " ")
         pv = prefer.fields.get(key) if prefer is not None else None
@@ -432,7 +432,7 @@ def extract_from_scan(page: Page, form: dict, out_dir: Path, vlm: OllamaVLM | No
             continue
         if handwritten and vlm is None and pv is not None and pv.value:
             # «рукопись» (или печатный текст под штампом/подписью), модели нет: берём прочтение всей страницы,
-            # но как ненадёжное — проверки дадут «ручную проверку», а не «расхождение»
+            # но как ненадёжное - проверки дадут «ручную проверку», а не «расхождение»
             handwritten_fields += 1
             for k, f in prefer.fields.items():
                 if k == key or k.startswith(key + "."):
@@ -440,7 +440,7 @@ def extract_from_scan(page: Page, form: dict, out_dir: Path, vlm: OllamaVLM | No
                                               str(crop_path) if k == key else None)
             continue
         if not handwritten and _form_text_only(txt, label_words):
-            # в области — только печатный текст бланка (подпись поля нашлась не там): значения нет
+            # в области - только печатный текст бланка (подпись поля нашлась не там): значения нет
             ex.fields[key] = FieldValue("", 0.6, "scan", "(пусто)", True, str(crop_path))
             continue
         source, value, c = "ocr", txt, conf / 100
@@ -455,8 +455,8 @@ def extract_from_scan(page: Page, form: dict, out_dir: Path, vlm: OllamaVLM | No
                     ex.notes.append(f"VLM, поле «{spec['title']}»: {e}")
                     value, c = "", 0.0
             else:
-                value, c = "", 0.0   # без VLM рукопись не распознаём — только фрагмент для проверки
-        # убираем печатные слова-префиксы («от», «Я,», «профиля):» — `strip_prefixes` бланка)
+                value, c = "", 0.0   # без VLM рукопись не распознаём - только фрагмент для проверки
+        # убираем печатные слова-префиксы («от», «Я,», «профиля):» - `strip_prefixes` бланка)
         value = value.strip()
         if prefixes is not None:
             value = prefixes.sub("", value)
@@ -475,7 +475,7 @@ def extract_from_scan(page: Page, form: dict, out_dir: Path, vlm: OllamaVLM | No
     ex.debug["regions_overlay"] = str(ov_path)
     if handwritten_fields:
         msg = f"Рукописных полей: {handwritten_fields}."
-        msg += (" Распознаны локальной VLM — сверьте с фрагментами." if vlm else
+        msg += (" Распознаны локальной VLM - сверьте с фрагментами." if vlm else
                 " VLM не включена: значения нужно подтвердить по фрагментам в отчёте.")
         ex.notes.append(msg)
     return ex
@@ -519,7 +519,7 @@ def _domain_issues(dl: parsers.DomainList) -> bool:
 
 
 def _reread_domain_list(page: Page, lines: list[Line], form: dict, prefer: Extraction, out_dir: Path) -> dict | None:
-    """Многострочный список доменов на скане перечитывается отдельно — абзацем.
+    """Многострочный список доменов на скане перечитывается отдельно - абзацем.
 
     OCR всей страницы (psm 4) читает длинный подчёркнутый абзац хуже: линия режет буквы с хвостами вниз
     («.рф» пропадает, «р» читается как «о»). Абзац от «…администрированию домена(ов)» до подписи
@@ -557,7 +557,7 @@ def _reread_domain_list(page: Page, lines: list[Line], form: dict, prefer: Extra
             if m and _clean(m.group(1)):
                 readings.append((name, m.group(1), parsers.parse_domain_list(_clean(m.group(1), True))))
                 break
-        # два прочтения дали один и тот же список без замечаний — дальше не распознаём (экономия времени)
+        # два прочтения дали один и тот же список без замечаний - дальше не распознаём (экономия времени)
         good = [dl.domains for _, _, dl in readings if dl.domains and not _domain_issues(dl)]
         if any(good.count(x) >= 2 for x in good):
             break
@@ -598,8 +598,8 @@ def _reread_domain_list(page: Page, lines: list[Line], form: dict, prefer: Extra
 # ------------------------------------------------------------------ страницы заявления в файле
 
 def page_kind(text: str, form: dict) -> str | None:
-    """Страница заявления: "start" — первая страница бланка (заголовок, ключевые слова), "cont" — продолжение
-    (раздел «новому Администратору», нумерованный список доменов, подписи), None — другое (конверт, опись,
+    """Страница заявления: "start" - первая страница бланка (заголовок, ключевые слова), "cont" - продолжение
+    (раздел «новому Администратору», нумерованный список доменов, подписи), None - другое (конверт, опись,
     нотариальная надпись, паспорт)."""
     t = re.sub(r"\s+", " ", (text or "").lower())
     det = form.get("detect") or {}
@@ -620,7 +620,7 @@ def _full_lines(page: Page) -> list[Line]:
 
 def _application_groups(pages: list[Page], form: dict, first_text: str) -> tuple[list[list[Page]], list[int]]:
     """Заявления в многостраничном файле: [[первая страница, продолжения…], …] и номера страниц паспорта.
-    Первая страница бланка ищется по заголовку — в файле перед ней бывают конверт и опись."""
+    Первая страница бланка ищется по заголовку - в файле перед ней бывают конверт и опись."""
     kinds, passport = [], []
     for p in pages:
         txt = first_text if p is pages[0] else _quick_text(p)
@@ -642,7 +642,7 @@ def _application_groups(pages: list[Page], form: dict, first_text: str) -> tuple
 def extract_application(pages: list[Page], out_dir: Path, vlm: OllamaVLM | None = None,
                         forms: list[dict] | None = None, mode: str = "auto",
                         handwritten: bool | None = None, form_id: str | None = None) -> Extraction:
-    """mode: auto | electronic | scan | photo. form_id — принудительно использовать этот бланк.
+    """mode: auto | electronic | scan | photo. form_id - принудительно использовать этот бланк.
 
     Многостраничный файл (скан): страница бланка ищется по заголовку (перед ней бывают конверт, опись),
     к ней добавляются страницы-продолжения (вторая страница списка доменов, раздел «новому Администратору»).
@@ -656,13 +656,13 @@ def extract_application(pages: list[Page], out_dir: Path, vlm: OllamaVLM | None 
     text = "\n".join(p.text_layer for p in pages)
     has_text = len(re.sub(r"\s", "", text)) > 300
     if mode == "electronic" and not has_text:
-        log("Заявление: отмечено как электронное, но текстового слоя нет — обрабатываю как скан")
+        log("Заявление: отмечено как электронное, но текстового слоя нет - обрабатываю как скан")
     if has_text and mode in ("auto", "electronic"):
         form = detect_form(text, forms) or (forms[0] if form_id else None)
         if form:
             log("Заявление: есть текстовый слой, читаю поля из текста")
             ex = text_fields(text, form, page.source)
-            # текстовый слой есть, но поля пустые — возможно, заполнено от руки поверх PDF
+            # текстовый слой есть, но поля пустые - возможно, заполнено от руки поверх PDF
             filled = sum(1 for k, f in ex.fields.items() if "." not in k and f.value)
             if filled >= 4 or page.image is None:
                 return ex
@@ -675,7 +675,7 @@ def extract_application(pages: list[Page], out_dir: Path, vlm: OllamaVLM | None 
         log("Заявление (фото): перспектива выровнена" if ok else "Заявление (фото): границы листа не найдены, беру как есть")
         page = Page(image=img, text_layer=page.text_layer, source=page.source, index=page.index)
         pages = [page] + list(pages[1:])
-    # скан: распознаём страницу целиком — для напечатанных значений это надёжнее, чем по областям
+    # скан: распознаём страницу целиком - для напечатанных значений это надёжнее, чем по областям
     log("Заявление: распознаю бланк целиком, определяю форму…")
     lines = _full_lines(page)
     page_text = "\n".join(l.text for l in lines)
@@ -683,18 +683,18 @@ def extract_application(pages: list[Page], out_dir: Path, vlm: OllamaVLM | None 
     scan_pages = [p for p in pages if p.image is not None]
     groups, passport_pages, notes = [[page]], [], []
     if len(scan_pages) > 1:
-        log(f"Заявление: в файле {len(scan_pages)} стр. — ищу страницы заявления…")
+        log(f"Заявление: в файле {len(scan_pages)} стр. - ищу страницы заявления…")
         probe = form or (forms[0] if form_id else None) or forms[0]
         groups, passport_pages = _application_groups(scan_pages, probe, page_text)
         if groups and groups[0][0] is not page:
             page = groups[0][0]
-            log(f"Заявление: бланк — на стр. {page.index + 1}")
+            log(f"Заявление: бланк - на стр. {page.index + 1}")
             lines = _full_lines(page)
             page_text = "\n".join(l.text for l in lines)
             form = detect_form(page_text, forms) or probe
         groups = groups or [[page]]
         for p in groups[0][1:]:
-            log(f"Заявление: продолжение — стр. {p.index + 1}")
+            log(f"Заявление: продолжение - стр. {p.index + 1}")
             page_text += "\n" + "\n".join(l.text for l in _full_lines(p))
         if passport_pages:
             notes.append(f"В файле заявления есть страницы паспорта (стр. {', '.join(map(str, passport_pages))}): "
@@ -702,13 +702,13 @@ def extract_application(pages: list[Page], out_dir: Path, vlm: OllamaVLM | None 
     form = form or (forms[0] if form_id else None)
     if not form:
         ex = Extraction(doc_type="unknown", source_file=page.source)
-        ex.notes.append("Тип формы не определён — добавьте модуль заявления в папку forms/ (forms/<id>/form.yaml).")
+        ex.notes.append("Тип формы не определён - добавьте модуль заявления в папку forms/ (forms/<id>/form.yaml).")
         return ex
     prefer = text_fields(page_text, form, page.source, conf=0.85, source="ocr-text")
     reread = _reread_domain_list(page, lines, form, prefer, out_dir) if len(groups[0]) == 1 else None
     formspec.call_hook(form, "scan_page", page, lines, page_text, form, prefer)   # особая логика бланка (hooks.py)
     ex = extract_from_scan(page, form, out_dir, vlm, handwritten_mode=handwritten, prefer=prefer)
-    # поля без области на скане (например, «новому Администратору: …») — из текста страницы.
+    # поля без области на скане (например, «новому Администратору: …») - из текста страницы.
     # Множество полей фиксируется до цикла: иначе после «domains» пропускались бы «domains.list» и др.
     present = {k.split(".")[0] for k in ex.fields}
     for k, f in prefer.fields.items():
@@ -717,7 +717,7 @@ def extract_application(pages: list[Page], out_dir: Path, vlm: OllamaVLM | None 
     if reread:
         f = ex.fields.get(reread["key"])
         if f is not None and f.source in ("ocr-text", "llm-ocr-text"):
-            f.crop = reread["crop"]          # фрагмент — весь абзац со списком, а не последняя строка
+            f.crop = reread["crop"]          # фрагмент - весь абзац со списком, а не последняя строка
         ex.debug["domains_reread"] = reread["info"]
         if reread["note"]:
             ex.notes.append(reread["note"])
@@ -741,7 +741,7 @@ def _merge_more_applications(ex: Extraction, groups: list[list[Page]], form: dic
     first = list(ex.get(f"{key}.list") or [])
     added, parts = [], [len(first)]
     for g in groups:
-        log(f"Заявление: ещё одно заявление — стр. {', '.join(str(p.index + 1) for p in g)}")
+        log(f"Заявление: ещё одно заявление - стр. {', '.join(str(p.index + 1) for p in g)}")
         txt = "\n".join("\n".join(l.text for l in _full_lines(p)) for p in g)
         other = text_fields(txt, form, g[0].source, conf=0.85, source="ocr-text")
         ex.debug.setdefault("llm", []).extend(other.debug.get("llm", []))
@@ -751,7 +751,7 @@ def _merge_more_applications(ex: Extraction, groups: list[list[Page]], form: dic
         for role in ("applicant_header", "new_admin_org", "new_admin_fio"):
             a, b = ex.get(role), other.get(role)
             if a and b and names.norm(a) != names.norm(b):
-                ex.notes.append(f"Заявления в файле различаются: «{form['fields'].get(role, {}).get('title', role)}» — "
+                ex.notes.append(f"Заявления в файле различаются: «{form['fields'].get(role, {}).get('title', role)}» - "
                                 f"«{a}» и «{b}».")
     if not added:
         return

@@ -1,5 +1,5 @@
-"""Рабочее место (0.8.4): ручное выделение текста — текст в рамке на странице. PDF с текстовым слоем — слова слоя,
-скан и фото — печатный текст (Tesseract). Без нейросети и без браузера."""
+"""Рабочее место (0.8.4): ручное выделение текста - текст в рамке на странице. PDF с текстовым слоем - слова слоя,
+скан и фото - печатный текст (Tesseract). Без нейросети и без браузера."""
 import shutil
 import time
 from pathlib import Path
@@ -61,11 +61,11 @@ def test_zone_pdf_text_layer(case):
     p1 = ws.page("p1")
     r = ws.read_zone("p1", _rect(p1, width, line))
     assert r["source"] == "pdf" and r["text"] == line[0]
-    # страница с /Rotate 90, оператор повернул её обратно (270) — рамка там же, где на исходной
+    # страница с /Rotate 90, оператор повернул её обратно (270) - рамка там же, где на исходной
     rot = next(p for p in ws.pages if ws.file(p.file).name == "rot.pdf" and p.index == 0)
     rot.rot = 270
     assert ws.read_zone(rot.id, _rect(rot, width, line))["text"] == line[0]
-    # рамка на пустом месте PDF — слов нет, текста нет
+    # рамка на пустом месте PDF - слов нет, текста нет
     assert ws.read_zone("p1", [5, 5, 40, 20])["text"] == ""
     with pytest.raises(workspace.WsError):
         ws.read_zone("p1", [5, 5, 2, 2])
@@ -80,9 +80,9 @@ def test_zone_scan_rotated_and_crop(case):
     r = ws.read_zone(scan.id, _rect(scan, width, line))
     assert r["source"] == "ocr" and r["text"] == line[0] and r["conf"] > 70, r
     ccw = next(p for p in ws.pages if ws.file(p.file).name == "scan_ccw.png")
-    ccw.rot = 90                                     # оператор повернул страницу — рамка по показанной странице
+    ccw.rot = 90                                     # оператор повернул страницу - рамка по показанной странице
     assert ws.read_zone(ccw.id, _rect(ccw, width, line))["text"] == line[0]
-    # вырезка со страницы: рамка — в координатах вырезки
+    # вырезка со страницы: рамка - в координатах вырезки
     k = scan.pv[0] / width
     crop = ws.add_crop(scan.id, [line[1] * k - 50, line[2] * k - 50, (line[3] - line[1]) * k + 250, (line[4] - line[2]) * k + 150])
     assert ws.read_zone(crop.id, [50 - 4, 50 - 4, (line[3] - line[1]) * k + 8, (line[4] - line[2]) * k + 8])["text"] == line[0]
@@ -110,7 +110,7 @@ def test_read_printed_pen_lines_and_vertical():
     img = (np.asarray(im, np.float32) * np.asarray(pen, np.float32) / 255).astype(np.uint8)
     r = read_printed(cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
     assert r["text"] == "Паспорт: 4512 345678, выдан 12.03.2015" and r["variant"] == "blue", r
-    # номер на полях — вертикально, рамка узкая и высокая
+    # номер на полях - вертикально, рамка узкая и высокая
     im = Image.new("RGB", (480, 90), (250, 225, 230))
     ImageDraw.Draw(im).text((10, 15), "45 12 345678", font=ImageFont.truetype(str(FONT), 52), fill=(200, 30, 40))
     r = read_printed(cv2.rotate(cv2.cvtColor(np.asarray(im), cv2.COLOR_RGB2BGR), cv2.ROTATE_90_CLOCKWISE))

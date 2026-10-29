@@ -1,16 +1,16 @@
 """Локальный веб-интерфейс: python -m doctool web  →  http://127.0.0.1:8765
 
 Работает без интернета: страница и скрипты отдаются этим же сервером, внешних CDN нет.
-Сюда же подключается расширение Chrome «PySimpleManager» (WebSocket /ext) — через него
+Сюда же подключается расширение Chrome «PySimpleManager» (WebSocket /ext) - через него
 загружаются данные доменов (Sd, S, ЕСИА) и аккаунтов из manager и заполняется базовая анкета
 (вкладка «Смена владельца ЛК», API /api/owner/*).
 
-С 0.7.6 — «Рабочее место» (API /api/ws/*, doctool/workspace.py): дело из архива тикетницы, страницы по
+С 0.7.6 - «Рабочее место» (API /api/ws/*, doctool/workspace.py): дело из архива тикетницы, страницы по
 документам, сверка Sd / ЕСИА / заявление / паспорт, заполнение «Проверки действительности паспорта» на Госуслугах
 и страницы смены администратора в manager (через расширение), строка таблицы.
 
-С 0.8.0 — строка «Поиск» рабочего места (API /api/site/*): сайт (Google, Яндекс, ЕГРЮЛ, Госуслуги, быстрые ссылки)
-открывается рядом с рабочим местом через расширение — во второй половине окна Chrome (разделённый экран) или отдельным
+С 0.8.0 - строка «Поиск» рабочего места (API /api/site/*): сайт (Google, Яндекс, ЕГРЮЛ, Госуслуги, быстрые ссылки)
+открывается рядом с рабочим местом через расширение - во второй половине окна Chrome (разделённый экран) или отдельным
 окном; удаление дел из «Недавних дел» (DELETE /api/ws/{id}, POST /api/ws/recent/clear).
 """
 from __future__ import annotations
@@ -32,6 +32,7 @@ from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile, WebSoc
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from . import APP_NAME, __version__, account, domain_report, workspace, wsconfig
+from .domain_store import DomainStore
 from .domains import ManagerUnavailable, sort_by_problem, split_domains
 from .integrations import push_to_system
 from .jobs import JobManager, result_payload
@@ -52,6 +53,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
     manager = ManagerTasks(bridge)
     jobs = JobManager(manager=manager)
     app.state.bridge, app.state.manager, app.state.jobs = bridge, manager, jobs
+    tab_store = DomainStore(Path(out_root) / "_domains" / "manager_tab.json")   # (0.8.5) «Домены в manager»
     uploads = Path(out_root) / "_uploads"
 
     def file_url(job_id: str):
@@ -124,7 +126,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
 
     @app.post("/api/jobs/manual")
     def create_manual(body: dict = Body(default={})):
-        """(0.7.3) Ручной ввод данных заявления: пустое дело выбранного типа, данные — в таблице результата."""
+        """(0.7.3) Ручной ввод данных заявления: пустое дело выбранного типа, данные - в таблице результата."""
         ct = body.get("case_type") or "admin_change_person"
         if ct not in load_case_types():
             raise HTTPException(400, f"Неизвестный тип заявления: {ct}")
@@ -221,7 +223,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
 
     @app.post("/api/site/open")
     def site_open(body: dict = Body(...)):
-        """Открыть сайт рядом с рабочим местом (расширение). fill: egrul — вписать запрос q в поле поиска сайта
+        """Открыть сайт рядом с рабочим местом (расширение). fill: egrul - вписать запрос q в поле поиска сайта
         (кнопку «Найти» нажимает оператор)."""
         url = str(body.get("url") or "").strip()
         if not url.startswith(("https://", "http://")) or len(url) > 4000:
@@ -237,7 +239,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
     @app.post("/api/site/hide")
     def site_hide(body: dict = Body(default={})):
         """Убрать сайт: вторую половину разделённого экрана (вкладка остаётся) или окно рядом (сворачивается);
-        close — закрыть вкладку / окно сайта."""
+        close - закрыть вкладку / окно сайта."""
         if not bridge.connected():
             return {"ok": True, "data": {"mode": "none"}}
         reply = _ext("site_hide", {"close": bool(body.get("close"))}, timeout=30)
@@ -249,16 +251,44 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         doms = split_domains(doms if isinstance(doms, str) else " ".join(doms))
         if not doms:
             raise HTTPException(400, "Укажите домены")
-        if not bridge.connected():
-            raise HTTPException(409, "Расширение «PySimpleManager» не подключено: откройте Chrome с расширением "
-                                     "(значок расширения покажет состояние связи)")
         job_id = body.get("job_id") or None
         job = jobs.get(job_id) if job_id else None
         if job_id and (job is None or job.result is None):
             raise HTTPException(404, "Нет результата проверки для этих доменов")
+        # (0.8.5) сохранённый результат: дело рабочего места (ws_id) или вкладка «Домены в manager» (без дела);
+        # домены, которые в нём уже есть, из manager не загружаются
+        ws_id = body.get("ws_id") or ""
+        store = _ws_store(_ws(ws_id)) if ws_id else (None if job else tab_store)
+        todo = store.missing(doms) if store is not None else doms
+        if todo and not bridge.connected():
+            raise HTTPException(409, "Расширение «PySimpleManager» не подключено: откройте Chrome с расширением "
+                                     "(значок расширения покажет состояние связи)")
         on_done = (lambda t: jobs.attach_domains(job_id, t.items)) if job else None
-        t = manager.submit(doms, job_id=job_id if job else None, on_done=on_done)
-        return {"task_id": t.id, "domains": doms}
+        t = manager.submit(doms, job_id=job_id if job else None, on_done=on_done, store=store)
+        return {"task_id": t.id, "domains": doms, "todo": todo}
+
+    def _store_payload(store: DomainStore) -> dict:
+        lst, items, updated = store.current()
+        return {"list": lst, "items": [i.to_dict() for i in sort_by_problem(items)], "updated": updated}
+
+    @app.get("/api/manager/domains")
+    def manager_domains():
+        """(0.8.5) Сохранённый результат вкладки «Домены в manager»: список и данные доменов."""
+        return _store_payload(tab_store)
+
+    @app.post("/api/manager/domains/reset")
+    def manager_domains_reset():
+        """(0.8.5) «Сбросить результат»: следующая загрузка запросит все домены из manager заново."""
+        tab_store.reset()
+        return {"ok": True}
+
+    @app.get("/api/manager/domains/report")
+    def manager_domains_report():
+        """(0.8.5) Выгрузка по доменам (HTML) из сохранённого результата вкладки «Домены в manager»."""
+        _, items, _ = tab_store.current()
+        if not items:
+            raise HTTPException(404, "Нет данных доменов")
+        return _report_response(domain_report.build([i.to_dict() for i in items]), domain_report.filename())
 
     @app.get("/api/manager/tasks/{task_id}")
     def manager_task(task_id: str, since: int = 0):
@@ -305,14 +335,14 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
             t.cancel.set()
         return {"ok": True}
 
-    # ---------------------------------------------------------------- смена владельца ЛК (физлица, с 0.7.3 — ИП и юрлица)
+    # ---------------------------------------------------------------- смена владельца ЛК (физлица, с 0.7.3 - ИП и юрлица)
     def _need_extension():
         if not bridge.connected():
             raise HTTPException(409, "Расширение «PySimpleManager» не подключено: откройте Chrome с расширением "
                                      "(значок расширения покажет состояние связи)")
 
     def _ext(cmd: str, params: dict, timeout: float = 240, log=None) -> dict:
-        """Запрос к расширению; ошибки связи — ответом {ok: false, error}."""
+        """Запрос к расширению; ошибки связи - ответом {ok: false, error}."""
         try:
             return bridge.request_sync(cmd, params, timeout,
                                        (lambda m: log(f"manager: {m.get('message') or m.get('step')}")) if log else None)
@@ -340,19 +370,19 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
 
     @app.post("/api/owner/compare")
     def owner_compare(body: dict = Body(...)):
-        """Текущий владелец: базовая анкета ↔ данные заявления. kind — тип анкеты аккаунта (pp / ip / org)."""
+        """Текущий владелец: базовая анкета ↔ данные заявления. kind - тип анкеты аккаунта (pp / ip / org)."""
         return account.compare_owner(body.get("ba") or {}, body.get("app") or {}, body.get("kind") or "pp")
 
     @app.post("/api/owner/prepare")
     def owner_prepare(body: dict = Body(...)):
-        """Новый владелец: что и как будет вписано в базовую анкету (предпросмотр). kind — pp / ip / org."""
+        """Новый владелец: что и как будет вписано в базовую анкету (предпросмотр). kind - pp / ip / org."""
         return account.prepare_fill(body.get("form") or {}, body.get("kind") or None)
 
     @app.post("/api/owner/fill")
     def owner_fill(body: dict = Body(...)):
         """«Заполнить автоматически» / «Вернуть как было» (restore: значения, которые были до заполнения).
-        kind — тип нового владельца (pp / ip / org): страница базовой анкеты переключается на него. При restore
-        kind — тип заполненной формы, back_type — тип анкеты до заполнения (вернуть и его)."""
+        kind - тип нового владельца (pp / ip / org): страница базовой анкеты переключается на него. При restore
+        kind - тип заполненной формы, back_type - тип анкеты до заполнения (вернуть и его)."""
         uid = str(body.get("user_id") or "").strip()
         if not uid.isdigit():
             raise HTTPException(400, "Сначала загрузите аккаунт (нужен номер аккаунта)")
@@ -401,21 +431,21 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         op = ws.operation()
         ct = op.get("case_type") or ""
         if not ct or ct not in load_case_types():
-            ws.logmsg(f"Операция «{op.get('title')}»: проверка заявления не настроена — документы сверяются вручную")
+            ws.logmsg(f"Операция «{op.get('title')}»: проверка заявления не настроена - документы сверяются вручную")
             ws.save()
             return None
         app_src, pas_src = ws.sources()
         if not app_src and not pas_src:
-            ws.logmsg("Нет страниц заявления и паспорта — проверка не запускалась")
+            ws.logmsg("Нет страниц заявления и паспорта - проверка не запускалась")
             ws.save()
             return None
         ticket = (ws.state.get("ticket") or "").strip().lstrip("#")
         inp = CaseInput(case_type=ct, app_sources=app_src, pas_sources=pas_src, ollama=ollama, out_root=out_root,
                         case_id=ticket or None, manager_autoload=True)
-        job = jobs.submit(inp)
+        job = jobs.submit(inp, store=_ws_store(ws))
         ws.job_id = job.id
         ws.job_ids.append(job.id)
-        ws.logmsg(f"Проверка запущена: заявление — {len(app_src)} стр., паспорт — {len(pas_src)} стр.")
+        ws.logmsg(f"Проверка запущена: заявление - {len(app_src)} стр., паспорт - {len(pas_src)} стр.")
         ws.save()
         return job.id
 
@@ -427,6 +457,10 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         if ws is None:
             raise HTTPException(404, "Нет такого дела рабочего места")
         return ws
+
+    def _ws_store(ws: workspace.Workspace) -> DomainStore:
+        """(0.8.5) Сохранённый результат загрузки доменов дела (domains.json в папке дела)."""
+        return DomainStore(ws.dir / "domains.json")
 
     def _page_url(ws_id: str):
         def f(pid: str, thumb: bool) -> str:
@@ -484,7 +518,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
 
     @app.post("/api/ws")
     async def ws_create(files: list[UploadFile] | None = File(None), state: str = Form("{}")):
-        """Новое дело: архив или файлы; без файлов (0.8.1) — пустое дело, файлы добавляются потом."""
+        """Новое дело: архив или файлы; без файлов (0.8.1) - пустое дело, файлы добавляются потом."""
         tmp = Path(tempfile.mkdtemp(prefix="pysm_"))
         uploads = _ws_uploads(files, tmp)
         try:
@@ -497,7 +531,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
 
     @app.post("/api/ws/{ws_id}/files")
     async def ws_add_files(ws_id: str, files: list[UploadFile] = File(...)):
-        """(0.8.1) Добавить файлы или архив в открытое дело: новые страницы разбираются, проверка — заново."""
+        """(0.8.1) Добавить файлы или архив в открытое дело: новые страницы разбираются, проверка - заново."""
         ws = _ws(ws_id)
         tmp = Path(tempfile.mkdtemp(prefix="pysm_"))
         try:
@@ -543,7 +577,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
 
     @app.get("/api/ws/{ws_id}/text/{pid}")
     def ws_text(ws_id: str, pid: str):
-        """(0.8.1) Текстовый слой страницы PDF — для выделения и копирования текста в просмотре."""
+        """(0.8.1) Текстовый слой страницы PDF - для выделения и копирования текста в просмотре."""
         ws = _ws(ws_id)
         try:
             return ws.text_layer(pid)
@@ -553,7 +587,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
     @app.post("/api/ws/{ws_id}/ocr")
     def ws_ocr(ws_id: str, body: dict = Body(...)):
         """(0.8.4) Ручное выделение текста: текст в рамке на странице ({pid, rect: [x, y, w, h]} в px показанного
-        превью). PDF с текстовым слоем — слова слоя, сканы и фото — печатный текст (Tesseract)."""
+        превью). PDF с текстовым слоем - слова слоя, сканы и фото - печатный текст (Tesseract)."""
         ws = _ws(ws_id)
         try:
             return ws.read_zone(str(body.get("pid") or ""), body.get("rect") or [])
@@ -605,7 +639,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
     def ws_check(ws_id: str):
         ws = _ws(ws_id)
         if ws.status not in ("ready", "error"):
-            raise HTTPException(409, "Страницы ещё разбираются — подождите")
+            raise HTTPException(409, "Страницы ещё разбираются - подождите")
         job_id = _ws_check(ws)
         return {"job_id": job_id}
 
@@ -613,6 +647,23 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
     def ws_state(ws_id: str, body: dict = Body(...)):
         ws = _ws(ws_id)
         return {"state": ws.set_state(body)}
+
+    @app.get("/api/ws/{ws_id}/domains")
+    def ws_domains(ws_id: str):
+        """(0.8.5) Сохранённый результат загрузки доменов дела (виден и без результата проверки - например,
+        после перезапуска программы)."""
+        return _store_payload(_ws_store(_ws(ws_id)))
+
+    @app.post("/api/ws/{ws_id}/domains/reset")
+    def ws_domains_reset(ws_id: str):
+        """(0.8.5) «Сбросить результат» в окне «Домены»: сохранённые данные доменов стираются, из результата
+        проверки дела домены убираются (проверки пересчитываются); следующая загрузка - из manager заново."""
+        ws = _ws(ws_id)
+        _ws_store(ws).reset()
+        job = _ws_job(ws)
+        if job is not None and job.result is not None and job.status == "done":
+            jobs.attach_domains(job.id, [])
+        return {"ok": True, "job": bool(job is not None and job.result is not None)}
 
     @app.get("/api/ws/{ws_id}/result")
     def ws_result(ws_id: str, domain: str = ""):
@@ -640,7 +691,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
         data = workspace.gosuslugi_data(job.result if job else None)
         data.update({k: str(v).strip() for k, v in body.items() if k in data and v})
         if not data["series"] or not data["number"]:
-            raise HTTPException(400, "Серия и номер паспорта не прочитаны — впишите их в строку «Поиск» "
+            raise HTTPException(400, "Серия и номер паспорта не прочитаны - впишите их в строку «Поиск» "
                                      "(например, «4012 654321 Иванова Анна») и нажмите «Госуслуги · паспорт» ещё раз")
         _need_extension()
         # (0.8.0) страница открывается там же, где сайты строки «Поиск» (рядом с рабочим местом)
@@ -667,7 +718,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
             data = Path(f.path).read_bytes()
             total += len(data)
             if total > 40 * 1024 * 1024:
-                raise HTTPException(400, "Документов больше 40 МБ — прикрепите их в manager вручную")
+                raise HTTPException(400, "Документов больше 40 МБ - прикрепите их в manager вручную")
             files.append({"name": Path(f.name).name, "type": _mime(f.path), "b64": base64.b64encode(data).decode("ascii")})
         params = {"domains": doms, "change_admin": bool(body.get("change_admin", True)),
                   "change_account": bool(body.get("change_account")), "login_to": str(body.get("login_to") or ""),
@@ -681,15 +732,15 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
 
     @app.post("/api/ws/{ws_id}/manager/loa_fill")
     def ws_manager_loa_fill(ws_id: str, body: dict = Body(...)):
-        """(0.8.2) Безбумажные операции: «Добавить новый документ от пользователя» (/userdocs/loa_add, доверенность) —
+        """(0.8.2) Безбумажные операции: «Добавить новый документ от пользователя» (/userdocs/loa_add, доверенность) -
         номер паспорта / код страны компании, ФИО / ИНН компании, e-mail, телефон. Вид документа, срок действия и
-        «Добавить документ» — оператор."""
+        «Добавить документ» - оператор."""
         ws = _ws(ws_id)
         fields = {k: re.sub(r"\s+", " ", str(v)).strip() for k, v in (body.get("fields") or {}).items()
                   if k in workspace.LOA_FIELDS and v is not None}
         fields = {k: v for k, v in fields.items() if v}
         if not fields:
-            raise HTTPException(400, "Нечего вписывать — заполните поля в окне «Безбумажные операции»")
+            raise HTTPException(400, "Нечего вписывать - заполните поля в окне «Безбумажные операции»")
         _need_extension()
         reply = _ext("loa_fill", {"fields": fields}, timeout=300)
         if reply.get("ok"):
@@ -699,7 +750,7 @@ def create_app(out_root: str = "results", default_model: str = "qwen3-vl:4b-inst
     @app.post("/api/ws/{ws_id}/manager/read")
     def ws_manager_read(ws_id: str, body: dict = Body(default={})):
         """Шаг 2: прочитать «данные нового администратора» на странице manager, сверить с заявлением и
-        подсветить на странице (зелёный — совпадает, красный — нет)."""
+        подсветить на странице (зелёный - совпадает, красный - нет)."""
         ws = _ws(ws_id)
         job = _ws_job(ws)
         adm = {**workspace.new_admin(job.result if job else None), **{k: v for k, v in (body.get("admin") or {}).items() if v}}
@@ -743,7 +794,7 @@ def _mime(path: str) -> str:
 
 
 def already_running(host: str, port: int) -> str | None:
-    """Порт свободен — None; на нём уже работает PySimpleManager — его версия; занят другой программой — ""."""
+    """Порт свободен - None; на нём уже работает PySimpleManager - его версия; занят другой программой - ""."""
     import socket
     import urllib.request
     probe = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
@@ -775,11 +826,11 @@ def serve(host: str = "127.0.0.1", port: int = 8765, out_root: str = "results",
     if running is not None:
         if not running:
             raise SystemExit(f"[!] Порт {port} занят другой программой. Закройте её или запустите с --port <номер>.")
-        print(f"{APP_NAME} {running} уже запущен: {url} — открываю в браузере.")
+        print(f"{APP_NAME} {running} уже запущен: {url} - открываю в браузере.")
         if open_browser:
             webbrowser.open(url)
         return
-    print(f"{APP_NAME} {__version__}: веб-интерфейс на {url}  (остановить — Ctrl+C или закрыть это окно)")
+    print(f"{APP_NAME} {__version__}: веб-интерфейс на {url}  (остановить - Ctrl+C или закрыть это окно)")
     print(f"Результаты проверок: {Path(out_root).resolve()}")
     if host not in ("127.0.0.1", "localhost"):
         print("[!] Интерфейс доступен другим компьютерам сети. Документы будут обрабатываться на этом компьютере.")

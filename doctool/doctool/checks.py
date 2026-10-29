@@ -1,15 +1,15 @@
 """Реестр проверок.
 
-Проверка — функция, помеченная декоратором @register в модуле, где лежит её логика:
-compare.py — сверка заявления с паспортом и формальные проверки заявления, domains.py — данные доменов
+Проверка - функция, помеченная декоратором @register в модуле, где лежит её логика:
+compare.py - сверка заявления с паспортом и формальные проверки заявления, domains.py - данные доменов
 из manager. Описание проверки (CheckDef):
-  id     — ключ для config/case_types.yaml (список `checks:` у типа заявления);
-  names  — {название проверки (Check.name): id строк таблицы интерфейса, к которым она относится}.
-           По названию пишутся правила вердикта (`check:` в case_types.yaml); по строкам таблицы — статус
+  id     - ключ для config/case_types.yaml (список `checks:` у типа заявления);
+  names  - {название проверки (Check.name): id строк таблицы интерфейса, к которым она относится}.
+           По названию пишутся правила вердикта (`check:` в case_types.yaml); по строкам таблицы - статус
            строки и «Подтверждаю» оператора;
-  flags  — служебные признаки, которые проверка может поставить (правила `flag:`);
-  crop   — роль поля заявления, чей фрагмент скана показывать рядом с проверкой;
-  needs  — "passport": без паспорта не выполняется; "domains": только когда загружены данные из manager.
+  flags  - служебные признаки, которые проверка может поставить (правила `flag:`);
+  crop   - роль поля заявления, чей фрагмент скана показывать рядом с проверкой;
+  needs  - "passport": без паспорта не выполняется; "domains": только когда загружены данные из manager.
 
 Тип заявления перечисляет нужные проверки в `checks:`. Выполняются они в порядке регистрации (порядок
 в YAML не важен). Новая проверка = функция с @register + её id в `checks:` нужных типов; service.py,
@@ -41,7 +41,7 @@ REGISTRY: dict[str, CheckDef] = {}
 
 
 def register(check_id: str, names: dict, flags=(), crop: str | None = None, needs: str | None = None):
-    """@register("inn", {"ИНН ИП: контрольные цифры": "inn"}) — names: {название: строка или кортеж строк}."""
+    """@register("inn", {"ИНН ИП: контрольные цифры": "inn"}) - names: {название: строка или кортеж строк}."""
     def deco(func):
         old = REGISTRY.get(check_id)
         if old is not None and (old.func.__module__, old.func.__qualname__) != (func.__module__, func.__qualname__):
@@ -63,7 +63,7 @@ class Ctx:
     """Всё, что нужно проверкам: заявление, паспорт, данные из системы и manager, уже полученные проверки."""
     app: Extraction
     pas: Extraction | None = None
-    on: date | None = None                 # дата проверки (по умолчанию — дата заявления или сегодня)
+    on: date | None = None                 # дата проверки (по умолчанию - дата заявления или сегодня)
     previous: list = field(default_factory=list)   # ранее выданные паспорта (стр. 19 паспорта)
     admin: object = None                   # integrations.AdminData
     domains_sd: list = field(default_factory=list)  # domains.DomainInfo
@@ -92,7 +92,7 @@ class Ctx:
 
 # ------------------------------------------------------------------ выбор и запуск
 
-# Тип без бланка и без списка `checks:` — только паспорт и данные из системы/manager (как раньше)
+# Тип без бланка и без списка `checks:` - только паспорт и данные из системы/manager (как раньше)
 PASSPORT_ONLY = ("issued_by", "issuer_region", "series_year", "mrz", "system_admin", "manager_domains")
 
 
@@ -107,7 +107,7 @@ def ids_for(case_type: dict) -> list[str]:
 
 
 def run(ids, ctx: Ctx) -> tuple[list, set[str]]:
-    """Выполняет проверки ids (None — все) в порядке регистрации. Возвращает новые проверки и все флаги."""
+    """Выполняет проверки ids (None - все) в порядке регистрации. Возвращает новые проверки и все флаги."""
     _load()
     from .compare import Check
     want = None if ids is None else set(ids)

@@ -48,7 +48,7 @@ def test_issuer_abbreviations():
 
 
 def test_no_passport_validity_check():
-    # с 0.5.0 срок действия паспорта по возрасту (20/45 лет) не проверяется — только сходство данных
+    # с 0.5.0 срок действия паспорта по возрасту (20/45 лет) не проверяется - только сходство данных
     from doctool import checks as checklib
     assert "passport_validity" not in checklib.REGISTRY
 
@@ -86,7 +86,7 @@ def test_ocr_typo_in_passport_name():
 
 def test_handwritten_passport_vlm_values_do_not_reject():
     """Набор 4 (Аверин): паспорт заполнен от руки, модель ошиблась в дате выдачи.
-    Невозможная дата отбрасывается, а расхождение со значением модели — «ручная проверка», не «отклонить»."""
+    Невозможная дата отбрасывается, а расхождение со значением модели - «ручная проверка», не «отклонить»."""
     from doctool.compare import compare, extra_checks
     from doctool.models import Extraction
     from doctool.passport_rf import plausibility
@@ -96,7 +96,7 @@ def test_handwritten_passport_vlm_values_do_not_reject():
                  ("birth_date", "13.11.1953"), ("issue_date", "24.05.1987"), ("series_number", "4600 818840")):
         pas.set(k, v, 0.55, "vlm")
     notes = plausibility(pas)
-    assert pas.get("issue_date") is None and any("1997" in n for n in notes)   # 1987 — невозможно
+    assert pas.get("issue_date") is None and any("1997" in n for n in notes)   # 1987 - невозможно
     pas.set("issue_date", "12.05.2001", 0.55, "vlm")                          # ошибка модели в одной цифре
     app = Extraction("regru_transfer_person", "a.pdf")
     app.set("applicant_header", "АВЕРИН ВЯЧЕСЛАВ ВЛАДИМИРОВИЧ", 0.85, "ocr-text")
@@ -118,7 +118,7 @@ def test_handwritten_passport_vlm_values_do_not_reject():
     assert decide(load_case_types()["admin_change_person"], checks + more, flags, app.fields).code == "review"
 
 
-# ------------------------------------------------------------------ «Кем выдан» в режиме «только паспорт» (набор 7 — Опря)
+# ------------------------------------------------------------------ «Кем выдан» в режиме «только паспорт» (набор 7 - Опря)
 
 def _oprya(issued_by="ГУ МВД РОССИИ ПО МОСКОВСКОЙ ОБЛАСТИ", src="ocr", conf=0.62, dept="500-050"):
     from doctool.models import Extraction

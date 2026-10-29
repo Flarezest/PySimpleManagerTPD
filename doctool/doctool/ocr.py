@@ -28,7 +28,7 @@ def find_tesseract() -> str | None:
     from .paths import APP_DIR
     bundled = APP_DIR / "tesseract" / ("tesseract.exe" if os.name == "nt" else "tesseract")
     if bundled.is_file():
-        if (bundled.parent / "tessdata").is_dir():          # языки — только свои, не чужой установки
+        if (bundled.parent / "tessdata").is_dir():          # языки - только свои, не чужой установки
             os.environ["TESSDATA_PREFIX"] = str(bundled.parent / "tessdata")
         return str(bundled)
     found = shutil.which("tesseract")
@@ -56,7 +56,7 @@ def check_tesseract() -> str | None:
     try:
         langs = set(pytesseract.get_languages(config=""))
     except (pytesseract.TesseractNotFoundError, OSError):
-        return ("Tesseract не найден. Установите его (см. README, раздел «Установка») "
+        return ("Tesseract не найден. Установите его (docs/USAGE.md, раздел 0.2) "
                 "или укажите путь: set TESSERACT_CMD=C:\\путь\\к\\tesseract.exe")
     missing = {"rus", "eng", "osd"} - langs
     if missing:
@@ -100,7 +100,7 @@ def load_document(path: str | Path, dpi: int = 300) -> list[Page]:
 
 def pdf_page_text(page) -> str:
     """Текстовый слой страницы PDF. Если значения вписаны поверх бланка в PDF-редакторе (поля формы, надписи-
-    аннотации), get_text() ставит их в конец текста — тогда текст собирается по координатам: слова группируются
+    аннотации), get_text() ставит их в конец текста - тогда текст собирается по координатам: слова группируются
     в строки по высоте и сортируются слева направо, и значение оказывается рядом со своей подписью (0.7.3).
     Обычный PDF (из Word) читается как раньше."""
     overlay = any((w.field_value or "").strip() for w in (page.widgets() or [])) or \
@@ -119,9 +119,9 @@ def pdf_page_text(page) -> str:
 
 
 def docx_text(path: str | Path) -> str:
-    """Текст DOCX в порядке документа: абзацы и таблицы вперемешку (до 0.7.3 таблицы шли после всех абзацев —
-    таблица нового администратора оказывалась после подписи). Строка таблицы — ячейки через « | »; объединённая
-    ячейка — один раз."""
+    """Текст DOCX в порядке документа: абзацы и таблицы вперемешку (до 0.7.3 таблицы шли после всех абзацев -
+    таблица нового администратора оказывалась после подписи). Строка таблицы - ячейки через « | »; объединённая
+    ячейка - один раз."""
     from docx import Document  # python-docx
     from docx.oxml.ns import qn
     from docx.table import Table
@@ -132,7 +132,7 @@ def docx_text(path: str | Path) -> str:
         if el.tag == qn("w:p"):
             parts.append(Paragraph(el, d).text)
         elif el.tag == qn("w:tbl"):
-            seen: list = []                       # элементы ячеек (id() у прокси lxml переиспользуется — сравнение через is)
+            seen: list = []                       # элементы ячеек (id() у прокси lxml переиспользуется - сравнение через is)
             for row in Table(el, d).rows:
                 cells = []
                 for c in row.cells:
@@ -294,7 +294,7 @@ def crop_to_content(img: np.ndarray, pad: int = 20) -> tuple[np.ndarray, bool]:
 
 def remove_lines(gray: np.ndarray) -> np.ndarray:
     """Убирает длинные горизонтальные линии (подчёркивания, рамки таблиц): они мешают OCR
-    и модели — например, линия под «22.05.2001» превращает «5» в «3»."""
+    и модели - например, линия под «22.05.2001» превращает «5» в «3»."""
     if gray.ndim == 3:
         gray = cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
     bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
@@ -326,7 +326,7 @@ def remove_lines_soft(gray: np.ndarray) -> np.ndarray:
 # ---------------------------------------------------------------- ручное выделение текста (0.8.4)
 
 def _ink_height(gray: np.ndarray) -> float:
-    """Высота знаков в области (медиана высоты пятен краски), px; 0 — не определилась."""
+    """Высота знаков в области (медиана высоты пятен краски), px; 0 - не определилась."""
     bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
     n, _, st, _ = cv2.connectedComponentsWithStats(bw, connectivity=8)
     h, w = gray.shape[:2]
@@ -354,7 +354,7 @@ def _no_rules(gray: np.ndarray, th: float) -> np.ndarray:
 
 
 def _paper(gray: np.ndarray) -> np.ndarray:
-    """Всё светлее порога Оцу — в белый: следы ручки и штампа в своём канале, фон, сетка не мешают LSTM Tesseract
+    """Всё светлее порога Оцу - в белый: следы ручки и штампа в своём канале, фон, сетка не мешают LSTM Tesseract
     (он читает серое изображение, а не чёрно-белое); краска знаков остаётся как есть."""
     t, _ = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     out = gray.copy()
@@ -398,11 +398,11 @@ def read_printed(img: np.ndarray, lang: str = "rus+eng", good: float = 85.0) -> 
     """Печатный текст небольшой области страницы (рамка оператора, рабочее место 0.8.4). Рукопись не читается.
 
     Пробует несколько вариантов изображения и берёт прочтение с наибольшей уверенностью Tesseract:
-      gray — серое без линий таблиц и подчёркиваний; blue — синий канал (синяя ручка, подпись и штамп «ПОЛУЧЕНО»
-      поверх печатного текста светлеют, остатки — в белый); red — красный канал с выровненным фоном (розовая сетка
+      gray - серое без линий таблиц и подчёркиваний; blue - синий канал (синяя ручка, подпись и штамп «ПОЛУЧЕНО»
+      поверх печатного текста светлеют, остатки - в белый); red - красный канал с выровненным фоном (розовая сетка
       паспорта).
     Мелкий текст увеличивается (высота знаков ~30 px). Узкая высокая область (номер паспорта на полях) читается и
-    повёрнутой на 90° / 270°. Одна строка — psm 7, несколько — psm 6. Достаточно уверенное прочтение (≥ good) — сразу.
+    повёрнутой на 90° / 270°. Одна строка - psm 7, несколько - psm 6. Достаточно уверенное прочтение (≥ good) - сразу.
     → {"text", "conf", "variant", "rot", "psm", "tries"}."""
     out = {"text": "", "conf": 0.0, "variant": "", "rot": 0, "psm": 0, "tries": 0}
     if img is None or img.size == 0 or min(img.shape[:2]) < 4:
@@ -420,7 +420,7 @@ def read_printed(img: np.ndarray, lang: str = "rus+eng", good: float = 85.0) -> 
                 ("red", lambda: _paper(_no_rules(_flat(color[:, :, 2]), th)))]
     hsv = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)
     pen = (hsv[:, :, 0] >= 95) & (hsv[:, :, 0] <= 135) & (hsv[:, :, 1] > 70) & (hsv[:, :, 2] < 235)
-    if pen.mean() > 0.003:                            # синяя ручка или штамп в рамке — сначала синий канал
+    if pen.mean() > 0.003:                            # синяя ручка или штамп в рамке - сначала синий канал
         variants.insert(0, variants.pop(1))
     best = (-1.0, out)
     for name, make in variants:
@@ -475,7 +475,7 @@ class OllamaVLM:
             return json.load(r)["response"].strip()
 
     def transcribe(self, img: np.ndarray, hint: str = "") -> str:
-        img = downscale(img, 1000)  # меньше пикселей — меньше токенов и быстрее на CPU
+        img = downscale(img, 1000)  # меньше пикселей - меньше токенов и быстрее на CPU
         prompt = ("Перепиши рукописный текст на изображении точно, как написано. "
                   "Печатный текст бланка (подписи в скобках, линии) не переписывай. "
                   "Если рукописного текста нет, ответь одним словом: ПУСТО. "
@@ -501,7 +501,7 @@ def _order_quad(pts: np.ndarray) -> np.ndarray:
 
 def straighten_photo(img: np.ndarray) -> tuple[np.ndarray, bool]:
     """Фото документа: ищет крупный четырёхугольник (лист/разворот) и выравнивает перспективу.
-    Если уверенно найти не удалось — возвращает исходное изображение."""
+    Если уверенно найти не удалось - возвращает исходное изображение."""
     small = downscale(img, 1200)
     k = img.shape[1] / small.shape[1]
     gray = cv2.GaussianBlur(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY), (5, 5), 0)

@@ -1,9 +1,9 @@
-# Сборка установщиков PySimpleManager (0.7.5). Подробно — doctool/docs/RELEASE.md.
+# Сборка установщиков PySimpleManager (0.7.5). Подробно - doctool/docs/RELEASE.md.
 #
 # Когда запускается:
-#   - тег v* (git tag v0.7.5 && git push origin v0.7.5) — сборка + выпуск на странице Releases;
-#   - кнопка «Run workflow» на вкладке Actions — пробная сборка, файлы — внизу страницы запуска (Artifacts).
-# Программа лежит в подпапке doctool/ репозитория — команды выполняются там.
+#   - тег v* (git tag v0.7.5 && git push origin v0.7.5) - сборка + выпуск на странице Releases;
+#   - кнопка «Run workflow» на вкладке Actions - пробная сборка, файлы - внизу страницы запуска (Artifacts).
+# Программа лежит в подпапке doctool/ репозитория - команды выполняются там.
 
 name: Сборка установщиков
 
@@ -23,7 +23,7 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    # macOS — пробная сборка: её ошибка не мешает выпуску для Windows и Linux
+    # macOS - пробная сборка: её ошибка не мешает выпуску для Windows и Linux
     continue-on-error: ${{ matrix.experimental }}
     timeout-minutes: 60
     strategy:
@@ -34,7 +34,7 @@ jobs:
             os: windows-2025
             experimental: false
           - name: Linux
-            os: ubuntu-22.04          # старее glibc — пакет ставится и на более новые Ubuntu/Debian
+            os: ubuntu-22.04          # старее glibc - пакет ставится и на более новые Ubuntu/Debian
             experimental: false
           - name: macOS
             os: macos-15              # Apple Silicon (arm64)

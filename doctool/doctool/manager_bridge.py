@@ -5,14 +5,14 @@
 не обращается.
 
 Команды:
-  lookup     — данные домена: счета, Sd, S, идентификация через Госуслуги (0.6.0);
-  account    — данные аккаунта и базовая анкета (0.6.0);
-  fill_runic — вписать значения в форму базовой анкеты во вкладке оператора (0.6.0). «Сохранить» нажимает оператор.
-  (0.7.6) gosuslugi_fill, domain_move_fill / _read / _mark / _fill_contacts — рабочее место (web.py).
-  (0.8.0) site_open / site_hide — сайт строки «Поиск» рядом с рабочим местом: вторая половина окна Chrome
-           (разделённый экран) или отдельное окно; site_open с fill — вписать запрос в поле поиска сайта.
+  lookup     - данные домена: счета, Sd, S, идентификация через Госуслуги (0.6.0);
+  account    - данные аккаунта и базовая анкета (0.6.0);
+  fill_runic - вписать значения в форму базовой анкеты во вкладке оператора (0.6.0). «Сохранить» нажимает оператор.
+  (0.7.6) gosuslugi_fill, domain_move_fill / _read / _mark / _fill_contacts - рабочее место (web.py).
+  (0.8.0) site_open / site_hide - сайт строки «Поиск» рядом с рабочим местом: вторая половина окна Chrome
+           (разделённый экран) или отдельное окно; site_open с fill - вписать запрос в поле поиска сайта.
            Эти команды и gosuslugi_fill расширение выполняет сразу, не дожидаясь загрузки доменов из manager.
-  (0.8.2) loa_fill — безбумажные операции: вписать поля формы доверенности (/userdocs/loa_add) во вкладке оператора.
+  (0.8.2) loa_fill - безбумажные операции: вписать поля формы доверенности (/userdocs/loa_add) во вкладке оператора.
 
 Протокол (JSON):
   расширение → doctool: {"type": "hello", "version": "0.8.0", "chrome": 155, "split_api": true}, {"type": "ping"},
@@ -34,6 +34,7 @@ from concurrent.futures import TimeoutError as FutTimeout
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from .domain_store import lookup_cached
 from .domains import ManagerUnavailable, lookup_domains
 from .whois import lookup as whois_lookup
 
@@ -85,7 +86,7 @@ class ExtensionBridge:
                 msg = await ws.receive_json()
                 self.last_seen = datetime.now()
                 self._dispatch(msg)
-        except Exception:  # noqa: BLE001 — разрыв соединения
+        except Exception:  # noqa: BLE001 - разрыв соединения
             pass
         finally:
             if self.ws is ws:
@@ -171,7 +172,11 @@ class ManagerTasks:
                               whois_lookup=whois_lookup if self.use_whois else None, cancel=cancel,
                               task=uuid.uuid4().hex[:8])
 
-    def submit(self, domains: list[str], job_id: str | None = None, on_done=None) -> ManagerTask:
+    def lookup_cached(self, domains: list[str], store=None, log=print, cancel=None) -> list:
+        """(0.8.5) Загрузка с учётом сохранённого результата (domain_store): из manager - только новые домены."""
+        return lookup_cached(self.lookup, domains, store, log=log, cancel=cancel)
+
+    def submit(self, domains: list[str], job_id: str | None = None, on_done=None, store=None) -> ManagerTask:
         t = ManagerTask(id=uuid.uuid4().hex[:12], domains=domains, job_id=job_id)
         self.tasks[t.id] = t
 
@@ -180,7 +185,7 @@ class ManagerTasks:
 
         def run():
             try:
-                t.items = self.lookup(domains, log=log, cancel=t.cancel)
+                t.items = self.lookup_cached(domains, store, log=log, cancel=t.cancel)
                 if on_done:
                     on_done(t)
                 t.status = "done"

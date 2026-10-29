@@ -1,4 +1,4 @@
-pymupdf>=1.24
+pymupdf>=1.24,<2          # 2.0 тянет модель разметки (onnxruntime) и ломала сборку (0.8.5)
 opencv-python>=4.9
 numpy>=1.26
 pytesseract>=0.3.10

@@ -37,7 +37,10 @@ a = Analysis(
     pathex=[str(ROOT)],
     datas=datas,
     hiddenimports=collect_submodules("doctool"),   # hooks.py модулей импортируют части ядра по имени
-    excludes=["tkinter", "PySide6", "PyQt5", "PyQt6", "matplotlib", "pytest", "IPython"],
+    # (0.8.5) PyMuPDF 2.0 при импорте загружает модель разметки страниц (pymupdf.layout, ONNX), файлы модели PyInstaller
+    # не забирает - программа не запускалась. Программе разметка не нужна: без модуля pymupdf работает как 1.x
+    excludes=["tkinter", "PySide6", "PyQt5", "PyQt6", "matplotlib", "pytest", "IPython",
+              "pymupdf.layout", "pymupdf4llm", "onnxruntime"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
